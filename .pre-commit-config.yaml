@@ -1,0 +1,20 @@
+repos:
+  # Block private keys (RSA, EC, PEM, OpenSSH, etc.)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: detect-private-key
+
+  # Block likely secrets: API keys, tokens, passwords, connection strings
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        # Exclude test fixtures that contain obviously fake values
+        exclude: >
+          (?x)^(
+            tests/.*|
+            examples/.*\.yaml|
+            examples/.*\.yml
+          )$

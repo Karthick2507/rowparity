@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.whl
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+reports/
+*.xml
+
+# Nox / tox
+.nox/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# rowparity runtime artifacts
+examples/data/*.duckdb
+examples/data/*.parquet
+examples/data/*.arrow
+
+# Result sinks and report outputs (generated, never committed)
+*.duckdb
+results.duckdb
+reports/*.json
+reports/*.md
+reports/*.html
+
+# Snowflake key-pair auth — private keys must never reach git
+.env.snowflake
+.env.snowflake.*
+*.p8
+*.pem
+~/.snowflake/
+secrets/
+
+# Trino credentials
+.env.trino
+.env.trino.*
+
+# detect-secrets baseline (committed intentionally — keep it)
+# .secrets.baseline  ← do NOT ignore this file
