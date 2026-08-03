@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: daily_revenue
+    description: >
+      Daily revenue and order count by region, aggregated from raw_orders.
+      rowparity's Case 01 (daily_revenue_matches_golden) verifies this
+      model's actual output values against a QA-blessed snapshot -- the
+      tests below check structural constraints (no nulls); they are
+      complementary to, not a replacement for, that regression check.
+    columns:
+      - name: day
+        data_tests:
+          - not_null
+      - name: region
+        data_tests:
+          - not_null
+      - name: revenue
+        data_tests:
+          - not_null
+      - name: orders
+        data_tests:
+          - not_null
+
+seeds:
+  - name: raw_orders
+    description: Raw per-order rows -- the "source data" a real pipeline would ingest.

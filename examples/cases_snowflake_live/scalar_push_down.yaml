@@ -1,0 +1,22 @@
+# NOT part of examples/cases -- deliberately kept out of the regular
+# discover_cases("examples/cases") tree so CI (no Snowflake credentials)
+# never picks this up. Run manually once scripts/build_snowflake_test_data.py
+# has been run against your account:
+#
+#   rowparity run examples/cases_snowflake_live/scalar_push_down.yaml
+#
+# Expected result: DIFFERENT, 1 changed row (id=2, amount 200.00 -> 999.99).
+# Validates the static-schema scalar path in snowflake_pushdown.py --
+# bool/int/decimal/float/string/date/timestamp (naive + tz-aware) all in one case.
+name: snowflake_live_scalar_push_down
+engine: snowflake
+tags: [snowflake_live]
+expected:
+  type: snowflake
+  table: SCALAR_GOLDEN
+actual:
+  type: snowflake
+  table: SCALAR_ACTUAL
+compare:
+  keys: [id]
+  float_tolerance: 0.001

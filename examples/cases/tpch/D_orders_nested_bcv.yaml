@@ -1,0 +1,34 @@
+# Case D — Backward-compatible view: nested list<struct>
+#
+# The golden is a denormalised orders+lineitem table where each order carries a
+# line_items: list<struct<l_linenumber, l_partkey, l_quantity, l_extprice>>.
+# The list is ORDERED by l_linenumber (sequence semantics matter here).
+#
+# The BCV (orders_nested_compat) reassembles the same shape from the v2 tables
+# using ORDER BY l_linenumber — it must reproduce the golden exactly.
+#
+# Keyless comparison: row order in the result set is irrelevant; what matters is
+# that the multiset of (order, line_items) rows matches.
+# Features: keyless, list<struct>, float_tolerance, coerce_numeric_to_float
+
+name: tpch_orders_nested_bcv
+description: |
+  BCV reassembles orders with nested line_items list<struct> from v2 tables.
+  List element order is preserved via ORDER BY l_linenumber.
+  Keyless (multiset) comparison — result-set row order is irrelevant.
+tags: [tpch, bcv, nested, migration]
+
+expected:
+  type: parquet
+  path: ../../data/orders_nested_golden.parquet
+
+actual:
+  type: duckdb
+  database: ../../data/tpch.duckdb
+  read_only: true
+  query: SELECT * FROM orders_nested_compat
+
+compare:
+  float_tolerance: 0.001
+  coerce_numeric_to_float: true
+  max_examples: 10

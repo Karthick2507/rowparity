@@ -1,0 +1,30 @@
+# Case E — Schema drift detection (expected to FAIL)
+#
+# The golden snapshot has 6 columns (the columns the QA team originally blessed).
+# The actual query returns all 9 columns — 3 were added upstream (o_clerk,
+# o_shippriority, o_comment). strict_columns: true fails the case as soon as
+# the column sets diverge, before any row comparison.
+#
+# Tagged xfail: this case is EXPECTED to fail. The pytest suite asserts it differs.
+# Features: keys, strict_columns, xfail
+
+name: tpch_orders_schema_drift
+description: |
+  Golden snapshot has 6 columns; actual has 9 (3 added upstream).
+  strict_columns: true fails immediately on column set mismatch.
+  Expected to FAIL (tagged xfail).
+tags: [tpch, schema, drift, xfail]
+
+expected:
+  type: parquet
+  path: ../../data/orders_schema_golden.parquet
+
+actual:
+  type: duckdb
+  database: ../../data/tpch.duckdb
+  read_only: true
+  query: SELECT * FROM orders
+
+compare:
+  keys: [o_orderkey]
+  strict_columns: true

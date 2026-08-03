@@ -1,0 +1,25 @@
+# Scenario 3 — the SAME check pointed at a *broken* compat view, to show what a
+# caught regression looks like. This case is EXPECTED TO FAIL when run with
+# `rowparity run`; it exists so QA can see the diff output. It is tagged `xfail` so
+# the pytest suite treats failure as success (see tests/test_examples.py).
+#
+# The broken view (a) rebuilds `items` without ORDER BY line_no, so line order
+# can differ, and (b) subtracts 1.00 from every total.
+
+name: orders_bcv_broken_is_detected
+description: Demonstrates detection when the BCV reorders list items and alters totals.
+tags: [migration, bcv, nested, xfail]
+
+expected:
+  type: parquet
+  path: ../data/orders_v1_expected.parquet
+
+actual:
+  type: duckdb
+  database: ../data/warehouse.duckdb
+  read_only: true
+  query: SELECT order_id, customer, items, attributes, total FROM orders_v1_compat_broken
+
+compare:
+  keys: [order_id]     # keyed here so the report pinpoints which orders changed
+  max_examples: 25

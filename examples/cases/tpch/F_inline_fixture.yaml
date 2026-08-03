@@ -1,0 +1,31 @@
+# Case F — Inline fixture: aggregate result validation
+#
+# Tests that the count of orders by status matches a known distribution.
+# Expected is written directly in the YAML — no file needed.
+# schema: forces int64 so Arrow doesn't infer float for the count column.
+# Features: inline source, schema typing, keys
+
+name: tpch_order_status_counts
+description: |
+  Count of orders per status must match the known TPC-H sf=0.01 distribution.
+  Expected is an inline YAML fixture — no snapshot file needed.
+tags: [tpch, inline, aggregate]
+
+expected:
+  type: inline
+  schema:
+    o_orderstatus: string
+    order_count: int64
+  rows:
+    - {o_orderstatus: "F", order_count: 7304}
+    - {o_orderstatus: "O", order_count: 7333}
+    - {o_orderstatus: "P", order_count: 363}
+
+actual:
+  type: duckdb
+  database: ../../data/tpch.duckdb
+  read_only: true
+  query: SELECT o_orderstatus, count(*)::BIGINT AS order_count FROM orders GROUP BY 1
+
+compare:
+  keys: [o_orderstatus]

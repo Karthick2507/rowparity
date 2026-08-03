@@ -1,0 +1,29 @@
+# Case C — String normalization: trim + case-insensitive
+#
+# The golden (customers_legacy.parquet) simulates a legacy export with:
+#   - c_name in UPPERCASE  (vs mixed-case in the warehouse)
+#   - c_address padded with leading/trailing spaces
+# trim_strings + case_insensitive normalize before hashing so the case passes
+# without any ETL cleanup of the legacy file.
+# Features: keys, trim_strings, case_insensitive
+
+name: tpch_customers_string_normalization
+description: |
+  Legacy export has UPPERCASE names and space-padded addresses.
+  trim_strings + case_insensitive make the comparison pass without pre-processing.
+tags: [tpch, strings, normalization]
+
+expected:
+  type: parquet
+  path: ../../data/customers_legacy.parquet
+
+actual:
+  type: duckdb
+  database: ../../data/tpch.duckdb
+  read_only: true
+  query: SELECT c_custkey, c_name, c_address, c_mktsegment FROM customer
+
+compare:
+  keys: [c_custkey]
+  trim_strings: true
+  case_insensitive: true

@@ -1,0 +1,23 @@
+# NOT part of examples/cases -- see scalar_push_down.yaml for why.
+#
+#   rowparity run examples/cases_snowflake_live/nested_push_down.yaml
+#
+# Expected result: DIFFERENT, 1 changed row (id=2, attrs.size 'l' -> 'xl').
+# This is the highest-risk case in the whole Snowflake push-down feature --
+# it's the first real exercise of _canon_variant_expr()'s TYPEOF()/
+# TABLE(FLATTEN(...)) SQL against a live warehouse. tags is ARRAY (once of
+# strings, once of ints -- exercises TYPEOF branching within the same
+# column across rows), attrs is OBJECT (struct-like), line_items is
+# ARRAY<OBJECT> (recursion: array containing objects).
+name: snowflake_live_nested_push_down
+engine: snowflake
+tags: [snowflake_live]
+expected:
+  type: snowflake
+  table: NESTED_GOLDEN
+actual:
+  type: snowflake
+  table: NESTED_ACTUAL
+compare:
+  keys: [id]
+  float_tolerance: 0.001

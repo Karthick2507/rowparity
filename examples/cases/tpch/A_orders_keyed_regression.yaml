@@ -1,0 +1,32 @@
+# Case A — Keyed regression test
+#
+# The golden snapshot has o_totalprice with +0.0001 noise (simulating a snapshot
+# stored at slightly different precision). float_tolerance: 0.001 covers it.
+# o_comment is a free-text column that drifts; ignore_columns drops it.
+# Features: keys, float_tolerance, ignore_columns
+
+name: tpch_orders_keyed_regression
+description: |
+  dbt-built orders model must match the golden snapshot.
+  Keyed on o_orderkey. Float tolerance covers tiny price noise.
+  o_comment excluded as a volatile free-text column.
+tags: [tpch, regression, keyed]
+
+expected:
+  type: parquet
+  path: ../../data/orders_golden.parquet
+
+actual:
+  type: duckdb
+  database: ../../data/tpch.duckdb
+  read_only: true
+  query: >
+    SELECT o_orderkey, o_custkey, o_orderstatus,
+           o_totalprice, o_orderdate, o_orderpriority
+    FROM orders
+
+compare:
+  keys: [o_orderkey]
+  float_tolerance: 0.001
+  coerce_numeric_to_float: true
+  ignore_columns: [o_comment]

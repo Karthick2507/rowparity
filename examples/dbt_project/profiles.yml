@@ -1,0 +1,14 @@
+rowparity_examples:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Absolute path, injected by examples/build_example_data.py -- avoids
+      # depending on dbt's cwd-relative-path resolution behavior, which
+      # varies by how/where `dbt build` is invoked from.
+      path: "{{ env_var('ROWPARITY_DBT_DB_PATH') }}"
+      threads: 1
+    ci:
+      type: duckdb
+      path: "{{ env_var('ROWPARITY_DBT_DB_PATH') }}"
+      threads: 1

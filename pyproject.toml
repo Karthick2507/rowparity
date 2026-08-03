@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rowparity"
+version = "0.1.0"
+description = "Fingerprint-based expected-vs-actual data testing for dbt/warehouse pipelines, driven by YAML and run in CI."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "FreeWheel, A Comcast Company" }]
+dependencies = [
+    "pyarrow>=14",
+    "PyYAML>=6",
+]
+
+# Heavy / engine-specific drivers are optional so the core stays lightweight in CI.
+# Install only the extras your sources actually need.
+[project.optional-dependencies]
+duckdb = ["duckdb>=0.10"]
+snowflake = ["snowflake-connector-python[pandas]>=3.6"]
+trino = ["trino>=0.320"]
+iceberg = ["pyiceberg[pyarrow]>=0.6"]
+delta = ["deltalake>=0.15"]
+spark = ["pyspark>=3.3"]
+dbt = ["dbt-core>=1.7,<1.9", "dbt-duckdb>=1.7,<1.9"]
+test = ["pytest>=7", "duckdb>=0.10", "dbt-core>=1.7,<1.9", "dbt-duckdb>=1.7,<1.9"]
+dev = ["pre-commit>=3.7", "detect-secrets>=1.5"]
+all = [
+    "duckdb>=0.10",
+    "snowflake-connector-python[pandas]>=3.6",
+    "trino>=0.320",
+    "pyiceberg[pyarrow]>=0.6",
+    "deltalake>=0.15",
+    "dbt-core>=1.7,<1.9",
+    "dbt-duckdb>=1.7,<1.9",
+    "pytest>=7",
+]
+
+[project.scripts]
+rowparity = "rowparity.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rowparity = ["templates/*.html"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes (undefined names, unused imports)
+    "I",   # isort
+    "B",   # flake8-bugbear (likely bugs)
+]
+ignore = [
+    "E501",  # line too long — handled by ruff-format
+    "B006",  # mutable default argument — intentional in dataclass field(default_factory=...)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["rowparity"]

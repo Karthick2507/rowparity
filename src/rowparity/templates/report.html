@@ -1,0 +1,979 @@
+<title>rowparity — Verification Report</title>
+<style>
+  :root {
+    --canvas: #FFFFFF;
+    --canvas-subtle: #F6F8FA;
+    --canvas-inset: #F6F8FA;
+    --border: #D0D7DE;
+    --border-muted: #D8DEE4;
+    --fg: #1F2328;
+    --fg-muted: #656D76;
+    --fg-subtle: #6E7781;
+    --accent-fg: #0969DA;
+    --accent-subtle: #DDF4FF;
+    --success-fg: #1A7F37;
+    --success-emphasis: #2DA44E;
+    --success-subtle: #DAFBE1;
+    --danger-fg: #D1242F;
+    --danger-emphasis: #CF222E;
+    --danger-subtle: #FFEBE9;
+    --attention-fg: #9A6700;
+    --attention-subtle: #FFF8C5;
+    --radius: 6px;
+    --shadow: 0 1px 0 rgba(31, 35, 40, 0.04);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #0D1117;
+      --canvas-subtle: #161B22;
+      --canvas-inset: #010409;
+      --border: #30363D;
+      --border-muted: #21262D;
+      --fg: #E6EDF3;
+      --fg-muted: #848D97;
+      --fg-subtle: #6E7681;
+      --accent-fg: #4493F8;
+      --accent-subtle: #0C2D6B;
+      --success-fg: #3FB950;
+      --success-emphasis: #238636;
+      --success-subtle: #033A16;
+      --danger-fg: #F85149;
+      --danger-emphasis: #DA3633;
+      --danger-subtle: #67060C;
+      --attention-fg: #D29922;
+      --attention-subtle: #341A00;
+      --shadow: 0 1px 0 rgba(1, 4, 9, 0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --canvas: #0D1117;
+    --canvas-subtle: #161B22;
+    --canvas-inset: #010409;
+    --border: #30363D;
+    --border-muted: #21262D;
+    --fg: #E6EDF3;
+    --fg-muted: #848D97;
+    --fg-subtle: #6E7681;
+    --accent-fg: #4493F8;
+    --accent-subtle: #0C2D6B;
+    --success-fg: #3FB950;
+    --success-emphasis: #238636;
+    --success-subtle: #033A16;
+    --danger-fg: #F85149;
+    --danger-emphasis: #DA3633;
+    --danger-subtle: #67060C;
+    --attention-fg: #D29922;
+    --attention-subtle: #341A00;
+    --shadow: 0 1px 0 rgba(1, 4, 9, 0.5);
+  }
+
+  :root[data-theme="light"] {
+    --canvas: #FFFFFF;
+    --canvas-subtle: #F6F8FA;
+    --canvas-inset: #F6F8FA;
+    --border: #D0D7DE;
+    --border-muted: #D8DEE4;
+    --fg: #1F2328;
+    --fg-muted: #656D76;
+    --fg-subtle: #6E7781;
+    --accent-fg: #0969DA;
+    --accent-subtle: #DDF4FF;
+    --success-fg: #1A7F37;
+    --success-emphasis: #2DA44E;
+    --success-subtle: #DAFBE1;
+    --danger-fg: #D1242F;
+    --danger-emphasis: #CF222E;
+    --danger-subtle: #FFEBE9;
+    --attention-fg: #9A6700;
+    --attention-subtle: #FFF8C5;
+    --shadow: 0 1px 0 rgba(31, 35, 40, 0.04);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--canvas-subtle);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  a { color: var(--accent-fg); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 1px; border-radius: 3px; }
+  code { font-family: var(--font-mono); }
+
+  .page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 24px 20px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ---------- Masthead: plain breadcrumb, not a branded hero ---------- */
+  .masthead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .masthead-crumb {
+    font-size: 16px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .masthead-crumb .org { color: var(--fg-muted); }
+  .masthead-crumb .sep { color: var(--border); }
+  .masthead-crumb .title { font-weight: 600; }
+  .masthead-meta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-muted);
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  /* ---------- Surface shell (every card uses this) ---------- */
+  .box {
+    background: var(--canvas);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .box-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--canvas-subtle);
+    border-radius: var(--radius) var(--radius) 0 0;
+    flex-wrap: wrap;
+  }
+  .box-head h3 { font-size: 13px; font-weight: 600; margin: 0; }
+  .box-head .hint, .hint { font-size: 12px; color: var(--fg-muted); font-weight: 400; }
+  .box-body { padding: 14px; }
+
+  /* ---------- Checks summary banner ---------- */
+  .summary-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+  }
+  .summary-banner .status-icon { flex: none; }
+  .summary-banner .status-icon.good { color: var(--success-fg); }
+  .summary-banner .status-icon.bad { color: var(--danger-fg); }
+  .summary-banner h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 2px;
+  }
+  .summary-banner p { margin: 0; font-size: 13px; color: var(--fg-muted); }
+
+  .stat-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border-top: 1px solid var(--border);
+  }
+  .stat-cell {
+    flex: 1 1 0;
+    min-width: 150px;
+    padding: 12px 16px;
+    border-right: 1px solid var(--border);
+  }
+  .stat-cell:last-child { border-right: none; }
+  .stat-cell .label { font-size: 11px; color: var(--fg-muted); display: block; margin-bottom: 3px; }
+  .stat-cell .value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .stat-cell .value.good { color: var(--success-fg); }
+  .stat-cell .value.bad { color: var(--danger-fg); }
+
+  /* ---------- Trend chart ---------- */
+  .chart-wrap { position: relative; }
+  .chart-wrap svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .grid-line { stroke: var(--border-muted); stroke-width: 1; }
+  .axis-label { font-family: var(--font-mono); font-size: 10px; fill: var(--fg-subtle); }
+  .trend-area { fill: var(--success-subtle); opacity: 0.6; }
+  .trend-line { fill: none; stroke: var(--success-emphasis); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .trend-dot-end { fill: var(--success-emphasis); stroke: var(--canvas); stroke-width: 2; }
+  .trend-dot-end-label {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    font-weight: 600;
+    fill: var(--success-fg);
+  }
+  .hover-crosshair { stroke: var(--fg-subtle); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0; pointer-events: none; }
+  .hover-dot { fill: var(--canvas); stroke: var(--accent-fg); stroke-width: 2; opacity: 0; pointer-events: none; }
+  .chart-hit { fill: transparent; cursor: crosshair; }
+  .chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--fg);
+    color: var(--canvas);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.5;
+    padding: 6px 9px;
+    border-radius: 4px;
+    opacity: 0;
+    transform: translate(-50%, -100%);
+    white-space: nowrap;
+    z-index: 5;
+    transition: opacity 90ms ease;
+  }
+  .chart-tooltip .t-date { color: var(--fg-muted); }
+  .chart-tooltip .t-rate { font-weight: 600; }
+
+  /* ---------- Checks list (the case ledger) ---------- */
+  table.checks { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.checks th {
+    text-align: left;
+    font-size: 11px;
+    color: var(--fg-muted);
+    font-weight: 600;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  /* CSS-drawn triangle, not a Unicode glyph -- guarantees identical
+     rendering across fonts/browsers instead of depending on geometric-
+     shape glyph coverage (found to render as a fallback dot in at least
+     one environment). */
+  table.checks th .arrow {
+    display: inline-block;
+    width: 0; height: 0;
+    margin-left: 4px;
+    vertical-align: middle;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid currentColor;
+    opacity: 0.35;
+    transition: transform 120ms ease;
+  }
+  table.checks th.sorted .arrow { opacity: 1; color: var(--accent-fg); }
+  table.checks th .arrow.flipped { transform: rotate(180deg); }
+  table.checks td {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  table.checks tbody tr.case-row { cursor: pointer; }
+  table.checks tbody tr.case-row:hover td { background: var(--canvas-subtle); }
+  table.checks tbody tr.case-row.is-open td { background: var(--canvas-subtle); }
+  .case-name-cell { display: flex; align-items: center; gap: 8px; }
+  .case-name { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; }
+  .case-tags { display: flex; gap: 5px; margin-top: 3px; flex-wrap: wrap; }
+  .tag {
+    font-size: 10px;
+    color: var(--fg-muted);
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border);
+    padding: 0px 6px;
+    border-radius: var(--radius);
+  }
+  .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .diff-breakdown { display: flex; gap: 9px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .diff-breakdown span.zero { color: var(--fg-subtle); }
+  .diff-breakdown span.nonzero.bad { color: var(--danger-fg); font-weight: 600; }
+  .diff-breakdown span.nonzero.warn { color: var(--attention-fg); font-weight: 600; }
+
+  /* status icon + text, GitHub checks-list style (not a filled pill) */
+  .status { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; white-space: nowrap; }
+  .status.good { color: var(--success-fg); }
+  .status.bad { color: var(--danger-fg); }
+  .status svg { flex: none; }
+
+  .schema-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--attention-fg);
+    background: var(--attention-subtle);
+    padding: 1px 7px;
+    border-radius: var(--radius);
+    white-space: nowrap;
+  }
+
+  .spark { display: block; overflow: visible; }
+  .spark-fail-marker { fill: var(--danger-fg); }
+  .spark-warn-marker { fill: var(--attention-fg); }
+
+  .chev {
+    display: inline-block;
+    width: 0; height: 0;
+    vertical-align: middle;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid currentColor;
+    color: var(--fg-muted);
+    transition: transform 120ms ease;
+  }
+  tr.is-open .chev { transform: rotate(90deg); color: var(--accent-fg); }
+
+  /* ---------- Detail drawer ---------- */
+  tr.detail-row { display: none; }
+  tr.detail-row.is-open { display: table-row; }
+  tr.detail-row td { padding: 0; border-bottom: 1px solid var(--border); background: var(--canvas-inset); }
+  .detail-inner { padding: 16px 16px 20px 40px; display: flex; flex-direction: column; gap: 16px; }
+  .detail-summary { font-size: 13px; color: var(--fg-muted); max-width: 76ch; }
+  .detail-summary strong { color: var(--fg); }
+
+  .sig-grid { display: flex; flex-direction: column; gap: 6px; }
+  .sig-row {
+    display: grid;
+    grid-template-columns: 60px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    background: var(--canvas);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+  }
+  .sig-count { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--fg-muted); }
+  .sig-count b { color: var(--fg); font-size: 14px; }
+  .sig-cols { display: flex; gap: 5px; flex-wrap: wrap; }
+  .sig-col-chip {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--attention-subtle);
+    color: var(--attention-fg);
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+  .sig-example { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg-subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+
+  /* ---------- Schema drift ---------- */
+  .schema-section { display: flex; flex-direction: column; gap: 8px; }
+  .schema-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .schema-section-head h4 { font-size: 13px; font-weight: 600; margin: 0; }
+  .schema-clean { font-size: 12px; color: var(--fg-subtle); }
+
+  .schema-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 760px) { .schema-sides { grid-template-columns: 1fr; } }
+  .schema-side {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    background: var(--canvas);
+  }
+  .schema-side-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--fg-muted);
+    display: block;
+    margin-bottom: 5px;
+  }
+  .schema-side-label .side-tag {
+    font-family: var(--font-mono);
+    color: var(--fg-subtle);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .schema-col-list { display: flex; flex-direction: column; gap: 4px; }
+  .schema-col-item {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .schema-col-item .col-badge {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 0px 4px;
+    border-radius: 3px;
+    align-self: center;
+    flex: none;
+  }
+  .schema-col-item .type-change { overflow-wrap: anywhere; color: var(--fg-muted); }
+  .schema-col-item.only .col-badge { background: var(--attention-subtle); color: var(--attention-fg); }
+  .schema-col-item.type .col-badge { background: var(--accent-subtle); color: var(--accent-fg); }
+  .schema-none { font-size: 12px; color: var(--fg-subtle); font-style: italic; }
+
+  .schema-timeline-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .schema-timeline { display: flex; gap: 3px; align-items: flex-end; height: 24px; position: relative; }
+  .schema-tick { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; cursor: pointer; background: var(--border-muted); height: 9px; align-self: flex-end; transition: height 100ms ease; }
+  .schema-tick.drifted { background: var(--attention-fg); height: 20px; }
+  .schema-tick.drifted.strict { background: var(--danger-fg); }
+  .schema-tick:hover { opacity: 0.75; }
+  .schema-timeline-labels { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: var(--fg-subtle); }
+  .schema-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--fg);
+    color: var(--canvas);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    padding: 6px 8px;
+    border-radius: 4px;
+    opacity: 0;
+    transform: translate(-50%, -100%);
+    white-space: nowrap;
+    z-index: 5;
+    transition: opacity 90ms ease;
+    top: -6px;
+  }
+
+  /* ---------- Diff hunk (GitHub-style +/- lines) ---------- */
+  .diff-hunks { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .diff-hunk-head {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    background: var(--canvas-subtle);
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-hunk-head:not(:first-child) { border-top: 1px solid var(--border); }
+  .diff-line {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 3px 12px 3px 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-left: 3px solid transparent;
+    display: flex;
+    gap: 8px;
+  }
+  .diff-line .marker { flex: none; opacity: 0.7; user-select: none; }
+  .diff-line.del { background: var(--danger-subtle); border-left-color: var(--danger-emphasis); color: var(--fg); }
+  .diff-line.add { background: var(--success-subtle); border-left-color: var(--success-emphasis); color: var(--fg); }
+  .diff-line .col-name { color: var(--fg-muted); }
+
+  .footnote {
+    font-size: 12px;
+    color: var(--fg-muted);
+    max-width: 78ch;
+    line-height: 1.7;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+  .footnote code { background: var(--canvas-subtle); border: 1px solid var(--border-muted); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+
+  @media (max-width: 760px) {
+    .stat-row { flex-direction: column; }
+    .stat-cell { border-right: none; border-bottom: 1px solid var(--border); }
+    .page { padding: 16px 12px 48px; }
+    .sig-row { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="masthead-crumb">
+      <span class="org">rowparity</span>
+      <span class="sep">/</span>
+      <span class="title">Verification Report</span>
+    </div>
+    <div class="masthead-meta">
+      generated <span id="generated-at"></span><br>
+      <span id="window-summary"></span>
+    </div>
+  </header>
+
+  <section class="box">
+    <div class="summary-banner" id="summary-banner"></div>
+    <div class="stat-row" id="stat-row"></div>
+  </section>
+
+  <section class="box">
+    <div class="box-head">
+      <h3 id="trend-title">Pass rate</h3>
+      <span class="hint">hover to inspect a day</span>
+    </div>
+    <div class="box-body">
+      <div class="chart-wrap" id="trend-chart"></div>
+    </div>
+  </section>
+
+  <section class="box">
+    <div class="box-head">
+      <h3>Checks</h3>
+      <span class="hint">click a row for the row-level diff</span>
+    </div>
+    <div class="box-body" style="overflow-x:auto; padding: 0;">
+      <table class="checks" id="ledger-table">
+        <thead>
+          <tr>
+            <th data-sort="name" style="padding-left: 14px;">Check <span class="arrow"></span></th>
+            <th data-sort="status">Status <span class="arrow"></span></th>
+            <th data-sort="rows" class="num">Rows compared <span class="arrow"></span></th>
+            <th>Latest diff</th>
+            <th>14-day history</th>
+            <th data-sort="lastrun" style="padding-right: 14px;">Last run <span class="arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="ledger-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="footnote">
+    Fingerprints are computed with <code>hashlib.blake2b</code> over a type-aware canonical form of each row — floats quantized to tolerance, decimals stripped of trailing zeros, timestamps normalized to UTC, so an <code>int32</code> from one engine and an <code>int64</code> from another still fingerprint identically when the value is the same. Two tables are equivalent exactly when their multisets of fingerprints match; row order never enters into it. This report reads directly off the same <code>rowparity_run_summary</code> / <code>rowparity_run_diffs</code> tables any query engine can query — nothing here is computed specially for display.
+  </p>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------------------------------------------------------- */
+  /* Real data, injected by rowparity's report renderer                */
+  /* (history.py + report_html.py) -- shaped like build_case_          */
+  /* histories()'s output, itself mirroring result_sink.py's tables.   */
+  /* ---------------------------------------------------------------- */
+
+  var CASES = __ROWPARITY_CASES_JSON__;
+  var WINDOW_DAYS = __ROWPARITY_WINDOW_DAYS__;
+  var GENERATED_AT = "__ROWPARITY_GENERATED_AT__";
+
+  var ICON_CHECK =
+    '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
+      '<circle cx="8" cy="8" r="7" fill="currentColor" opacity="0.15"></circle>' +
+      '<path d="M4.7 8.3l2.1 2.1 4.3-4.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>' +
+    '</svg>';
+  var ICON_X =
+    '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
+      '<circle cx="8" cy="8" r="7" fill="currentColor" opacity="0.15"></circle>' +
+      '<path d="M5.4 5.4l5.2 5.2M10.6 5.4l-5.2 5.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>' +
+    '</svg>';
+
+  document.getElementById("generated-at").textContent = GENERATED_AT;
+  document.getElementById("window-summary").textContent =
+    WINDOW_DAYS + "-day window · " + CASES.length + " case" + (CASES.length === 1 ? "" : "s") + " tracked";
+  document.getElementById("trend-title").textContent = "Pass rate, last " + WINDOW_DAYS + " days";
+
+  /* ---------------------------------------------------------------- */
+  /* Summary banner + stat row                                         */
+  /* ---------------------------------------------------------------- */
+
+  function fmtInt(n) { return n.toLocaleString("en-US"); }
+
+  var latest = CASES.map(function (c) { return c.history[c.history.length - 1]; });
+  var passingToday = latest.filter(function (h) { return h.equivalent; }).length;
+  var failingToday = CASES.length - passingToday;
+  var totalRows = latest.reduce(function (s, h) { return s + h.expected_rows; }, 0);
+
+  // Cases don't necessarily share run dates (a case added partway through
+  // the window, a skipped day, etc.) -- take the union of every date any
+  // case reports, and for each date only average over the cases that
+  // actually ran that day, rather than assuming a synchronized grid.
+  var allDates = {};
+  CASES.forEach(function (c) { c.history.forEach(function (h) { allDates[h.date] = true; }); });
+  var sortedDates = Object.keys(allDates).sort();
+
+  var dailyPassRate = sortedDates.map(function (d) {
+    var ran = [];
+    CASES.forEach(function (c) {
+      var match = c.history.filter(function (x) { return x.date === d; });
+      if (match.length) ran.push(match[0]);
+    });
+    var passing = ran.filter(function (h) { return h.equivalent; }).length;
+    return { date: d, rate: ran.length ? passing / ran.length : 0, passing: passing, total: ran.length };
+  });
+  var avgRate = dailyPassRate.length
+    ? Math.round((dailyPassRate.reduce(function (s, d) { return s + d.rate; }, 0) / dailyPassRate.length) * 100)
+    : 0;
+
+  var banner = document.getElementById("summary-banner");
+  var allGood = failingToday === 0;
+  banner.innerHTML =
+    '<span class="status-icon ' + (allGood ? "good" : "bad") + '">' + (allGood ? ICON_CHECK : ICON_X) + '</span>' +
+    '<div>' +
+      '<h2>' + (allGood ? "All checks have passed" : failingToday + " of " + CASES.length + " checks failing") + '</h2>' +
+      '<p>Every case reduces <em>expected</em> and <em>actual</em> to a canonical Blake2b fingerprint and compares the full multiset — no row sampled, no row assumed.</p>' +
+    '</div>';
+
+  var statRow = document.getElementById("stat-row");
+  var stats = [
+    { label: "Cases tracked", value: String(CASES.length) },
+    { label: "Passing right now", value: passingToday + " / " + CASES.length, cls: failingToday ? "bad" : "good" },
+    { label: WINDOW_DAYS + "-day pass rate", value: avgRate + "%" },
+    { label: "Rows verified, latest run", value: fmtInt(totalRows) }
+  ];
+  stats.forEach(function (s) {
+    var el = document.createElement("div");
+    el.className = "stat-cell";
+    el.innerHTML =
+      '<span class="label">' + s.label + '</span>' +
+      '<span class="value' + (s.cls ? " " + s.cls : "") + '">' + s.value + '</span>';
+    statRow.appendChild(el);
+  });
+
+  /* ---------------------------------------------------------------- */
+  /* Trend chart (SVG, hand-built from data — line + area + hover)     */
+  /* ---------------------------------------------------------------- */
+
+  (function renderTrendChart() {
+    var wrap = document.getElementById("trend-chart");
+    var n = dailyPassRate.length;
+    if (n === 0) { wrap.innerHTML = '<p class="hint">No run history in this window yet.</p>'; return; }
+
+    var W = 1040, H = 200, padL = 32, padR = 14, padT = 14, padB = 24;
+    var innerW = W - padL - padR, innerH = H - padT - padB;
+
+    function x(i) { return n <= 1 ? padL + innerW / 2 : padL + (innerW * i) / (n - 1); }
+    function y(rate) { return padT + innerH * (1 - rate); }
+
+    var linePts = dailyPassRate.map(function (d, i) { return x(i) + "," + y(d.rate); });
+    var areaPts = "M" + x(0) + "," + y(0) + " L" + linePts.join(" L") + " L" + x(n - 1) + "," + (padT + innerH) + " L" + x(0) + "," + (padT + innerH) + " Z";
+    var linePath = "M" + linePts.join(" L");
+
+    var gridLevels = [0, 0.25, 0.5, 0.75, 1];
+    var gridSvg = gridLevels.map(function (g) {
+      return '<line class="grid-line" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + y(g) + '" y2="' + y(g) + '"/>' +
+             '<text class="axis-label" x="4" y="' + (y(g) + 3) + '">' + Math.round(g * 100) + '%</text>';
+    }).join("");
+
+    var tickEvery = Math.max(1, Math.ceil(n / 8));
+    var xTicksSvg = dailyPassRate.map(function (d, i) {
+      if (i % tickEvery !== 0 && i !== n - 1) return "";
+      return '<text class="axis-label" x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + d.date.slice(5) + '</text>';
+    }).join("");
+
+    var lastPt = dailyPassRate[n - 1];
+
+    var svg =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Aggregate pass rate over the last ' + n + ' days">' +
+        gridSvg +
+        '<path class="trend-area" d="' + areaPts + '"/>' +
+        '<path class="trend-line" d="' + linePath + '"/>' +
+        xTicksSvg +
+        '<circle class="trend-dot-end" cx="' + x(n - 1) + '" cy="' + y(lastPt.rate) + '" r="4"/>' +
+        '<text class="trend-dot-end-label" x="' + (x(n - 1) - 8) + '" y="' + (y(lastPt.rate) - 10) + '" text-anchor="end">' + Math.round(lastPt.rate * 100) + '%</text>' +
+        '<line class="hover-crosshair" id="hover-x" y1="' + padT + '" y2="' + (padT + innerH) + '"/>' +
+        '<circle class="hover-dot" id="hover-dot" r="4.5"/>' +
+        '<rect class="chart-hit" x="' + padL + '" y="0" width="' + innerW + '" height="' + H + '"/>' +
+      '</svg>';
+
+    wrap.innerHTML = svg;
+
+    var tooltip = document.createElement("div");
+    tooltip.className = "chart-tooltip";
+    wrap.style.position = "relative";
+    wrap.appendChild(tooltip);
+
+    var svgEl = wrap.querySelector("svg");
+    var hoverX = document.getElementById("hover-x");
+    var hoverDot = document.getElementById("hover-dot");
+    var hitRect = wrap.querySelector(".chart-hit");
+
+    function pointForClientX(clientX) {
+      var rect = svgEl.getBoundingClientRect();
+      var relX = ((clientX - rect.left) / rect.width) * W;
+      var i = Math.round(((relX - padL) / innerW) * (n - 1));
+      i = Math.max(0, Math.min(n - 1, i));
+      return i;
+    }
+
+    hitRect.addEventListener("mousemove", function (evt) {
+      var i = pointForClientX(evt.clientX);
+      var d = dailyPassRate[i];
+      var px = x(i), py = y(d.rate);
+      hoverX.setAttribute("x1", px); hoverX.setAttribute("x2", px);
+      hoverX.style.opacity = 1;
+      hoverDot.setAttribute("cx", px); hoverDot.setAttribute("cy", py);
+      hoverDot.style.opacity = 1;
+
+      var rect = svgEl.getBoundingClientRect();
+      var scale = rect.width / W;
+      tooltip.style.left = (px * scale) + "px";
+      tooltip.style.top = (py * scale - 10) + "px";
+      tooltip.style.opacity = 1;
+      tooltip.innerHTML =
+        '<span class="t-date">' + d.date + '</span><br>' +
+        '<span class="t-rate">' + d.passing + ' / ' + d.total + ' passing</span> · ' + Math.round(d.rate * 100) + '%';
+    });
+    hitRect.addEventListener("mouseleave", function () {
+      hoverX.style.opacity = 0;
+      hoverDot.style.opacity = 0;
+      tooltip.style.opacity = 0;
+    });
+  })();
+
+  /* ---------------------------------------------------------------- */
+  /* Sparkline (per-case, last 14 days)                                */
+  /* ---------------------------------------------------------------- */
+
+  function sparkSvg(history) {
+    var last14 = history.slice(-14);
+    var W = 130, H = 28, pad = 3;
+    var n = last14.length;
+    function x(i) { return pad + ((W - 2 * pad) * i) / (n - 1); }
+    var maxTotal = Math.max.apply(null, last14.map(function (h) { return h.missing_count + h.added_count + h.changed_count; }).concat([1]));
+    function y(h) {
+      var total = h.missing_count + h.added_count + h.changed_count;
+      var norm = total === 0 ? 0 : Math.min(1, total / maxTotal);
+      return H - pad - norm * (H - 2 * pad);
+    }
+    var pts = last14.map(function (h, i) { return x(i) + "," + y(h); });
+    var path = "M" + pts.join(" L");
+    var markers = last14.map(function (h, i) {
+      if (h.equivalent) return "";
+      var cls = (h.missing_count + h.added_count > 0) ? "spark-fail-marker" : "spark-warn-marker";
+      return '<circle class="' + cls + '" cx="' + x(i) + '" cy="' + y(h) + '" r="2.2"/>';
+    }).join("");
+    return '<svg class="spark" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
+      '<path d="' + path + '" fill="none" stroke="var(--fg-subtle)" stroke-width="1.3"/>' + markers + '</svg>';
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Checks list                                                       */
+  /* ---------------------------------------------------------------- */
+
+  var tbody = document.getElementById("ledger-body");
+
+  function diffCell(h) {
+    function part(label, n, tone) {
+      var cls = n === 0 ? "zero" : "nonzero " + tone;
+      return '<span class="' + cls + '">' + label + ' ' + n + '</span>';
+    }
+    return '<div class="diff-breakdown">' +
+      part("missing", h.missing_count, "bad") +
+      part("added", h.added_count, "bad") +
+      part("changed", h.changed_count, "warn") +
+      '</div>';
+  }
+
+  // rowparity doesn't persist a separate "was strict_columns on" flag -- it's
+  // derived from the data itself: schema drift with zero row-level diffs but
+  // the case still failing can only be strict_columns catching the drift.
+  function schemaCausedFailure(h) {
+    return !h.equivalent && h.missing_count === 0 && h.added_count === 0 && h.changed_count === 0 && h.schema_drifted;
+  }
+
+  function schemaSectionHtml(c) {
+    var latest = c.history[c.history.length - 1];
+    var s = latest.schema;
+    var hasCurrentDrift = latest.schema_drifted;
+    var isStrictFailure = schemaCausedFailure(latest);
+
+    function colList(cols, emptyMsg) {
+      if (!cols.length) return '<span class="schema-none">' + emptyMsg + '</span>';
+      return '<div class="schema-col-list">' + cols.map(function (col) {
+        return '<div class="schema-col-item only"><span class="col-badge">only</span>' + col + '</div>';
+      }).join("") + '</div>';
+    }
+
+    var typeMismatchHtml = s.typeMismatches.length
+      ? '<div class="schema-col-list">' + s.typeMismatches.map(function (tm) {
+          return '<div class="schema-col-item type"><span class="col-badge">type</span>' + tm[0] +
+            ' <span class="type-change">' + tm[1] + ' → ' + tm[2] + '</span></div>';
+        }).join("") + '</div>'
+      : '';
+
+    var timelineTicks = c.history.map(function (h, i) {
+      var cls = "schema-tick" + (h.schema_drifted ? " drifted" : "") + (schemaCausedFailure(h) ? " strict" : "");
+      return '<div class="' + cls + '" data-i="' + i + '" tabindex="0" aria-label="' + h.date + (h.schema_drifted ? ": schema drift" : ": schema clean") + '"></div>';
+    }).join("");
+
+    var safeId = c.name.replace(/[^a-z0-9]/gi, "-");
+
+    return '<div class="schema-section">' +
+      '<div class="schema-section-head">' +
+        '<h4>Schema drift &mdash; left (expected) vs. right (actual)' +
+          (isStrictFailure ? ' <span class="hint">&middot; strict_columns: drift failed this case</span>' : ' <span class="hint">&middot; not the cause of failure on the latest run, if any</span>') +
+        '</h4>' +
+        (hasCurrentDrift ? '' : '<span class="schema-clean">clean today</span>') +
+      '</div>' +
+      (hasCurrentDrift ?
+        '<div class="schema-sides">' +
+          '<div class="schema-side"><span class="schema-side-label">left-only <span class="side-tag">(in expected, not actual)</span></span>' + colList(s.onlyExpected, "none") + '</div>' +
+          '<div class="schema-side"><span class="schema-side-label">right-only <span class="side-tag">(in actual, not expected)</span></span>' + colList(s.onlyActual, "none") + typeMismatchHtml + '</div>' +
+        '</div>' : '') +
+      '<div class="schema-timeline-wrap">' +
+        '<div class="schema-timeline" id="schema-tl-' + safeId + '">' + timelineTicks +
+          '<div class="schema-tooltip" id="schema-tt-' + safeId + '"></div></div>' +
+        '<div class="schema-timeline-labels"><span>' + c.history[0].date + '</span><span>' + c.history.length + '-day schema history</span><span>' + c.history[c.history.length - 1].date + '</span></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function wireSchemaTimeline(c) {
+    var safeId = c.name.replace(/[^a-z0-9]/gi, "-");
+    var wrap = document.getElementById("schema-tl-" + safeId);
+    var tooltip = document.getElementById("schema-tt-" + safeId);
+    if (!wrap) return;
+    wrap.querySelectorAll(".schema-tick").forEach(function (tick) {
+      function show() {
+        var h = c.history[parseInt(tick.getAttribute("data-i"), 10)];
+        var s = h.schema;
+        var lines = [h.date];
+        if (!h.schema_drifted) {
+          lines.push("schema clean");
+        } else {
+          s.onlyExpected.forEach(function (col) { lines.push("left-only: " + col); });
+          s.onlyActual.forEach(function (col) { lines.push("right-only: " + col); });
+          s.typeMismatches.forEach(function (tm) { lines.push(tm[0] + ": " + tm[1] + " -> " + tm[2]); });
+        }
+        tooltip.innerHTML = lines.join("<br>");
+        tooltip.style.left = tick.offsetLeft + tick.offsetWidth / 2 + "px";
+        tooltip.style.opacity = 1;
+      }
+      tick.addEventListener("mouseenter", show);
+      tick.addEventListener("focus", show);
+      tick.addEventListener("mouseleave", function () { tooltip.style.opacity = 0; });
+      tick.addEventListener("blur", function () { tooltip.style.opacity = 0; });
+    });
+  }
+
+  // Render each example diff as a real +/- hunk, like a git/PR diff, rather
+  // than a side-by-side old/new table -- one "- expected" line (red) and one
+  // "+ actual" line (green) per changed column, grouped under its row key.
+  function diffHunksHtml(diffs) {
+    if (!diffs.length) return "";
+    var byKey = [];
+    var seen = {};
+    diffs.forEach(function (d) {
+      if (!seen.hasOwnProperty(d.key)) { seen[d.key] = byKey.length; byKey.push({ key: d.key, rows: [] }); }
+      byKey[seen[d.key]].rows.push(d);
+    });
+    var hunks = byKey.map(function (group) {
+      var lines = group.rows.map(function (d) {
+        return '<div class="diff-line del"><span class="marker">-</span><span><span class="col-name">' + d.column + ':</span> ' + d.oldv + '</span></div>' +
+               '<div class="diff-line add"><span class="marker">+</span><span><span class="col-name">' + d.column + ':</span> ' + d.newv + '</span></div>';
+      }).join("");
+      return '<div class="diff-hunk-head">key = ' + group.key + '</div>' + lines;
+    }).join("");
+    return '<div class="diff-hunks">' + hunks + '</div>';
+  }
+
+  function renderDetail(c) {
+    var schemaHtml = schemaSectionHtml(c);
+
+    if (!c.signatures.length) {
+      return '<div class="detail-inner"><p class="detail-summary"><strong>No row-level differences</strong> on the latest run &mdash; every fingerprint matched.</p>' + schemaHtml + '</div>';
+    }
+    var sigRows = c.signatures.map(function (s) {
+      return '<div class="sig-row">' +
+        '<span class="sig-count"><b>' + fmtInt(s.count) + '</b>&times;</span>' +
+        '<span class="sig-cols">' + s.columns.map(function (col) { return '<span class="sig-col-chip">' + col + '</span>'; }).join("") + '</span>' +
+        '<span class="sig-example">' + s.example + '</span>' +
+        '</div>';
+    }).join("");
+
+    var keyLabel = c.keys ? c.keys.join(", ") : "none — keyless / multiset";
+
+    return '<div class="detail-inner">' +
+      '<p class="detail-summary"><strong>' + fmtInt(c.signatures.reduce(function (s, x) { return s + x.count; }, 0)) + ' row(s) differ</strong> on the latest run, grouped by which columns changed. Key: <code>' + keyLabel + '</code></p>' +
+      '<div class="sig-grid">' + sigRows + '</div>' +
+      diffHunksHtml(c.diffs) +
+      schemaHtml +
+      '</div>';
+  }
+
+  function buildRows() {
+    tbody.innerHTML = "";
+    CASES.forEach(function (c, idx) {
+      var latestRun = c.history[c.history.length - 1];
+      var tr = document.createElement("tr");
+      tr.className = "case-row";
+      tr.innerHTML =
+        '<td style="padding-left: 14px;"><div class="case-name-cell"><span class="chev"></span>' +
+          '<div><span class="case-name">' + c.name + '</span>' +
+          '<div class="case-tags">' + c.tags.map(function (t) { return '<span class="tag">' + t + '</span>'; }).join("") + '</div>' +
+          '</div></div>' +
+        '</td>' +
+        '<td>' + (latestRun.equivalent
+            ? '<span class="status good">' + ICON_CHECK + 'Passing</span>'
+            : '<span class="status bad">' + ICON_X + 'Failing</span>') +
+            (latestRun.schema_drifted ? ' <span class="schema-chip">schema drift</span>' : '') + '</td>' +
+        '<td class="num">' + fmtInt(latestRun.expected_rows) + '</td>' +
+        '<td>' + diffCell(latestRun) + '</td>' +
+        '<td>' + sparkSvg(c.history) + '</td>' +
+        '<td class="num" style="text-align:left; padding-right: 14px;">' + latestRun.date + '</td>';
+
+      var detailTr = document.createElement("tr");
+      detailTr.className = "detail-row";
+      var detailTd = document.createElement("td");
+      detailTd.colSpan = 6;
+      detailTd.innerHTML = renderDetail(c);
+      detailTr.appendChild(detailTd);
+      wireSchemaTimeline(c);
+
+      tr.addEventListener("click", function () {
+        var willOpen = !tr.classList.contains("is-open");
+        document.querySelectorAll("tr.case-row").forEach(function (r) { r.classList.remove("is-open"); });
+        document.querySelectorAll("tr.detail-row").forEach(function (r) { r.classList.remove("is-open"); });
+        if (willOpen) { tr.classList.add("is-open"); detailTr.classList.add("is-open"); }
+      });
+
+      tbody.appendChild(tr);
+      tbody.appendChild(detailTr);
+    });
+  }
+
+  buildRows();
+
+  // Open the first currently-failing case by default, if any, so the
+  // drill-down is visible without an extra click.
+  (function openFirstFailing() {
+    var rows = document.querySelectorAll("tr.case-row");
+    for (var i = 0; i < CASES.length; i++) {
+      var h = CASES[i].history[CASES[i].history.length - 1];
+      if (!h.equivalent && rows[i]) { rows[i].click(); return; }
+    }
+  })();
+
+  /* ---------------------------------------------------------------- */
+  /* Sorting                                                           */
+  /* ---------------------------------------------------------------- */
+
+  var sortState = { key: null, dir: 1 };
+  document.querySelectorAll('th[data-sort]').forEach(function (th) {
+    th.addEventListener("click", function () {
+      var key = th.getAttribute("data-sort");
+      sortState.dir = sortState.key === key ? -sortState.dir : 1;
+      sortState.key = key;
+      document.querySelectorAll('th[data-sort]').forEach(function (h) { h.classList.remove("sorted"); });
+      th.classList.add("sorted");
+      th.querySelector(".arrow").classList.toggle("flipped", sortState.dir !== 1);
+
+      CASES.sort(function (a, b) {
+        var av, bv;
+        var la = a.history[a.history.length - 1], lb = b.history[b.history.length - 1];
+        if (key === "name") { av = a.name; bv = b.name; }
+        else if (key === "status") { av = la.equivalent ? 1 : 0; bv = lb.equivalent ? 1 : 0; }
+        else if (key === "rows") { av = la.expected_rows; bv = lb.expected_rows; }
+        else if (key === "lastrun") { av = la.date; bv = lb.date; }
+        if (av < bv) return -1 * sortState.dir;
+        if (av > bv) return 1 * sortState.dir;
+        return 0;
+      });
+      buildRows();
+    });
+  });
+})();
+</script>

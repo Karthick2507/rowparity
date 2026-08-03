@@ -1,0 +1,28 @@
+# Scenario 2 — QA proves a Backward-Compatible View reproduces the original data
+# after DE migrated to a new normalised layout, over complex nested types:
+#   items:      LIST<STRUCT<sku, qty>>   -> ORDERED (line order must be preserved)
+#   attributes: MAP<STRING,STRING>       -> UNORDERED (key order irrelevant)
+#
+# Row order does not matter. The v2 tables deliberately store rows and line items
+# shuffled; the check must still pass because the BCV reconstructs v1 faithfully.
+# No primary key is declared, so the tables are compared as multisets of rows —
+# the natural definition of "same data, order aside".
+
+name: orders_bcv_equals_original
+description: orders_v1_compat (over migrated v2) must equal the original orders_v1.
+tags: [migration, bcv, nested]
+
+expected:
+  type: parquet
+  path: ../data/orders_v1_expected.parquet
+
+actual:
+  type: duckdb
+  database: ../data/warehouse.duckdb
+  read_only: true
+  query: SELECT order_id, customer, items, attributes, total FROM orders_v1_compat
+
+compare:
+  # keyless -> multiset comparison, fully order-independent across rows.
+  # `items` stays ordered (default); `attributes` is a map, compared unordered.
+  max_examples: 25

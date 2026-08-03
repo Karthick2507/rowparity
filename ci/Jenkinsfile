@@ -1,0 +1,78 @@
+// Jenkins declarative pipeline for the data-QA suite.
+//
+// Flow: build the dbt models (or migrated tables), then run the YAML cases.
+// The QA stage exits non-zero on any difference, failing the build, and always
+// archives the human-readable + JSON diff reports so failures are inspectable
+// from the Jenkins UI without re-running anything.
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    environment {
+        // Point at wherever your cases live in the repo.
+        ROWPARITY_CASES = 'examples/cases'
+        // Snowflake sources use key-pair auth only (no password support --
+        // see src/rowparity/snowflake_auth.py). Inject the private key as a
+        // Jenkins "Secret file" credential, everything else as plain text:
+        // SNOWFLAKE_ACCOUNT           = credentials('snowflake-account')
+        // SNOWFLAKE_USER              = credentials('snowflake-user')
+        // SNOWFLAKE_PRIVATE_KEY_PATH  = credentials('snowflake-private-key')      // Secret file credential
+        // SNOWFLAKE_PRIVATE_KEY_PASSPHRASE = credentials('snowflake-key-passphrase')  // only if the key is encrypted
+    }
+
+    stages {
+        stage('Setup') {
+            steps {
+                sh '''
+                    python3 -m venv .venv
+                    . .venv/bin/activate
+                    pip install --upgrade pip
+                    # install the framework + the drivers your sources need
+                    # (dbt here powers the example project's Case 01 build --
+                    # drop it once you're pointing at your own real dbt/migration pipeline)
+                    pip install -e ".[duckdb,dbt]"
+                    # pip install -e ".[all]"   # if using Snowflake/Iceberg sources
+                '''
+            }
+        }
+
+        stage('Build pipeline (dbt / migration)') {
+            steps {
+                sh '''
+                    . .venv/bin/activate
+                    # Replace this whole step with your real pipeline build, e.g.:
+                    #   dbt build --project-dir . --profiles-dir . --target ci
+                    # The example project runs a REAL dbt-duckdb build for Case 01
+                    # (examples/dbt_project) plus a lightweight non-dbt stand-in for
+                    # the migration/BCV cases (neither was ever dbt-specific):
+                    python examples/build_example_data.py
+                '''
+            }
+        }
+
+        stage('QA: expected vs actual') {
+            steps {
+                sh '''
+                    . .venv/bin/activate
+                    mkdir -p reports
+                    # Exits non-zero on any difference -> fails the build.
+                    rowparity run "$ROWPARITY_CASES" \
+                        --json reports/rowparity.json \
+                        --md   reports/rowparity.md
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+            // If you also run pytest with --junitxml=reports/junit.xml:
+            // junit testResults: 'reports/junit.xml', allowEmptyResults: true
+        }
+    }
+}

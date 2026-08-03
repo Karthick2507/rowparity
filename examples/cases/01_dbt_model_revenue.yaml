@@ -1,0 +1,26 @@
+# Scenario 1 — QA regression-tests a dbt aggregate model against a golden snapshot.
+#
+# `expected` is the blessed Parquet snapshot; `actual` is the model the dbt run
+# built (here in DuckDB; in prod point it at Snowflake/Iceberg — assertions stay).
+# Keyed on (day, region) so any drift is reported per key. Revenue carries tiny
+# floating-point noise, so we allow a small tolerance.
+
+name: daily_revenue_matches_golden
+description: dbt model main.daily_revenue must match the QA-approved snapshot.
+tags: [dbt, regression]
+
+expected:
+  type: parquet
+  path: ../data/daily_revenue_expected.parquet
+
+actual:
+  type: duckdb
+  database: ../data/warehouse.duckdb
+  read_only: true
+  query: SELECT day, region, revenue, orders FROM daily_revenue
+
+compare:
+  keys: [day, region]
+  float_tolerance: 0.001
+  # ints from one engine vs decimals from another shouldn't cause false diffs:
+  coerce_numeric_to_float: true

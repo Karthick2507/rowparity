@@ -1,0 +1,31 @@
+# Case G — Unordered list columns: order-independent tag comparison
+#
+# Each customer has a list of their order priorities (e.g. ["1-URGENT","5-LOW",...]).
+# The golden stores them sorted ASC; the actual view sorts them DESC — the lists
+# are in opposite order but contain the same elements.
+#
+# Without unordered_list_columns, the case would FAIL (list semantics are ordered
+# by default). With unordered_list_columns: [priorities], the comparison treats
+# each list as a multiset and the case PASSES.
+#
+# Features: keys, unordered_list_columns
+
+name: tpch_customer_priorities_unordered
+description: |
+  Customer order-priority lists differ in sort order between systems.
+  unordered_list_columns treats them as multisets — same elements, any order passes.
+tags: [tpch, unordered, list]
+
+expected:
+  type: parquet
+  path: ../../data/customer_priorities_golden.parquet
+
+actual:
+  type: duckdb
+  database: ../../data/tpch.duckdb
+  read_only: true
+  query: SELECT * FROM customer_priorities_actual
+
+compare:
+  keys: [c_custkey]
+  unordered_list_columns: [priorities]

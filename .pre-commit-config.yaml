@@ -1,4 +1,12 @@
 repos:
+  # Ruff: fast Python linter + formatter (replaces flake8, isort, pyupgrade)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
   # Block private keys (RSA, EC, PEM, OpenSSH, etc.)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0

@@ -1,0 +1,33 @@
+# Case B — Column subset: pricing audit
+#
+# Only the financial columns of lineitem matter for this QA check.
+# select: restricts comparison to those columns even though both sides have more.
+# coerce_numeric_to_float handles DECIMAL(15,2) in Parquet vs DOUBLE from a query.
+# Features: keys, select, float_tolerance, coerce_numeric_to_float
+
+name: tpch_lineitem_pricing_audit
+description: |
+  Validate only the pricing columns of lineitem.
+  net_price = extendedprice * (1 - discount) must match the golden.
+  Cross-engine numeric types coerced to float for comparison.
+tags: [tpch, pricing, select, coerce]
+
+expected:
+  type: parquet
+  path: ../../data/lineitem_pricing_golden.parquet
+
+actual:
+  type: duckdb
+  database: ../../data/tpch.duckdb
+  read_only: true
+  query: >
+    SELECT l_orderkey, l_linenumber,
+           l_extendedprice, l_discount, l_tax,
+           CAST(l_extendedprice * (1 - l_discount) AS DECIMAL(15,2)) AS net_price
+    FROM lineitem
+
+compare:
+  keys: [l_orderkey, l_linenumber]
+  select: [l_extendedprice, l_discount, l_tax, net_price]
+  float_tolerance: 0.001
+  coerce_numeric_to_float: true

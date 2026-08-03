@@ -1,0 +1,33 @@
+# Case D2 — Broken BCV: missing ORDER BY on list<struct> (expected to FAIL)
+#
+# The broken view (orders_nested_broken) reads from lineitem_shuffled, which
+# stores rows in DESCENDING l_linenumber order per order. Without ORDER BY in the
+# list() aggregate, the items come back reversed — exactly the regression QA must
+# catch when a developer removes or forgets ORDER BY.
+#
+# Keyed on o_orderkey so the report names exactly which orders have wrong item order.
+# Tagged xfail: this case is EXPECTED to fail. The pytest suite asserts it differs.
+# Features: keys, list<struct> ordered semantics, xfail
+
+name: tpch_orders_nested_bcv_broken
+description: |
+  Broken BCV reads from a shuffled lineitem table without ORDER BY.
+  Line items come back in reverse order — rowparity catches the regression.
+  Expected to FAIL (tagged xfail).
+tags: [tpch, bcv, nested, xfail]
+
+expected:
+  type: parquet
+  path: ../../data/orders_nested_golden.parquet
+
+actual:
+  type: duckdb
+  database: ../../data/tpch.duckdb
+  read_only: true
+  query: SELECT * FROM orders_nested_broken
+
+compare:
+  keys: [o_orderkey]
+  float_tolerance: 0.001
+  coerce_numeric_to_float: true
+  max_examples: 5
