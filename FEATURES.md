@@ -41,7 +41,7 @@ All heavy drivers are optional extras — install only what your sources need:
 The base package (`pyarrow` + `PyYAML`) is always installed. A missing driver raises a clear error at case-run time with the exact install command, so you only pay for what you actually use.
 
 ```yaml
-# case.yaml
+# case.yaml — keyed: reports missing / added / changed per key
 name: quick_check
 expected:
   type: inline
@@ -51,6 +51,18 @@ actual:
   rows: [{id: 1, amount: 100.0}, {id: 2, amount: 201.0}]
 compare:
   keys: [id]
+```
+
+```yaml
+# case.yaml — keyless: omit keys entirely for multiset comparison
+# Use when there's no reliable business key (BCV, full-refresh dimensions, event tables)
+name: quick_check_keyless
+expected:
+  type: inline
+  rows: [{region: "US", revenue: 100.0}, {region: "EU", revenue: 200.0}]
+actual:
+  type: inline
+  rows: [{region: "EU", revenue: 200.0}, {region: "US", revenue: 100.0}]  # row order doesn't matter
 ```
 
 ```bash
@@ -83,13 +95,8 @@ A non-zero exit code on a diff constitutes the entire CI contract.
 | Compare two large tables that already live in Trino, no export step | `engine: trino` (both sides must be `type: trino` — see §3) | §3 |
 | Put a long SQL query in a file instead of embedding it in the YAML | `query_file: sqls/my_query.sql` (path relative to the case YAML — see §2) | §2 |
 | Check two tables agree on column names and types, without fetching any rows | `schema_check:` instead of `expected`/`actual` | §13 |
-| See *which columns* are driving thousands of diffs, not scroll examples | Nothing to configure — `change_signatures` appears automatically | §7 |
+| Map Looker/report usage columns to their source table columns, find gaps | `schemaparity coverage case.yaml` with `coverage_check:` | §14 |
 | Wire cases into pytest | `discover_cases()` + `assert_case()` | §6 |
-| Get a CI-publishable report | `rowparity run ... --json out.json --md out.md` | §5, §7 |
-| Track pass/fail and diffs over time, queryable | `--result-sink duckdb:./results.duckdb` (or `snowflake:`/`iceberg:`) | §9 |
-| Get a readable trend dashboard, no SQL required | `rowparity report --result-sink duckdb:./results.duckdb --html out.html` | §10 |
-| Check N old tables still fit inside 1 new wide table (star-schema remodel) | `concept_check:` instead of `expected`/`actual` | §12 |
-| Check two tables agree on column names and types, without fetching any rows | `schema_check:` instead of `expected`/`actual` | §13 |
 
 Everything past this point is the full reference. Continue reading when the cheat sheet is not sufficient, or proceed to the [Table of Contents](#table-of-contents) below.
 
@@ -110,7 +117,8 @@ Everything past this point is the full reference. Continue reading when the chea
 11. [Public Dataset Examples](#11-public-dataset-examples)
 12. [Concept Check](#12-concept-check)
 13. [Schema Check](#13-schema-check)
-14. [Appendix — Algorithmic Foundations](#appendix--algorithmic-foundations)
+14. [Coverage Mapping](#14-coverage-mapping)
+15. [Appendix — Algorithmic Foundations](#appendix--algorithmic-foundations)
 
 ---
 
@@ -518,6 +526,24 @@ compare:
   float_tolerance: 0.001
 ```
 
+Keyless (BCV / migration validation — omit `keys`):
+
+```yaml
+name: orders_migration_bcv
+engine: duckdb
+expected:
+  type: parquet
+  path: ../data/orders_golden.parquet
+actual:
+  type: duckdb
+  database: ../data/warehouse.duckdb
+  query: SELECT * FROM orders_v2
+compare:
+  ignore_columns: [loaded_at]
+  float_tolerance: 0.001
+  # No keys — row order not guaranteed after a schema remodel
+```
+
 Everything under `compare:` works exactly as documented in §4 — `engine: duckdb` changes *how* the comparison runs, not what it means. `Case.run()` dispatches to keyed or keyless push-down automatically based on whether `compare.keys` is set, same as the default engine.
 
 ### What sources it can reach
@@ -613,6 +639,23 @@ compare:
   float_tolerance: 0.001
 ```
 
+Keyless (BCV / full-refresh validation — omit `keys`):
+
+```yaml
+name: dimension_customers_bcv
+engine: trino
+expected:
+  type: trino
+  table: hive.qa.customers_golden
+actual:
+  type: trino
+  table: hive.analytics.customers_v2
+compare:
+  ignore_columns: [loaded_at]
+  float_tolerance: 0.001
+  # No keys — multiset comparison; row order in Trino's output is not guaranteed
+```
+
 **What sources it can reach:** `type: trino` only on *both* `expected` and `actual`. Both sides must be reachable from one Trino connection (host/catalog/schema). If `expected` and `actual` specify different `host:` values, push-down raises.
 
 **Auth:** environment variables `TRINO_HOST`, `TRINO_PORT` (default 8080), `TRINO_USER`, `TRINO_CATALOG`, `TRINO_SCHEMA`, `TRINO_HTTP_SCHEME` (default `http`). For authentication: `TRINO_PASSWORD` (Basic auth) or `TRINO_JWT_TOKEN` (JWT auth); if neither is set the connection is open (suitable for dev/test clusters). Per-case `connection:` overrides any env var.
@@ -704,9 +747,17 @@ compare:
 **When to use:** Volatile columns that legitimately differ between expected and actual: `loaded_at`, `updated_at`, `dw_created_ts`, ETL run IDs.
 
 ```yaml
+# Keyed: fact table with a stable business key
 compare:
   keys: [order_id]
   ignore_columns: [loaded_at, etl_batch_id, _dbt_updated_at]
+```
+
+```yaml
+# Keyless: full-refresh dimension — no enforced PK, row order irrelevant
+compare:
+  ignore_columns: [loaded_at, _row_updated_at]
+  float_tolerance: 0.001
 ```
 
 `select` and `ignore_columns` can be combined: `select` narrows the candidate set, then `ignore_columns` removes from it.
@@ -2071,6 +2122,117 @@ Case 'orders_view_schema_matches_table': [DIFFERENT] keyless (multiset) | expect
 
 ---
 
+## 14. Coverage Mapping
+
+Coverage Mapping answers a different question from row comparison and schema checking: **do the columns a downstream consumer uses (a Looker model, a scheduled report, a BI tool) actually exist in the source table?** It produces a gap report — which usage columns map cleanly, which are missing from the source, and which source columns nothing references.
+
+This is a `schemaparity` command, not `rowparity` — it is a schema/lineage concern rather than a row-parity concern, so it lives in its own CLI entry point.
+
+### YAML format
+
+```yaml
+name: looker_orders_coverage
+description: All columns used in the Looker Orders explore must exist in FACT_ORDERS.
+tags: [looker, coverage]
+coverage_check:
+  usage_columns:               # inline list of columns the consumer references
+    - order_id
+    - revenue
+    - region
+    - customer_segment
+  # OR load from a file (one column per line, # comments ignored):
+  # usage_file: columns/looker_order_fields.txt
+
+  source:                      # any source type schema_introspect.py supports
+    type: snowflake
+    table: PROD.ANALYTICS.FACT_ORDERS
+
+  schema_file: schemas/fact_orders.csv   # optional; see "Schema file" below
+```
+
+`usage_columns` and `usage_file` are mutually exclusive. `schema_file` is always optional.
+
+### CLI
+
+```bash
+# Run coverage cases and print to console
+schemaparity coverage examples/cases/coverage.yaml
+
+# Write JSON + CSV output
+schemaparity coverage examples/cases/coverage.yaml --json reports/coverage.json --csv reports/coverage.csv
+
+# Run all coverage_check cases in a directory
+schemaparity coverage examples/cases/
+
+# List discovered cases
+schemaparity list examples/cases/
+```
+
+Exit code `0` = full coverage (all usage columns mapped). Exit code `1` = gaps found. Exit code `2` = no cases found.
+
+### Console output
+
+```
+Coverage 'looker_orders_coverage': [GAPS FOUND]  source=PROD.ANALYTICS.FACT_ORDERS  usage=4  mapped=3  unmapped=1
+
+  MAPPED (3/4)
+    order_id                       →  ORDER_ID                       NUMBER(38,0)
+    revenue                        →  REVENUE                        FLOAT
+    region                         →  REGION                         TEXT
+
+  UNMAPPED (1) — not found in source table
+    customer_segment
+
+  SOURCE columns not referenced (6 of 9)
+    LOADED_AT
+    ETL_BATCH_ID
+    ...
+
+Summary: 0/1 full coverage, 1 with gaps
+```
+
+Matching is **case-insensitive** — `revenue` matches `REVENUE`, `Region` matches `REGION`. The original source column casing is preserved in the output.
+
+### CSV output
+
+`--csv` writes one row per usage column:
+
+| case | usage\_column | mapped | source\_column | source\_type | description |
+|---|---|---|---|---|---|
+| looker\_orders\_coverage | order\_id | True | ORDER\_ID | NUMBER(38,0) | |
+| looker\_orders\_coverage | customer\_segment | False | | | |
+
+### Schema file (optional)
+
+A CSV with at minimum a `column_name` column, optionally `type` and `description`:
+
+```csv
+column_name,type,description
+order_id,bigint,Surrogate key for orders
+revenue,decimal(15 2),Net revenue after discounts and returns
+region,varchar,Geographic region code (US / EU / APAC)
+```
+
+When present, the `type` and `description` values from the CSV **override** what `schema_introspect` returns from the live source. This lets you annotate a schema definition that lives in git as the authoritative reference, independent of how the warehouse declares types. Column matching between the schema file and the source table is also case-insensitive.
+
+### Source types supported
+
+The same set as Schema Check (§13) — any type `schema_introspect.py` supports: `duckdb`/`sql`, `snowflake`, `trino`, `spark`, `iceberg`, `delta`, `parquet`, `arrow`, `csv`, `inline`. No rows are ever fetched.
+
+### `usage_file` format
+
+Plain text, one column name per line. Lines starting with `#` are treated as comments and skipped:
+
+```text
+# Looker Orders explore — used dimensions
+order_id
+revenue
+region
+# customer_segment  ← commented out until backfill completes
+```
+
+---
+
 ## Feature Coverage Matrix
 
 **Read this as "which worked example demonstrates X," not "what does keyless/keyed support."** Every `compare:` option (`select`, `ignore_columns`, `float_tolerance`, `coerce_numeric_to_float`, `trim_strings`, `case_insensitive`, `strict_columns`, `unordered_list_columns`) works identically in keyed and keyless mode — `compare_tables()` resolves columns and builds the canonicalization config once, before branching into keyed vs. keyless, so nothing here is keyed-only. A blank below indicates only that no worked example happens to combine that pairing — for example, no keyless example below also uses `trim_strings` — not that keyless mode does not support it.
@@ -2096,7 +2258,7 @@ Case 'orders_view_schema_matches_table': [DIFFERENT] keyless (multiset) | expect
 
 ## Appendix — Algorithmic Foundations
 
-*(formerly §13 — renumbered to §14 after Schema Check was added)*
+*(formerly §13 — renumbered to §15 after Coverage Mapping was added)*
 
 
 rowparity is an engineering synthesis rather than an implementation of a single paper. The approach draws from several well-established areas of computer science.
