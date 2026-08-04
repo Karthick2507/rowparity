@@ -14,6 +14,54 @@ Everything you need to go from a fresh clone to a running test suite and a passi
 
 ---
 
+## 0. Virtual environment (recommended)
+
+Always work inside a virtual environment so project dependencies stay isolated from your system Python. Pick whichever tool fits your workflow:
+
+### `uv` (fastest — recommended)
+[uv](https://github.com/astral-sh/uv) is a drop-in replacement for `pip`/`venv` written in Rust. It resolves and installs dependencies ~10–100× faster than pip.
+
+```bash
+# Install uv once
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create venv + install the project in one step
+uv venv .venv
+source .venv/bin/activate
+uv pip install -e ".[test,dev]"
+```
+
+### `pyenv` + `venv` (precise Python version control)
+Use [pyenv](https://github.com/pyenv/pyenv) when you need a specific Python version that isn't installed system-wide.
+
+```bash
+pyenv install 3.12.4
+pyenv local 3.12.4        # pins .python-version in the repo root
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[test,dev]"
+```
+
+### `conda` / `mamba`
+Good if you already use the Anaconda/conda ecosystem.
+
+```bash
+conda create -n rowparity python=3.12
+conda activate rowparity
+pip install -e ".[test,dev]"      # use pip inside conda for editable installs
+```
+
+### Plain `venv` (no extra tools)
+```bash
+python3 -m venv .venv
+source .venv/bin/activate         # Windows: .venv\Scripts\activate
+pip install -e ".[test,dev]"
+```
+
+> **Tip:** `.venv/` is already in `.gitignore`. All four approaches above use `.venv` as the directory name by default, so nothing extra to configure.
+
+---
+
 ## 1. Clone and install
 
 ```bash
