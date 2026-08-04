@@ -104,7 +104,7 @@ Everything past this point is the full reference. Continue reading when the chea
 
 ## Table of Contents
 
-1. [Core Concepts](#1-core-concepts)
+1. [Core Concepts](#1-core-concepts) — start with [Row fingerprinting, explained in plain terms](#row-fingerprinting-explained-in-plain-terms)
 2. [Source Types](#2-source-types)
 3. [Push-Down Engines](#3-push-down-engines)
 4. [Compare Options](#4-compare-options)
@@ -124,6 +124,115 @@ Everything past this point is the full reference. Continue reading when the chea
 
 
 ## 1. Core Concepts
+
+### Row fingerprinting, explained in plain terms
+
+*New to rowparity? Read this subsection first — the rest of §1 is the same idea stated precisely.*
+
+#### The problem
+
+You have two tables that are supposed to hold the same data. One came from the old pipeline, one from the new. They have millions of rows. Nobody guarantees the rows come back in the same order, and the two engines do not even agree on how to spell a number — one says `DECIMAL(10,2)`, the other says `DOUBLE`; one says `INT64`, the other `INT32`.
+
+Comparing them row by row is unpleasant for three separate reasons:
+
+- **Order.** Without a sort, row #1 on the left has nothing to do with row #1 on the right. Sorting millions of rows just to line them up is expensive, and any column you sort on had better be unique.
+- **Types.** `2100.75` stored as a decimal and `2100.750000001` stored as a double are the same business fact and different bytes. A naive `EXCEPT` reports a difference; a human looking at the report calls it noise and stops trusting the check.
+- **Cost.** Matching every left row against every right row is quadratic. At a million rows a side that is a trillion comparisons.
+
+#### The idea: give every row a short code
+
+Instead of comparing rows, rowparity reduces each row to a **fingerprint** — a short fixed-size code derived from the row's *meaning* rather than its storage format. Think of it as the checksum on a shipping label: you do not re-inspect the contents of the crate, you compare the label. If two labels match, the crates match.
+
+Getting from a row to its label takes four steps:
+
+```mermaid
+flowchart LR
+    R["ONE ROW\nday = 2024-01-02\nregion = US\nrevenue = DECIMAL 2100.75\norders = INT64 42"]
+    R --> S["1 — SORT COLUMNS BY NAME\nday, orders, region, revenue\nso column order can never\nchange the answer"]
+    S --> C["2 — CANONICALIZE EACH VALUE\nby its type, not its bytes\ndate    -> D, 2024-01-02\nint 42  -> f, 42000\nUS      -> t, US\n2100.75 -> f, 2100750\nshown with float_tolerance 0.001\nand coerce_numeric_to_float on"]
+    C --> T["3 — CANONICAL TUPLE\nthe row's meaning,\nspelled one single way"]
+    T --> H["4 — BLAKE2b-128\nhash the tuple"]
+    H --> F["FINGERPRINT\nf56dfdc070d7c152...\n16 bytes, always"]
+```
+
+Step 2 is where the engine differences go to die. `2100.75` as a decimal and `2100.750000001` as a double both land on the same tolerance grid point (`2100750`, with `float_tolerance: 0.001`). `42` as an `INT64` and `42` as an `INT32` both become the same canonical integer. `09:00 EST` and `14:00 UTC` both become the same instant. Two rows that *mean* the same thing produce the identical 16 bytes, no matter which engine produced them.
+
+#### A worked example — real values, real fingerprints
+
+Three days of revenue. The left side is a Parquet golden snapshot; the right side is a warehouse query that returns its columns in a different order, with different physical types, in a different row order, with a hair of float noise — and one genuine data change (`2250.10 → 2255.60`). Comparison config: `float_tolerance: 0.001`, `coerce_numeric_to_float: true`.
+
+| # | Expected row | Actual row | Fingerprint (first 6 hex digits) |
+|---|---|---|---|
+| 1 | `2024-01-02, US, 2100.75, 42` (decimal, int64) | `US, 42, 2100.750000001, 2024-01-02` (double, int32) | both `f56dfd…` ✅ same |
+| 2 | `2024-01-02, EU, 1830.00, 31` | `EU, 31, 1830.0, 2024-01-02` | both `b32f6b…` ✅ same |
+| 3 | `2024-01-03, US, 2250.10, 47` | `US, 47, 2255.60, 2024-01-03` | `88bf10…` vs `71a83b…` ❌ differ |
+
+Rows 1 and 2 survive every difference that does not change the meaning — column order, decimal vs double, int64 vs int32, float noise below tolerance, and the shuffled row order. Row 3 changed for real, and the fingerprint changes with it. (These are actual `blake2b` outputs from `hashing.py`, not illustrative placeholders.)
+
+#### The comparison: two bags of codes
+
+Once every row is a code, a table is just a **bag of codes** — a multiset. Comparing two tables becomes counting:
+
+```mermaid
+flowchart TD
+    subgraph EXPBAG["EXPECTED — bag of 3 fingerprints"]
+        direction TB
+        X1["f56dfd...  x1"]
+        X2["b32f6b...  x1"]
+        X3["88bf10...  x1"]
+    end
+
+    subgraph ACTBAG["ACTUAL — bag of 3 fingerprints\nrows arrived in a different order —\nirrelevant, a bag has no order"]
+        direction TB
+        Y2["f56dfd...  x1"]
+        Y3["b32f6b...  x1"]
+        Y1["71a83b...  x1"]
+    end
+
+    X1 -.->|"same code, count cancels"| Y2
+    X2 -.->|"same code, count cancels"| Y3
+    X3 ==>|"left over on the left"| MISS["MISSING\nin expected, absent from actual"]
+    Y1 ==>|"left over on the right"| ADD["ADDED\nin actual, absent from expected"]
+
+    MISS --> V["VERDICT\nnot equivalent:\n1 missing, 1 added"]
+    ADD --> V
+```
+
+That is the whole algorithm. Subtract one bag from the other; whatever fails to cancel is the diff. Nothing about it depends on row order, because a bag has no order — which is why rowparity never sorts your tables and never asks you to.
+
+#### Two ways to read the leftovers
+
+The same fingerprints answer two different questions, depending on whether you gave rowparity a business key:
+
+- **Keyless** (`keys` omitted) — pure bag subtraction, exactly as drawn above. Leftovers on the left are `missing`, leftovers on the right are `added`. Duplicate rows fall out correctly for free: a row that appears 3× on the left and 1× on the right leaves 2 behind.
+- **Keyed** (`keys: [day, region]`) — group each bag by key first. A key on only one side is `missing`/`added`; a key on **both** sides whose fingerprints disagree is `changed` — the interesting case, because rowparity then goes back and reads the actual values of just that one row to tell you *which column* moved.
+
+Same three rows, run both ways — real output, trimmed to the lines that matter here (a full run also prints the `decimal128(10, 2)` vs `double` and `int64` vs `int32` type notes, and the change-signature summary):
+
+```
+# keyed on [day, region] — the changed row is pinpointed to a column
+Case 'daily_revenue_matches_golden': [DIFFERENT] keyed on ['day', 'region'] | expected=3 actual=3 | missing=0 added=0 changed=1
+  ~ CHANGED key=(2024-01-03, US): revenue: Decimal('2250.10') -> 2255.6
+
+# keyless — the same fact, expressed as one row leaving and one arriving
+Case 'daily_revenue_matches_golden': [DIFFERENT] keyless (multiset) | expected=3 actual=3 | missing=1 added=1 changed=0
+```
+
+Note what rows 1 and 2 did in both runs: nothing. They matched despite decimal-vs-double, int64-vs-int32, reordered columns and reordered rows, so they never appear in the report. Only the row that genuinely changed shows up.
+
+#### Why this design holds up
+
+- **Order-independent by construction**, not by sorting. There is no `ORDER BY` to get wrong and no cost to pay for it.
+- **Cheap.** Fingerprinting is one pass per side; the comparison is hash-bucket arithmetic. Linear, not quadratic.
+- **Cross-engine by default.** Canonicalization happens before hashing, so the same logical row from Snowflake, Spark, DuckDB or a Parquet file lands on the same 16 bytes.
+- **Small enough to move.** A fingerprint is 16 bytes regardless of how wide the row is, which is what lets the push-down engines (§3) do all of this inside the warehouse and ship only a handful of example rows back to Python.
+- **Safe at scale.** 128-bit digests mean that even at a trillion rows, the chance any two genuinely-different rows collide onto the same fingerprint is around 1 in 10¹⁵.
+
+The honest trade-off: a fingerprint tells you **that** two rows differ, never **how**. That is why the column-level explanation you see in the report is computed in a second step, only for the rows that already failed the fingerprint check — you pay for the detailed diff only where there is a diff.
+
+The rest of §1 restates all of this precisely: the exact canonicalization rules per type, the step-by-step algorithm, and where each engine runs it.
+
+---
 
 ### How comparison works
 
