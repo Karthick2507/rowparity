@@ -2,7 +2,7 @@
 
 A Python framework that lets data and QA teams assert **"these two tables are equivalent"** on real, warehouse-sized data — and run those assertions in CI. Teams write declarative YAML; the framework handles engine differences, type normalization, nested types, and scale.
 
-> **FreeWheel, A Comcast Company** — MIT License
+> **FreeWheel, A Comcast Company** 
 
 ---
 

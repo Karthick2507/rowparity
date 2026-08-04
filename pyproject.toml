@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Fingerprint-based expected-vs-actual data testing for dbt/warehouse pipelines, driven by YAML and run in CI."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
 authors = [{ name = "FreeWheel, A Comcast Company" }]
 dependencies = [
     "pyarrow>=14",
