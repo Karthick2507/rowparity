@@ -9,7 +9,13 @@ path here is a genuinely metadata-only mechanism for that engine — not a
 data on some engines. `table:` is preferred; `query:` stays available for a
 derived/hypothetical shape, but is always resolved through the same
 metadata-only path, never executed as written.
+
+One documented exception: Trino exposes no describe-without-execute API in
+its DBAPI, so a *derived* ``query:`` there falls back to a ``LIMIT 0`` probe
+(see ``_describe_trino``). A ``table:`` spec still uses a real ``DESCRIBE``,
+which is why ``table:`` is the preferred form for Trino sources.
 """
+
 from __future__ import annotations
 
 import glob
@@ -68,6 +74,43 @@ def _describe_snowflake(spec, base_dir) -> Dict[str, str]:
                 type_name = f"NUMBER({m.precision},{m.scale})"
             out[m.name] = type_name
         return out
+    finally:
+        con.close()
+
+
+def _describe_trino(spec, base_dir) -> Dict[str, str]:
+    """Trino/Presto column types.
+
+    Two mechanisms, picked by what the spec names:
+
+    * ``table:`` -> ``DESCRIBE <table>``, a catalog metadata lookup. No scan,
+      no splits, no rows. This is the same mechanism the BCV analyser uses,
+      so the type strings returned here match what it reports.
+    * ``query:`` / ``query_file:`` -> a ``LIMIT 0`` probe, because a *derived*
+      query has no catalog entry to describe. Trino plans the scan away, so
+      this stays metadata-only in practice, but unlike ``DESCRIBE`` it is a
+      query the planner has to compile -- hence ``table:`` is preferred.
+    """
+    from .trino_auth import connect as _trino_connect
+
+    query = resolve_query(spec, base_dir)
+    table = spec.get("table")
+    if not query and not table:
+        raise SourceError(
+            "trino source needs a 'query', 'query_file', or 'table' for schema introspection"
+        )
+
+    con = _trino_connect(spec)
+    try:
+        cur = con.cursor()
+        if query:
+            cur.execute(f"SELECT * FROM ({query}) AS __rp_schema_probe LIMIT 0")
+            # cursor.description is populated after execute() even with 0 rows.
+            return {col[0]: col[1] for col in (cur.description or [])}
+        cur.execute(f"DESCRIBE {table}")
+        # Trino's DESCRIBE yields (Column, Type, Extra, Comment); only the
+        # first two carry schema -- the rest is presentation metadata.
+        return {row[0]: row[1] for row in cur.fetchall()}
     finally:
         con.close()
 
@@ -156,6 +199,7 @@ _HANDLERS = {
     "duckdb": _describe_duckdb,
     "sql": _describe_duckdb,
     "snowflake": _describe_snowflake,
+    "trino": _describe_trino,
     "spark": _describe_spark,
     "iceberg": _describe_iceberg,
     "delta": _describe_delta,
