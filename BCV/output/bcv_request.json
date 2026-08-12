@@ -1,0 +1,3310 @@
+[
+  {
+    "Column": "request__transaction_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__timestamp",
+    "Type": "timestamp(3) with time zone"
+  },
+  {
+    "Column": "request__flags",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__network_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__asset_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__custom_asset_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__site_section_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__custom_site_section_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__page_random",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__video_random",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__asset_duration",
+    "Type": "double"
+  },
+  {
+    "Column": "request__context__distributor_asset_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__request_duration",
+    "Type": "double"
+  },
+  {
+    "Column": "request__context__time_position",
+    "Type": "double"
+  },
+  {
+    "Column": "request__context__profile_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__video_slot_compatible_dimensions",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__explicit_candidates",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__airing_channel_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__profile_concrete_event_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__context__request_format",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__response_format",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__custom_airing_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__custom_airing_break_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__custom_airing_channel_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__ab_test_item",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__context__ab_test_item__collection_id",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__context__ab_test_item__bucket_id",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__context__tv_network_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__out_signal_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__station_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__stream_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__host_name",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__po_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__source_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__linear_break_source",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__rbp_platform",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__stream_mode_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__inventory_location_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_brand_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_channel_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_genre_ids",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__context__content_form_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__content_rating_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_language_ids",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__context__ip_enabled_audience_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_programmer_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_endpoint_owner_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_endpoint_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__po_type",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__standard_content_daypart_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_content_series_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_publisher_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__profile_trait",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__profile_trait__pre_selection_external_ad_timeout",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__profile_trait__post_selection_external_ad_timeout",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_app_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__standard_site_domain_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__standard_content_subscription_model_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__transcode_package_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__context__standard_ssp_channel_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__stream_mode_ids",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__context__standard_content_credential_status_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__standard_iab_category_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__context__standard_content_territory_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__standard_movie_rating_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__standard_app_bundle_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__standard_privacy_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__standard_addressability_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__context__standard_content_viewership_profile_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__context__standard_sport_entity_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__context__video_cro_network_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__video_cro_context_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__video_cro_asset_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__video_cro_site_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__video_cro_selected_yield_optimization_infos",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__context__video_cro_selected_yield_optimization_infos__sub_yo_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__context__video_cro_selected_yield_optimization_infos__nested_sub_yo_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "request__context__video_cro_pre_targeting_yield_optimization_infos",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__context__video_cro_pre_targeting_yield_optimization_infos__sub_yo_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__context__video_cro_pre_targeting_yield_optimization_infos__nested_sub_yo_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "request__context__site_section_cro_network_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__site_section_cro_asset_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__site_section_cro_site_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__rbp_device_type",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__distributor_video_asset_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__distributor_site_section_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__distributor_site_section_group_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__context__profile_type",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__context__tv_network_group_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__magnifier",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__scores",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__scores__network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__scores__flag",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__scores__score",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__candidates",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__networks",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__cbp",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__cbp__slot_template_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__server_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__time_record",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__time_record__total",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__soft_guaranteed_ad",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__soft_guaranteed_ad__ad_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__soft_guaranteed_ad__num_competing_ads",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__soft_guaranteed_ad__network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__soft_guaranteed_ad__entity_type",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__soft_guaranteed_ad__entity_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__userdb_audience_user_info",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__userdb_audience_user_info__bg_alias_growth_ratio",
+    "Type": "double"
+  },
+  {
+    "Column": "request__extra_flags",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__kafka_msg_key",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__delivery_method",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__multiplier",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__guaranteed_deal_avail",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__guaranteed_deal_avail__internal_deal_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__guaranteed_deal_avail__buyer_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__decision_info",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__decision_info__flag1",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__decision_info__flag2",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__decision_info__value1",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__decision_info__value2",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__decision_info__flag3",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__decision_info__value3",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__decision_info__value4",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__decision_info__value5",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__decision_info__value6",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__decision_info__external_bridge",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__decision_info__external_bridge__slot_index",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__decision_info__external_bridge__status",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__decision_info__value7",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__decision_info__flag4",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__decision_info__value8",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__decision_info__value9",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__decision_info__value10",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__decision_info__value11",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__decision_info__value12",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__decision_info__value13",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__decision_info__value14",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__decision_info__inventory_protections",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__decision_info__inventory_protections__level",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__decision_info__inventory_protections__scope",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__decision_info__inventory_protections__separation",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__decision_info__value15",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__mrc_compliance_label",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__dro_network_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__server_group",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__audience_flags",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__is_data_right_enabled",
+    "Type": "boolean"
+  },
+  {
+    "Column": "request__geo_data_provider_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__privacy_info",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__privacy_info__compliance_flag",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__privacy_info__impacted_features_flag",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__privacy_info__gdpr_flag",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__privacy_info__gpp",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__privacy_info__gpp__flag",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__privacy_info__gpp__section",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__traffic_compliance",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__traffic_compliance__endpoint_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__traffic_compliance__mrc_compliance_flag",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__traffic_compliance__mrc_non_compliance_type",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__prebid_sivt",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__prebid_sivt__sivt_model",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__prebid_sivt__gateway_response",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__prebid_sivt__inhouse",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__prebid_sivt__inhouse__traffic_valid",
+    "Type": "boolean"
+  },
+  {
+    "Column": "request__prebid_sivt__inhouse__invalid_reason",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__prebid_sivt__inhouse__is_whitelisted",
+    "Type": "boolean"
+  },
+  {
+    "Column": "request__prebid_sivt__whiteops",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__prebid_sivt__whiteops__traffic_valid",
+    "Type": "boolean"
+  },
+  {
+    "Column": "request__prebid_sivt__whiteops__invalid_reason",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__prebid_sivt__whiteops__lookup_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__prebid_sivt__capnedit",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__prebid_sivt__capnedit__traffic_valid",
+    "Type": "boolean"
+  },
+  {
+    "Column": "request__prebid_sivt__capnedit__invalid_reason",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__linear_capnedit",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__linear_capnedit__device_id",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__linear_capnedit__active_state",
+    "Type": "array(boolean)"
+  },
+  {
+    "Column": "request__linear_capnedit__tune_time",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__linear_capnedit__last_activity_time",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__linear_capnedit__is_dvr",
+    "Type": "array(boolean)"
+  },
+  {
+    "Column": "request__linear_capnedit__mode",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__kafka_msg_size",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__extra_flags2",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__extra_flags3",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__log_sampling",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__log_sampling__magnifier",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__log_sampling__mode",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__server_pool",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__yield_optimization_ids",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__yield_optimization_ids__demand_type",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__yield_optimization_ids__demand_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__yield_optimization_ids__optimization_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "request__request_prefilter",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__request_prefilter__flag",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__simulated_tiemstamp",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__request_throttling_info",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__request_throttling_info__flags",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__request_throttling_info__exempt_thousandth",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__request_throttling_info__level",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__demand_log_magnifier",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__mpe_matcher_filters",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__mpe_matcher_filters__id",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__mpe_matcher_filters__bucket_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__mpe_matcher_filters__weight",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__is_no_selection",
+    "Type": "boolean"
+  },
+  {
+    "Column": "request__is_filtered",
+    "Type": "boolean"
+  },
+  {
+    "Column": "request__is_first_user_visitor",
+    "Type": "boolean"
+  },
+  {
+    "Column": "request__is_ssp_bidder_request",
+    "Type": "boolean"
+  },
+  {
+    "Column": "request__traffic_type",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__bit_flags",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__backend_filtration_reason",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__advertisement_count",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__advertisement_delivered_count",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__hashed_key_value",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__bid_request",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__bid_request__publisher_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__bid_request__app_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__bid_request__app_name",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__bid_request__app_bundle",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__bid_request__auction_type",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__bid_request__inventory_source",
+    "Type": "integer"
+  },
+  {
+    "Column": "request__bid_request__impression",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__bid_request__impression__private_auction",
+    "Type": "array(boolean)"
+  },
+  {
+    "Column": "request__bid_request__impression__floor",
+    "Type": "array(real)"
+  },
+  {
+    "Column": "request__bid_request__impression__deal",
+    "Type": "array(array(varchar))"
+  },
+  {
+    "Column": "request__bid_request__impression__deal__public_id",
+    "Type": "array(array(varchar))"
+  },
+  {
+    "Column": "request__privacy_jurisdiction_ids",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__privacy_choice_ids",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__global_currency_version",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__client_facing_ivt_reason_flag",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__errors",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__errors__code",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__errors__type",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__errors__network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__errors__domain",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__errors__partner",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__errors__ad_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__external_bridge_records",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__external_bridge_records__slot_index",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__external_bridge_records__duration",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__external_bridge_records__flags",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__external_bridge_records__error",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__external_bridge_records__http_status_code",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__context__key_value",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__context__key_value__key",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__context__key_value__value",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__network_execution_ctx",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__network_execution_ctx__supply_source_type",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__network_execution_ctx__upstream_network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__network_execution_ctx__candidate_ad_num",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__network_execution_ctx__programmatic_cadidate_ad_num",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__network_execution_ctx__network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__audience_item",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__audience_item__audience_item_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__inventory_group",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request__inventory_group__group_id",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "request__network_execution_ctx__context_sequence",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "request__network_execution_ctx__inbound_listing_id",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "request__network_execution_ctx__inbound_order_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request__system_degradation",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__system_degradation__level",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request__system_degradation__features",
+    "Type": "bigint"
+  },
+  {
+    "Column": "request__bid_request__impression__index",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "idx",
+    "Type": "varchar"
+  },
+  {
+    "Column": "idx__has_advertisement",
+    "Type": "boolean"
+  },
+  {
+    "Column": "visitor",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__user_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__custom_user_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__address",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__peer_address",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__referrer",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__user_agent",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__timezone",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__timezone_offset",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__country",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__country_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__state",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__state_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__dma_code",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__referrer_banning_rule_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "visitor__caller",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__filtration_reason",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__internal_address",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__city",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__city_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__parsed_user_agent",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__postal_code",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__operator_zone_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "visitor__cookie_user_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__isp_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__dma_code_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__platform_group",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__platform_browser_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "visitor__platform_os_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "visitor__platform_device_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "visitor__syscode",
+    "Type": "bigint"
+  },
+  {
+    "Column": "visitor__household_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__server_side_user_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__device_type",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__device_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__user_agent_device_type",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__active_state",
+    "Type": "boolean"
+  },
+  {
+    "Column": "visitor__app_bundle_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__standard_device_type_ids",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "visitor__standard_environment_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__standard_os_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__xfinity_idfa",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__universal_hhid",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__universal_iids",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "visitor__programmer_individual_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__identity_user_ids",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "visitor__identity_user_ids__namespace_id",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "visitor__identity_user_ids__id",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "visitor__identity_user_ids__authorized_network_id",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "visitor__flags",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__standard_operator_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "visitor__standard_retailer_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "visitor__standard_manufacturer_id",
+    "Type": "bigint"
+  },
+  {
+    "Column": "visitor__tracked_audience_item_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "visitor__standard_device_type_child_id",
+    "Type": "integer"
+  },
+  {
+    "Column": "visitor__private_universal_hhid",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__private_universal_hhid__id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__private_universal_hhid__authorized_network_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "visitor__private_universal_iid",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__private_universal_iid__id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__private_universal_iid__authorized_network_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "visitor__tracked_term",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "visitor__user_segments_lookup_key",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "visitor__flash_version",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__accept_language",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__internal_user_id",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__isp",
+    "Type": "varchar"
+  },
+  {
+    "Column": "visitor__postal_code_id",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "visitor__postal_code_package",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "visitor__postal_code_package__network_id",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "visitor__postal_code_package__postal_code_package_id",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "inventory__asset_chain",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__role",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__entity_source",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__bit_flags",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__content_owner_network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__distributor_network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__asset_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__site_section_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__series_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__site_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__asset_group_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__asset_group_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__asset_chain__site_section_group_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__asset_chain__airing_channel_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__airing_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__break_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__opportunity_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__scenario_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__postal_code_package_id",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "inventory__asset_chain__visible_concrete_event_id",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__asset_chain__tracked_audience_item_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__asset_chain__custom_platform_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__asset_chain__region_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__asset_chain__network_execution_ctx_index",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "inventory__asset_chain__network_execution_ctx_flags",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__asset_chain__inventory_package_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_country_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_country_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_country_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_country_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_state_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_state_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_state_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_state_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_city_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_city_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_city_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_city_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_zip_code_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_zip_code_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_zip_code_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_zip_code_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_dma_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_dma_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_dma_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__geo_dma_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__user_agent_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__user_agent_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__user_agent_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__user_agent_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_endpoint_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_endpoint_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_endpoint_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_endpoint_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_endpoint_owner_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_endpoint_owner_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_endpoint_owner_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_endpoint_owner_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__visitor_custom_id_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__visitor_custom_id_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__visitor_custom_id_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__visitor_custom_id_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__device_id_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__device_id_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__device_id_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__device_id_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__ip_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__ip_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__ip_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__ip_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__third_party_user_id_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__third_party_user_id_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__third_party_user_id_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__third_party_user_id_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__key_value_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__key_value_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__key_value_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__key_value_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_brand_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_brand_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_brand_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_brand_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_genre_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_genre_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_genre_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_genre_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__content_rating_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__content_rating_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__content_rating_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__content_rating_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_programmer_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_programmer_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_programmer_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_programmer_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__content_form_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__content_form_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__content_form_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__content_form_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_language_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_language_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_language_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_language_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_channel_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_channel_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_channel_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_channel_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_daypart_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_daypart_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_daypart_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_daypart_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_series_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_series_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_series_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_series_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_subscription_model_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_subscription_model_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_subscription_model_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_subscription_model_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_credential_status_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_credential_status_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_credential_status_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_credential_status_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_territory_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_territory_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_territory_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__standard_content_territory_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__asset_chain__non_tracked_audience_item_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__site_section_chain",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__role",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__entity_source",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__bit_flags",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__content_owner_network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__distributor_network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__asset_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__site_section_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__series_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__site_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__asset_group_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__asset_group_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__site_section_chain__site_section_group_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__site_section_chain__airing_channel_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__airing_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__break_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__opportunity_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__scenario_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__postal_code_package_id",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "inventory__site_section_chain__visible_concrete_event_id",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__site_section_chain__tracked_audience_item_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__site_section_chain__portfolio_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__site_section_chain__custom_platform_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__site_section_chain__region_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__site_section_chain__network_execution_ctx_index",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "inventory__site_section_chain__network_execution_ctx_flags",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "inventory__site_section_chain__inventory_package_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_country_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_country_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_country_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_country_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_state_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_state_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_state_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_state_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_city_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_city_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_city_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_city_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_zip_code_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_zip_code_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_zip_code_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_zip_code_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_dma_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_dma_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_dma_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__geo_dma_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__user_agent_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__user_agent_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__user_agent_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__user_agent_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_endpoint_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_endpoint_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_endpoint_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_endpoint_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_endpoint_owner_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_endpoint_owner_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_endpoint_owner_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_endpoint_owner_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__visitor_custom_id_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__visitor_custom_id_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__visitor_custom_id_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__visitor_custom_id_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__device_id_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__device_id_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__device_id_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__device_id_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__ip_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__ip_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__ip_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__ip_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__third_party_user_id_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__third_party_user_id_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__third_party_user_id_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__third_party_user_id_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__key_value_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__key_value_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__key_value_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__key_value_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_brand_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_brand_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_brand_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_brand_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_genre_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_genre_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_genre_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_genre_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__content_rating_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__content_rating_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__content_rating_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__content_rating_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_programmer_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_programmer_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_programmer_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_programmer_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__content_form_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__content_form_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__content_form_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__content_form_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_language_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_language_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_language_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_language_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_channel_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_channel_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_channel_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_channel_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_daypart_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_daypart_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_daypart_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_daypart_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_series_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_series_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_series_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_series_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_subscription_model_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_subscription_model_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_subscription_model_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_subscription_model_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_credential_status_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_credential_status_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_credential_status_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_credential_status_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_territory_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_territory_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_territory_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__standard_content_territory_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "inventory__site_section_chain__non_tracked_audience_item_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "audiences",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "audiences__network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "audiences__audience_item_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "audiences__kv_term_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "request_info",
+    "Type": "varchar"
+  },
+  {
+    "Column": "request_info__slot_time_position_classes",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request_info__slot_ad_unit_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request_info__slot_video_cro_ad_unit_ids",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "request_info__raw_brands",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "request_info__raw_channels",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__role",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__entity_source",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__bit_flags",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__content_owner_network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__distributor_network_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__asset_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__site_section_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__series_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__site_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__asset_group_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__asset_group_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__site_section_group_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__airing_channel_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__airing_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__break_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__opportunity_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__scenario_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__postal_code_package_id",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__inbound_listing_id",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__inbound_order_id",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__inbound_order_type",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__inbound_order_transaction_type",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__visible_concrete_event_id",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__tracked_audience_item_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__portfolio_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__custom_platform_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__region_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__network_execution_ctx_index",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "execution_networks__network_execution_ctx_flags",
+    "Type": "array(bigint)"
+  },
+  {
+    "Column": "execution_networks__supply_source",
+    "Type": "array(integer)"
+  },
+  {
+    "Column": "execution_networks__inventory_package_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics",
+    "Type": "array(array(varchar))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_targeting_metrics",
+    "Type": "array(array(varchar))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_targeting_metrics__input_ad_number",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_targeting_metrics__output_ad_number",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_targeting_metrics__data_privacy",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_targeting_metrics__restriction",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_targeting_metrics__unmapped",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_targeting_metrics__undefined",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics",
+    "Type": "array(array(varchar))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__input_ad_number",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__output_ad_number",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__no_ad_domain",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__no_slot_assigned_through_mrm_rule",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__frequency_cap",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__cpx_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__met_schedule",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__rbp_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__no_applicable_slot",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__sponsorship_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__exclusivity_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__no_applicable_slot_user_experience",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__no_applicable_slot_no_external_rule",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__no_applicable_slot_not_resellable",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__no_applicable_slot_promo_only",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__no_applicable_slot_not_compatible",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__met_budget",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__met_yield_optimization",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__unmapped",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filtering_metrics__undefined",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics",
+    "Type": "array(array(varchar))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__input_ad_number",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__output_ad_number",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__frequency_cap",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_applicable_slot",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__compliance_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_creative",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_suitable_rule_path",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__profile_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__floor_price_not_met",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__restriction",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__exclusivity",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__pg_deal_bid_throttling",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__auction_max_ad_duration",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__reseller_restriction",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__market_ad_not_approved",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__listing_creative_duration_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_creative_ad_asset_store_availability",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_creative_bitrate_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_creative_creative_targeting_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_creative_date_range_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_creative_slot_max_ad_duration_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_creative_slot_compatible_dimension_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__inventory_source_restriction",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_applicable_slot_not_compatible",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__no_applicable_slot_excluded_by_sponsor",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__met_yield_optimization",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__mpe_listing_restriction",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__unmapped",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__undefined",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__inbound_order_competition_failure",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_creative_checking_metrics__competition_failure_in_pick_many",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics",
+    "Type": "array(array(varchar))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__input_ad_number",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__output_ad_number",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__slot_max_num_ads",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__slot_max_duration",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__time_based_freq_cap",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__no_creative",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__companion_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__pod_position_targeting_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__slot_exclusivity_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__slot_sponsorship_check_failed",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__slot_filled_by_multi_ad",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__output_fallback_ad_number",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__slot_not_found",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__do_not_repeat",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__unmapped",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__ad_filling_metrics__undefined",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__network_id",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__demand_type",
+    "Type": "array(array(integer))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__order_id",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__listing_ids",
+    "Type": "array(array(array(bigint)))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__phase_metrics",
+    "Type": "array(array(array(varchar)))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__phase_metrics__phase",
+    "Type": "array(array(array(bigint)))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__phase_metrics__name",
+    "Type": "array(array(array(varchar)))"
+  },
+  {
+    "Column": "execution_networks__network_selection_info__candidate_ad_funnel_metrics__phase_metrics__value",
+    "Type": "array(array(array(integer)))"
+  },
+  {
+    "Column": "execution_networks__mapped_asset_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__mapped_site_section_ids",
+    "Type": "array(array(bigint))"
+  },
+  {
+    "Column": "execution_networks__geo_country_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_country_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_country_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_country_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_state_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_state_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_state_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_state_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_city_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_city_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_city_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_city_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_zip_code_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_zip_code_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_zip_code_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_zip_code_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_dma_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_dma_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_dma_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__geo_dma_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__user_agent_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__user_agent_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__user_agent_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__user_agent_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_endpoint_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_endpoint_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_endpoint_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_endpoint_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_endpoint_owner_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_endpoint_owner_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_endpoint_owner_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_endpoint_owner_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__visitor_custom_id_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__visitor_custom_id_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__visitor_custom_id_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__visitor_custom_id_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__device_id_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__device_id_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__device_id_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__device_id_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__ip_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__ip_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__ip_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__ip_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__third_party_user_id_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__third_party_user_id_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__third_party_user_id_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__third_party_user_id_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__key_value_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__key_value_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__key_value_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__key_value_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_brand_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_brand_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_brand_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_brand_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_genre_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_genre_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_genre_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_genre_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__content_rating_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__content_rating_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__content_rating_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__content_rating_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_programmer_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_programmer_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_programmer_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_programmer_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__content_form_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__content_form_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__content_form_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__content_form_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_language_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_language_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_language_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_language_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_channel_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_channel_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_channel_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_channel_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_daypart_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_daypart_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_daypart_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_daypart_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_series_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_series_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_series_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_series_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_subscription_model_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_subscription_model_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_subscription_model_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_subscription_model_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_credential_status_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_credential_status_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_credential_status_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_credential_status_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_territory_visibility",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_territory_visibility__targetable",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_territory_visibility__report_aggregate",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "execution_networks__standard_content_territory_visibility__report_event",
+    "Type": "array(varchar)"
+  },
+  {
+    "Column": "batch_id",
+    "Type": "varchar"
+  }
+]
