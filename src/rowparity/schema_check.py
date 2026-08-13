@@ -48,9 +48,10 @@ def run_schema_check(
     actual_spec: Dict[str, Any],
     ignore_columns: Optional[List[str]] = None,
     base_dir: str = ".",
+    variables: Optional[Dict[str, str]] = None,
 ) -> ComparisonResult:
-    exp_schema = describe_source(expected_spec, base_dir=base_dir)
-    act_schema = describe_source(actual_spec, base_dir=base_dir)
+    exp_schema = describe_source(expected_spec, base_dir=base_dir, variables=variables)
+    act_schema = describe_source(actual_spec, base_dir=base_dir, variables=variables)
 
     skip = set(ignore_columns or [])
     exp_cols = {c: t for c, t in exp_schema.items() if c not in skip}
@@ -87,6 +88,7 @@ class SchemaCheckCase:
     description: str = ""
     tags: List[str] = field(default_factory=list)
     source_file: str = ""
+    variables: Dict[str, str] = field(default_factory=dict)
 
     def run(self, base_dir: Optional[str] = None, sink=None, result_sink=None) -> ComparisonResult:
         base_dir = base_dir or (os.path.dirname(self.source_file) or ".")
@@ -94,13 +96,16 @@ class SchemaCheckCase:
             self.expected, self.actual,
             ignore_columns=self.ignore_columns,
             base_dir=base_dir,
+            variables=self.variables,
         )
         if result_sink:
             result_sink.write(self.name, self.tags, result)
         return result
 
 
-def build_schema_check_case(raw: dict, source_file: str) -> SchemaCheckCase:
+def build_schema_check_case(
+    raw: dict, source_file: str, variables: Optional[Dict[str, str]] = None
+) -> SchemaCheckCase:
     sc = raw["schema_check"]
     for required in ("expected", "actual"):
         if required not in sc:
@@ -115,4 +120,5 @@ def build_schema_check_case(raw: dict, source_file: str) -> SchemaCheckCase:
         description=raw.get("description", ""),
         tags=raw.get("tags", []) or [],
         source_file=source_file,
+        variables=variables or {},
     )

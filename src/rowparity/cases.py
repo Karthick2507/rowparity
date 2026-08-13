@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
+from . import params
 from .compare import CompareConfig, ComparisonResult, compare_tables
 from .concept_check import ConceptCheckCase, build_concept_check_case
 from .schema_check import SchemaCheckCase, build_schema_check_case
@@ -53,6 +54,10 @@ class Case:
     tags: List[str] = field(default_factory=list)
     source_file: str = ""
     engine: Optional[str] = None
+    # Resolved ${name} values. Spec dicts are already substituted by the time
+    # a Case exists; these are kept for query_file contents, which are only
+    # read at run time.
+    variables: Dict[str, str] = field(default_factory=dict)
 
     def config(self) -> CompareConfig:
         unknown = set(self.compare) - _COMPARE_KEYS
@@ -71,8 +76,8 @@ class Case:
         elif self.engine == "trino":
             result = self._run_trino_pushdown(base_dir, cfg)
         else:
-            expected_tbl = load_source(self.expected, base_dir=base_dir)
-            actual_tbl = load_source(self.actual, base_dir=base_dir)
+            expected_tbl = load_source(self.expected, base_dir=base_dir, variables=self.variables)
+            actual_tbl = load_source(self.actual, base_dir=base_dir, variables=self.variables)
             result = compare_tables(expected_tbl, actual_tbl, cfg)
             if sink:
                 sink.write(self.name, "expected", expected_tbl, result.compared_columns, cfg)
@@ -134,12 +139,25 @@ def _merge_defaults(case: dict, defaults: dict) -> dict:
     return out
 
 
-def _build_case(raw: dict, source_file: str) -> Union[Case, ConceptCheckCase, SchemaCheckCase]:
+def _build_case(
+    raw: dict,
+    source_file: str,
+    file_vars: Optional[Dict[str, Any]] = None,
+    cli_params: Optional[Dict[str, Any]] = None,
+) -> Union[Case, ConceptCheckCase, SchemaCheckCase]:
     if "name" not in raw:
         raise ValueError(f"{source_file}: case is missing required field 'name': {raw!r}")
 
+    # Resolve ${name} placeholders once, over the whole raw case, before any
+    # shape dispatch -- so every case type gets it for free and no spec dict
+    # can reach an engine still holding an unsubstituted placeholder.
+    raw = dict(raw)
+    case_vars = raw.pop("vars", None) or {}
+    variables = params.resolve_variables(file_vars, case_vars, cli_params)
+    raw = params.substitute_spec(raw, variables, where=f"case '{raw['name']}' ({source_file})")
+
     if "schema_check" in raw:
-        return build_schema_check_case(raw, source_file)
+        return build_schema_check_case(raw, source_file, variables=variables)
 
     if "concept_check" in raw:
         return build_concept_check_case(raw, source_file)
@@ -159,15 +177,22 @@ def _build_case(raw: dict, source_file: str) -> Union[Case, ConceptCheckCase, Sc
         tags=raw.get("tags", []) or [],
         source_file=source_file,
         engine=engine,
+        variables=variables,
     )
 
 
-def load_cases_from_file(path: str) -> List[Union[Case, ConceptCheckCase]]:
+def load_cases_from_file(
+    path: str, params_: Optional[Dict[str, Any]] = None
+) -> List[Union[Case, ConceptCheckCase]]:
     with open(path, "r", encoding="utf-8") as fh:
         doc = yaml.safe_load(fh) or {}
     if not isinstance(doc, dict):
         raise ValueError(f"{path}: top level must be a mapping")
     defaults = doc.get("defaults", {}) or {}
+    # A file-level vars: block sits beside cases: and applies to all of them.
+    # For a single-case document it is part of the case itself, and _build_case
+    # picks it up there instead.
+    file_vars = doc.get("vars", {}) or {} if "cases" in doc else {}
     if "cases" in doc:
         raw_cases = doc["cases"]
     else:
@@ -176,18 +201,25 @@ def load_cases_from_file(path: str) -> List[Union[Case, ConceptCheckCase]]:
     for raw in raw_cases:
         merged = _merge_defaults(raw, defaults)
         merged.pop("defaults", None)
-        cases.append(_build_case(merged, path))
+        cases.append(_build_case(merged, path, file_vars=file_vars, cli_params=params_))
     return cases
 
 
-def discover_cases(path: str) -> List[Union[Case, ConceptCheckCase]]:
-    """Load cases from a single file or, if ``path`` is a directory, every *.yml/*.yaml under it."""
+def discover_cases(
+    path: str, params_: Optional[Dict[str, Any]] = None
+) -> List[Union[Case, ConceptCheckCase]]:
+    """Load cases from a single file or, if ``path`` is a directory, every *.yml/*.yaml under it.
+
+    ``params_`` carries ``--param NAME=VALUE`` overrides; they take precedence
+    over both a case's ``vars:`` block and ``ROWPARITY_VAR_*`` environment
+    variables.
+    """
     if os.path.isdir(path):
         files: List[str] = []
         for ext in ("*.yml", "*.yaml"):
             files.extend(glob.glob(os.path.join(path, "**", ext), recursive=True))
         cases: List[Union[Case, ConceptCheckCase]] = []
         for f in sorted(files):
-            cases.extend(load_cases_from_file(f))
+            cases.extend(load_cases_from_file(f, params_))
         return cases
-    return load_cases_from_file(path)
+    return load_cases_from_file(path, params_)
