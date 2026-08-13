@@ -40,21 +40,37 @@ def _sql(case, side):
     return resolve_query(spec, os.path.dirname(case.source_file), case.variables)
 
 
-class TestBatchIdIsMandatory:
-    """batch_id has no default, so it cannot silently query a batch that does
-    not exist and report EQUIVALENT over two empty result sets.
-
-    Note WHERE it fails: ${batch_id} appears only inside the .sql files, which
-    are read at run time, so loading succeeds and run() raises. That is later
-    than a placeholder in the YAML itself would fail, but still before any
-    connection is opened -- resolve_query() runs ahead of trino_auth.connect().
+class TestBatchIdResolution:
+    """batch_id is never defaulted to a literal. It is either pinned by the
+    caller or resolved by querying the warehouse for the newest batch present
+    on both sides. A literal default would name a batch that may not exist,
+    return zero rows on both sides, and report EQUIVALENT -- a silent pass.
     """
 
-    def test_loading_succeeds_because_the_specs_have_no_placeholders(self):
-        cases = {c.name for c in discover_cases(CASES_DIR, {})}
-        assert "bcv_request_values" in cases
+    def test_a_param_query_is_declared_for_it(self):
+        import yaml
 
-    def test_running_without_it_raises_before_connecting(self, monkeypatch):
+        doc = yaml.safe_load(open(os.path.join(CASES_DIR, "value_parity.yaml")))
+        assert "batch_id" in doc["param_queries"]
+        assert doc["param_queries"]["batch_id"]["type"] == "trino"
+        # And it is NOT also a literal default, which would shadow the query.
+        assert "batch_id" not in doc["vars"]
+
+    def test_pinning_it_short_circuits_the_query(self, monkeypatch):
+        # --param must skip the query entirely rather than run it and discard
+        # the answer. Any connection attempt here is a failure.
+        import socket
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("the param query ran despite batch_id being pinned")
+
+        monkeypatch.setattr(socket.socket, "connect", _boom)
+        names = {c.name for c in discover_cases(CASES_DIR, PARAMS)}
+        assert {"bcv_request_completeness", "bcv_request_values"} <= names
+
+    def test_without_it_the_sql_still_cannot_reach_an_engine_unresolved(self, monkeypatch):
+        # With query resolution disabled and nothing pinned, the placeholder in
+        # the .sql file must raise rather than be substituted with anything.
         import socket
 
         def _boom(*args, **kwargs):
@@ -62,16 +78,24 @@ class TestBatchIdIsMandatory:
 
         monkeypatch.setattr(socket.socket, "connect", _boom)
 
-        case = _case("bcv_request_values", {})
+        cases = discover_cases(CASES_DIR, {}, resolve_queries=False)
+        case = next(c for c in cases if c.name == "bcv_request_values")
         with pytest.raises(ParamError) as exc:
             case.run()
         message = str(exc.value)
         assert "batch_id" in message
         assert "src_request_values.sql" in message  # names the offending file
 
-    def test_supplying_it_loads_cleanly(self):
-        names = {c.name for c in discover_cases(CASES_DIR, PARAMS)}
-        assert {"bcv_request_completeness", "bcv_request_values"} <= names
+    def test_listing_never_runs_the_query(self, monkeypatch):
+        # `rowparity list` passes resolve_queries=False for exactly this reason.
+        import socket
+
+        def _boom(*args, **kwargs):
+            raise AssertionError("listing cases attempted a connection")
+
+        monkeypatch.setattr(socket.socket, "connect", _boom)
+        cases = discover_cases(CASES_DIR, {}, resolve_queries=False)
+        assert {c.name for c in cases} >= {"bcv_request_values", "bcv_request_schema"}
 
 
 class TestSamplingIsIdenticalOnBothSides:

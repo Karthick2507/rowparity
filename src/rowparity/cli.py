@@ -111,7 +111,10 @@ def _report(args) -> int:
 
 def _list(args) -> int:
     try:
-        cases = discover_cases(args.path, parse_cli_params(getattr(args, "param", None)))
+        # resolve_queries=False: listing cases must never hit a warehouse.
+        cases = discover_cases(
+            args.path, parse_cli_params(getattr(args, "param", None)), resolve_queries=False
+        )
     except ParamError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

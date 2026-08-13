@@ -32,8 +32,12 @@
 #       --select bcv_request_completeness bcv_request_values \
 #       --csv reports/bcv
 #
-# batch_id has no default on purpose (see below) -- omitting it is an error,
-# not an empty comparison that passes.
+# batch_id resolves ITSELF: param_queries: below asks the warehouse for the
+# newest batch present on both sides, skipping the most recent ones which may
+# still be landing. No manual step, and nothing to keep in sync by hand.
+#
+# Pass --param batch_id=<value> to pin a specific batch instead; that
+# short-circuits the query entirely rather than running it and discarding it.
 
 vars:
   src_catalog: mrm_log_flat
@@ -41,10 +45,22 @@ vars:
   bcv_catalog: etl
   bcv_schema: public_test1
   sample_modulus: "1000"
-  # batch_id is deliberately NOT defaulted. A placeholder default would query a
-  # batch that does not exist, return zero rows on both sides, and report
-  # EQUIVALENT -- a silent pass, the worst outcome for a verification tool.
-  # Leaving it undefined makes an omitted batch fail loudly at load instead.
+  # How many of the newest common batches to skip before picking one, so the
+  # chosen batch is settled rather than merely present. Raise if the pipeline
+  # runs behind.
+  skip_recent_batches: "1"
+
+# batch_id is resolved by querying the warehouse rather than defaulted. A
+# literal default would name a batch that may not exist, return zero rows on
+# both sides, and report EQUIVALENT -- a silent pass, the worst outcome for a
+# verification tool. The query returns exactly one value or fails loudly.
+#
+# Resolved ONCE per file, so both cases below compare the same batch: resolving
+# per case would let a batch landing mid-run compare two different populations.
+param_queries:
+  batch_id:
+    type: trino
+    query_file: sqls/latest_common_batch.sql
 
 cases:
   - name: bcv_request_completeness
