@@ -36,22 +36,31 @@ class SourceError(RuntimeError):
     pass
 
 
-def load_source(spec: Dict[str, Any], *, base_dir: str = ".") -> pa.Table:
-    """Materialise a source spec into an Arrow table."""
+def load_source(
+    spec: Dict[str, Any], *, base_dir: str = ".", variables: Dict[str, str] = None
+) -> pa.Table:
+    """Materialise a source spec into an Arrow table.
+
+    ``variables`` carries resolved ``${name}`` values for ``query_file:``
+    contents. Spec dicts themselves are already substituted by the case
+    loader, so this only matters for SQL read from disk at run time.
+    """
     if not isinstance(spec, dict) or "type" not in spec:
         raise SourceError(f"source spec must be a dict with a 'type' key, got: {spec!r}")
     kind = spec["type"]
     handler = _HANDLERS.get(kind)
     if handler is None:
         raise SourceError(f"unknown source type '{kind}'. Known: {sorted(_HANDLERS)}")
-    return handler(spec, base_dir)
+    return handler(spec, base_dir, variables)
 
 
 def _resolve_path(path: str, base_dir: str) -> str:
     return path if os.path.isabs(path) else os.path.join(base_dir, path)
 
 
-def resolve_query(spec: Dict[str, Any], base_dir: str) -> "str | None":
+def resolve_query(
+    spec: Dict[str, Any], base_dir: str, variables: Dict[str, str] = None
+) -> "str | None":
     """Return SQL from ``query:`` or, if absent, by reading ``query_file:``.
 
     ``query_file`` is resolved relative to ``base_dir`` (the YAML case file's
@@ -60,6 +69,9 @@ def resolve_query(spec: Dict[str, Any], base_dir: str) -> "str | None":
         actual:
           type: trino
           query_file: sqls/actual_revenue.sql
+
+    ``${name}`` placeholders inside the file are substituted from
+    ``variables``; an unresolved one raises rather than reaching the engine.
     """
     if spec.get("query"):
         return spec["query"]
@@ -67,14 +79,19 @@ def resolve_query(spec: Dict[str, Any], base_dir: str) -> "str | None":
     if qf:
         path = _resolve_path(qf, base_dir)
         with open(path, "r", encoding="utf-8") as fh:
-            return fh.read().strip()
+            sql = fh.read().strip()
+        if variables is not None:
+            from .params import substitute
+
+            sql = substitute(sql, variables, where=path)
+        return sql
     return None
 
 
 # --------------------------------------------------------------------------- #
 # Local / literal sources
 # --------------------------------------------------------------------------- #
-def _inline(spec, base_dir) -> pa.Table:
+def _inline(spec, base_dir, variables=None) -> pa.Table:
     rows: List[dict] = spec.get("rows", [])
     if not isinstance(rows, list):
         raise SourceError("inline source requires a 'rows' list")
@@ -117,14 +134,14 @@ def _parse_type(type_str: str) -> pa.DataType:
     raise SourceError(f"cannot parse type '{type_str}' (extend _parse_type if you need it)")
 
 
-def _csv(spec, base_dir) -> pa.Table:
+def _csv(spec, base_dir, variables=None) -> pa.Table:
     from pyarrow import csv as pacsv
 
     path = _resolve_path(spec["path"], base_dir)
     return pacsv.read_csv(path)
 
 
-def _parquet(spec, base_dir) -> pa.Table:
+def _parquet(spec, base_dir, variables=None) -> pa.Table:
     import pyarrow.parquet as pq
 
     pattern = _resolve_path(spec["path"], base_dir)
@@ -134,7 +151,7 @@ def _parquet(spec, base_dir) -> pa.Table:
     return pa.concat_tables([pq.read_table(f) for f in files], promote_options="default")
 
 
-def _arrow(spec, base_dir) -> pa.Table:
+def _arrow(spec, base_dir, variables=None) -> pa.Table:
     import pyarrow.feather as feather
 
     return feather.read_table(_resolve_path(spec["path"], base_dir))
@@ -143,7 +160,7 @@ def _arrow(spec, base_dir) -> pa.Table:
 # --------------------------------------------------------------------------- #
 # Query sources
 # --------------------------------------------------------------------------- #
-def _duckdb(spec, base_dir) -> pa.Table:
+def _duckdb(spec, base_dir, variables=None) -> pa.Table:
     try:
         import duckdb
     except ImportError as e:  # pragma: no cover
@@ -156,7 +173,7 @@ def _duckdb(spec, base_dir) -> pa.Table:
     try:
         for stmt in spec.get("setup", []):          # e.g. INSTALL/LOAD iceberg, CREATE VIEW
             con.execute(stmt)
-        query = resolve_query(spec, base_dir)
+        query = resolve_query(spec, base_dir, variables)
         if not query and spec.get("table"):
             query = f"SELECT * FROM {spec['table']}"
         if not query:
@@ -170,10 +187,10 @@ def _duckdb(spec, base_dir) -> pa.Table:
         con.close()
 
 
-def _snowflake(spec, base_dir) -> pa.Table:
+def _snowflake(spec, base_dir, variables=None) -> pa.Table:
     from .snowflake_auth import connect as _sf_connect
 
-    query = resolve_query(spec, base_dir)
+    query = resolve_query(spec, base_dir, variables)
     if not query and spec.get("table"):
         query = f"SELECT * FROM {spec['table']}"
     if not query:
@@ -191,7 +208,7 @@ def _snowflake(spec, base_dir) -> pa.Table:
         con.close()
 
 
-def _iceberg(spec, base_dir) -> pa.Table:
+def _iceberg(spec, base_dir, variables=None) -> pa.Table:
     try:
         from pyiceberg.catalog import load_catalog
     except ImportError as e:  # pragma: no cover
@@ -204,7 +221,7 @@ def _iceberg(spec, base_dir) -> pa.Table:
     return scan.to_arrow()
 
 
-def _delta(spec, base_dir) -> pa.Table:
+def _delta(spec, base_dir, variables=None) -> pa.Table:
     """Delta Lake table via delta-rs (no Spark/JVM required).
 
     Reads Delta tables from local paths, S3, GCS, or ADLS directly into Arrow.
@@ -238,10 +255,10 @@ def _delta(spec, base_dir) -> pa.Table:
     )
 
 
-def _trino(spec, base_dir) -> pa.Table:
+def _trino(spec, base_dir, variables=None) -> pa.Table:
     from .trino_auth import connect as _trino_connect
 
-    query = resolve_query(spec, base_dir)
+    query = resolve_query(spec, base_dir, variables)
     if not query and spec.get("table"):
         query = f"SELECT * FROM {spec['table']}"
     if not query:
@@ -261,7 +278,7 @@ def _trino(spec, base_dir) -> pa.Table:
         con.close()
 
 
-def _spark(spec, base_dir) -> pa.Table:
+def _spark(spec, base_dir, variables=None) -> pa.Table:
     """Spark DataFrame or SQL query, collected to Arrow via PySpark's Arrow bridge.
 
     Requires a live SparkSession (getOrCreate). Enables Arrow-optimized transfer

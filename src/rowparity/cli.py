@@ -13,13 +13,23 @@ from typing import List, Tuple
 
 from .cases import discover_cases
 from .compare import ComparisonResult
+from .params import ParamError, parse_cli_params
 from .report import render_console, write_reports
 from .report_html import render_report_from_sink
 from .result_sink import make_result_sink
 
 
 def _run(args) -> int:
-    cases = discover_cases(args.path)
+    # Case loading happens before the per-case error handling below, so a bad
+    # --param or an unresolved ${name} would otherwise surface as a traceback
+    # -- the opposite of the clear message ParamError goes to the trouble of
+    # composing.
+    try:
+        cli_params = parse_cli_params(getattr(args, "param", None))
+        cases = discover_cases(args.path, cli_params)
+    except ParamError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     if not cases:
         print(f"No cases found at {args.path}", file=sys.stderr)
         return 2
@@ -97,7 +107,12 @@ def _report(args) -> int:
 
 
 def _list(args) -> int:
-    for case in discover_cases(args.path):
+    try:
+        cases = discover_cases(args.path, parse_cli_params(getattr(args, "param", None)))
+    except ParamError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    for case in cases:
         tags = f" [{', '.join(case.tags)}]" if case.tags else ""
         print(f"{case.name}{tags}  ({case.source_file})")
         if case.description:
@@ -112,6 +127,11 @@ def main(argv=None) -> int:
     run_p = sub.add_parser("run", help="run cases and exit non-zero on any difference")
     run_p.add_argument("path", help="a case file or a directory of *.yml/*.yaml cases")
     run_p.add_argument("--select", nargs="*", help="only run these case names")
+    run_p.add_argument(
+        "--param", action="append", metavar="NAME=VALUE",
+        help="set a ${name} placeholder, overriding the case's vars: block and "
+             "ROWPARITY_VAR_NAME. Repeatable.",
+    )
     run_p.add_argument("--json", help="write a JSON summary here")
     run_p.add_argument("--md", help="write a Markdown report here")
     run_p.add_argument(
@@ -129,6 +149,10 @@ def main(argv=None) -> int:
 
     list_p = sub.add_parser("list", help="list discovered cases")
     list_p.add_argument("path")
+    list_p.add_argument(
+        "--param", action="append", metavar="NAME=VALUE",
+        help="set a ${name} placeholder (same as `run --param`)",
+    )
     list_p.set_defaults(func=_list)
 
     report_p = sub.add_parser(

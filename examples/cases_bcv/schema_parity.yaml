@@ -25,6 +25,19 @@
 #   export TRINO_PORT=8080 TRINO_HTTP_SCHEME=https
 #   export TRINO_USER=...  TRINO_JWT_TOKEN=...
 #   rowparity run examples/cases_bcv --select bcv_request_schema
+#
+# Catalog and schema are parameters rather than literals, so pointing these
+# at a different environment -- or at the real BCV target instead of a test
+# one -- costs a flag rather than an edit per case:
+#
+#   rowparity run examples/cases_bcv --param bcv_schema=public
+#   ROWPARITY_VAR_BCV_SCHEMA=public rowparity run examples/cases_bcv
+
+vars:
+  src_catalog: mrm_log_flat
+  src_schema: default
+  bcv_catalog: etl
+  bcv_schema: public_test1
 
 cases:
   - name: bcv_request_schema
@@ -34,10 +47,10 @@ cases:
     schema_check:
       expected:
         type: trino
-        table: mrm_log_flat.default.request
+        table: "${src_catalog}.${src_schema}.request"
       actual:
         type: trino
-        table: etl.public_test1.request
+        table: "${bcv_catalog}.${bcv_schema}.request"
       ignore_columns: []
     tags: [bcv, schema]
 
@@ -46,10 +59,10 @@ cases:
     schema_check:
       expected:
         type: trino
-        table: mrm_log_flat.default.slot
+        table: "${src_catalog}.${src_schema}.slot"
       actual:
         type: trino
-        table: etl.public_test1.slot
+        table: "${bcv_catalog}.${bcv_schema}.slot"
       ignore_columns: []
     tags: [bcv, schema]
 
@@ -58,9 +71,9 @@ cases:
     schema_check:
       expected:
         type: trino
-        table: mrm_log_flat.default.ad
+        table: "${src_catalog}.${src_schema}.ad"
       actual:
         type: trino
-        table: etl.public_test1.ad
+        table: "${bcv_catalog}.${bcv_schema}.ad"
       ignore_columns: []
     tags: [bcv, schema]

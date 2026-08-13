@@ -52,7 +52,7 @@ def stub_describe(monkeypatch):
     """Answer describe_source() from the table name, no connection made."""
     seen = []
 
-    def _fake(spec, base_dir="."):
+    def _fake(spec, base_dir=".", variables=None):
         seen.append(spec)
         table = spec.get("table", "")
         if table.startswith("mrm_log_flat."):
@@ -86,6 +86,15 @@ class TestShippedCasesLoad:
         assert case.expected == {"type": "trino", "table": "mrm_log_flat.default.request"}
         assert case.actual == {"type": "trino", "table": "etl.public_test1.request"}
         assert "bcv" in case.tags
+
+    def test_catalog_and_schema_are_switchable_without_editing_yaml(self):
+        # The BCV target may be a test table today and the real one later;
+        # that has to be a flag, not an edit per case.
+        cases = {c.name: c for c in discover_cases(CASES_DIR, {"bcv_schema": "public"})}
+        assert cases["bcv_request_schema"].actual["table"] == "etl.public.request"
+        assert cases["bcv_slot_schema"].actual["table"] == "etl.public.slot"
+        # The SRC side is untouched by that override.
+        assert cases["bcv_request_schema"].expected["table"] == "mrm_log_flat.default.request"
 
     def test_no_case_is_tagged_xfail(self):
         # xfail would invert the signal: green while columns are missing, red

@@ -25,8 +25,10 @@ from typing import Any, Dict
 from .sources import SourceError, _resolve_path, resolve_query
 
 
-def _resolve_query_or_table(spec: Dict[str, Any], base_dir: str = ".") -> str:
-    query = resolve_query(spec, base_dir)
+def _resolve_query_or_table(
+    spec: Dict[str, Any], base_dir: str = ".", variables: Dict[str, str] = None
+) -> str:
+    query = resolve_query(spec, base_dir, variables)
     if not query and spec.get("table"):
         query = f"SELECT * FROM {spec['table']}"
     if not query:
@@ -34,7 +36,7 @@ def _resolve_query_or_table(spec: Dict[str, Any], base_dir: str = ".") -> str:
     return query
 
 
-def _describe_duckdb(spec, base_dir) -> Dict[str, str]:
+def _describe_duckdb(spec, base_dir, variables=None) -> Dict[str, str]:
     try:
         import duckdb
     except ImportError as e:  # pragma: no cover
@@ -47,7 +49,7 @@ def _describe_duckdb(spec, base_dir) -> Dict[str, str]:
     try:
         for stmt in spec.get("setup", []):
             con.execute(stmt)
-        query = _resolve_query_or_table(spec, base_dir)
+        query = _resolve_query_or_table(spec, base_dir, variables)
         # DESCRIBE never executes the inner query -- catalog/plan lookup only.
         rows = con.execute(f"DESCRIBE ({query})").fetchall()
         return {r[0]: r[1] for r in rows}
@@ -55,14 +57,14 @@ def _describe_duckdb(spec, base_dir) -> Dict[str, str]:
         con.close()
 
 
-def _describe_snowflake(spec, base_dir) -> Dict[str, str]:
+def _describe_snowflake(spec, base_dir, variables=None) -> Dict[str, str]:
     try:
         from snowflake.connector.constants import FIELD_ID_TO_NAME
     except ImportError as e:  # pragma: no cover
         raise SourceError("snowflake source needs `pip install rowparity[snowflake]`") from e
     from .snowflake_auth import connect as _sf_connect
 
-    query = _resolve_query_or_table(spec, base_dir)
+    query = _resolve_query_or_table(spec, base_dir, variables)
     con = _sf_connect(spec)
     try:
         cur = con.cursor()
@@ -78,7 +80,7 @@ def _describe_snowflake(spec, base_dir) -> Dict[str, str]:
         con.close()
 
 
-def _describe_trino(spec, base_dir) -> Dict[str, str]:
+def _describe_trino(spec, base_dir, variables=None) -> Dict[str, str]:
     """Trino/Presto column types.
 
     Two mechanisms, picked by what the spec names:
@@ -93,7 +95,7 @@ def _describe_trino(spec, base_dir) -> Dict[str, str]:
     """
     from .trino_auth import connect as _trino_connect
 
-    query = resolve_query(spec, base_dir)
+    query = resolve_query(spec, base_dir, variables)
     table = spec.get("table")
     if not query and not table:
         raise SourceError(
@@ -115,19 +117,19 @@ def _describe_trino(spec, base_dir) -> Dict[str, str]:
         con.close()
 
 
-def _describe_spark(spec, base_dir) -> Dict[str, str]:
+def _describe_spark(spec, base_dir, variables=None) -> Dict[str, str]:
     try:
         from pyspark.sql import SparkSession
     except ImportError as e:  # pragma: no cover
         raise SourceError("spark source needs pyspark installed") from e
 
     spark = SparkSession.builder.getOrCreate()
-    query = _resolve_query_or_table(spec, base_dir)
+    query = _resolve_query_or_table(spec, base_dir, variables)
     df = spark.sql(query)  # lazy: .schema below triggers analysis/planning only, never execution
     return {f.name: f.dataType.simpleString() for f in df.schema.fields}
 
 
-def _describe_iceberg(spec, base_dir) -> Dict[str, str]:
+def _describe_iceberg(spec, base_dir, variables=None) -> Dict[str, str]:
     try:
         from pyiceberg.catalog import load_catalog
     except ImportError as e:  # pragma: no cover
@@ -138,7 +140,7 @@ def _describe_iceberg(spec, base_dir) -> Dict[str, str]:
     return {f.name: str(f.field_type) for f in table.schema().fields}
 
 
-def _describe_delta(spec, base_dir) -> Dict[str, str]:
+def _describe_delta(spec, base_dir, variables=None) -> Dict[str, str]:
     try:
         from deltalake import DeltaTable
     except ImportError as e:  # pragma: no cover
@@ -154,7 +156,7 @@ def _describe_delta(spec, base_dir) -> Dict[str, str]:
     return {f.name: str(f.type) for f in arrow_schema}
 
 
-def _describe_parquet(spec, base_dir) -> Dict[str, str]:
+def _describe_parquet(spec, base_dir, variables=None) -> Dict[str, str]:
     import pyarrow.parquet as pq
 
     pattern = _resolve_path(spec["path"], base_dir)
@@ -163,7 +165,7 @@ def _describe_parquet(spec, base_dir) -> Dict[str, str]:
     return {f.name: str(f.type) for f in schema}
 
 
-def _describe_arrow(spec, base_dir) -> Dict[str, str]:
+def _describe_arrow(spec, base_dir, variables=None) -> Dict[str, str]:
     import pyarrow as pa
 
     path = _resolve_path(spec["path"], base_dir)
@@ -172,7 +174,7 @@ def _describe_arrow(spec, base_dir) -> Dict[str, str]:
         return {f.name: str(f.type) for f in reader.schema}
 
 
-def _describe_csv(spec, base_dir) -> Dict[str, str]:
+def _describe_csv(spec, base_dir, variables=None) -> Dict[str, str]:
     from pyarrow import csv as pacsv
 
     path = _resolve_path(spec["path"], base_dir)
@@ -182,7 +184,7 @@ def _describe_csv(spec, base_dir) -> Dict[str, str]:
     return {f.name: str(f.type) for f in reader.schema}
 
 
-def _describe_inline(spec, base_dir) -> Dict[str, str]:
+def _describe_inline(spec, base_dir, variables=None) -> Dict[str, str]:
     schema_spec = spec.get("schema")
     if schema_spec:
         return dict(schema_spec)
@@ -211,7 +213,9 @@ _HANDLERS = {
 }
 
 
-def describe_source(spec: Dict[str, Any], *, base_dir: str = ".") -> Dict[str, str]:
+def describe_source(
+    spec: Dict[str, Any], *, base_dir: str = ".", variables: Dict[str, str] = None
+) -> Dict[str, str]:
     """Column name -> type string, for any rowparity source spec, without
     materializing row data."""
     if not isinstance(spec, dict) or "type" not in spec:
@@ -220,4 +224,4 @@ def describe_source(spec: Dict[str, Any], *, base_dir: str = ".") -> Dict[str, s
     handler = _HANDLERS.get(kind)
     if handler is None:
         raise SourceError(f"unknown source type '{kind}'. Known: {sorted(_HANDLERS)}")
-    return handler(spec, base_dir)
+    return handler(spec, base_dir, variables)
