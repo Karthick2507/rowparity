@@ -14,7 +14,7 @@ from typing import List, Tuple
 from .cases import discover_cases
 from .compare import ComparisonResult
 from .params import ParamError, parse_cli_params
-from .report import render_console, write_reports
+from .report import render_console, write_csv_reports, write_reports
 from .report_html import render_report_from_sink
 from .result_sink import make_result_sink
 
@@ -79,6 +79,9 @@ def _run(args) -> int:
 
     if args.json or args.md:
         write_reports(results, json_path=args.json, md_path=args.md)
+    if getattr(args, "csv", None):
+        paths = write_csv_reports(results, args.csv)
+        print(f"Wrote {len(paths)} per-column CSV report(s) to {args.csv}/")
 
     total = len(results)
     n_xfail = xfail_confirmed + xfail_unexpected_pass
@@ -134,6 +137,12 @@ def main(argv=None) -> int:
     )
     run_p.add_argument("--json", help="write a JSON summary here")
     run_p.add_argument("--md", help="write a Markdown report here")
+    run_p.add_argument(
+        "--csv", metavar="DIR",
+        help="write one <case>.csv per case here: a row per column with its "
+             "status and type on each side. This is the readable form when "
+             "schema drift runs to hundreds of columns.",
+    )
     run_p.add_argument(
         "--result-sink", dest="result_sink", metavar="BACKEND:TARGET",
         help="persist diff results to a store, e.g. duckdb:./results.duckdb  "

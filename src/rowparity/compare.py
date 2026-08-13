@@ -100,6 +100,15 @@ class ComparisonResult:
     duplicate_keys_actual: int = 0
     examples: List[RowDiff] = field(default_factory=list)
     change_signatures: Dict[Tuple[str, ...], ChangeSignature] = field(default_factory=dict)
+    # What was actually compared. "rows" for a data comparison, "schema" for a
+    # schema-only check -- summary() and the per-column CSV both need to tell
+    # them apart, and 0 rows is not a reliable signal (an empty table is also 0).
+    kind: str = "rows"
+    # Column -> type, when the producer knows them. Populated by schema checks
+    # so a per-column report can name the type of a column that exists on only
+    # one side; left empty by row comparisons, which never introspect types.
+    expected_schema: Dict[str, str] = field(default_factory=dict)
+    actual_schema: Dict[str, str] = field(default_factory=dict)
 
     @property
     def total_differences(self) -> int:
@@ -110,6 +119,15 @@ class ComparisonResult:
 
     def summary(self) -> str:
         head = "EQUIVALENT" if self.equivalent else "DIFFERENT"
+        if self.kind == "schema":
+            # A schema check fetches no rows by design; reporting it as a
+            # keyless multiset comparison of 0 rows is actively misleading.
+            return (
+                f"[{head}] schema-only | columns: {len(self.compared_columns)} compared, "
+                f"{len(self.columns_only_in_expected)} only in expected, "
+                f"{len(self.columns_only_in_actual)} only in actual, "
+                f"{len(self.type_mismatches)} type mismatch(es)"
+            )
         mode = f"keyed on {self.keys}" if self.keys else "keyless (multiset)"
         return (
             f"[{head}] {mode} | expected={self.expected_rows} actual={self.actual_rows} "

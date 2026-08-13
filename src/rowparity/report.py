@@ -56,18 +56,38 @@ def _render_signature(sig: ChangeSignature) -> str:
     return f"    {sig.count}x  {{{cols}}}{detail}"
 
 
+# Schema drift on a wide table can run to hundreds of columns. Dumping the raw
+# list produced a single 32,000-character line -- technically complete, wholly
+# unreadable. The full set goes to the CSV report instead.
+MAX_LISTED_COLUMNS = 20
+
+
+def _render_column_list(label: str, columns: List[str]) -> str:
+    shown = ", ".join(columns[:MAX_LISTED_COLUMNS])
+    if len(columns) <= MAX_LISTED_COLUMNS:
+        return f"  {label} ({len(columns)}): {shown}"
+    return (
+        f"  {label} ({len(columns)}, first {MAX_LISTED_COLUMNS} shown; "
+        f"use --csv for the full list): {shown}, ..."
+    )
+
+
 def render_console(result: ComparisonResult, case_name: str = "") -> str:
     lines: List[str] = []
     title = f"Case '{case_name}'" if case_name else "Comparison"
     lines.append(f"{title}: {result.summary()}")
 
     if result.columns_only_in_expected:
-        lines.append(f"  columns only in expected: {result.columns_only_in_expected}")
+        lines.append(_render_column_list("columns only in expected", result.columns_only_in_expected))
     if result.columns_only_in_actual:
-        lines.append(f"  columns only in actual:   {result.columns_only_in_actual}")
+        lines.append(_render_column_list("columns only in actual", result.columns_only_in_actual))
     if result.type_mismatches:
-        for col, et, at in result.type_mismatches:
+        for col, et, at in result.type_mismatches[:MAX_LISTED_COLUMNS]:
             lines.append(f"  type differs: {col}: expected {et} vs actual {at}")
+        if len(result.type_mismatches) > MAX_LISTED_COLUMNS:
+            lines.append(
+                f"  ... and {len(result.type_mismatches) - MAX_LISTED_COLUMNS} more type mismatch(es)"
+            )
     if result.duplicate_keys_expected or result.duplicate_keys_actual:
         lines.append(
             f"  DUPLICATE KEYS: expected={result.duplicate_keys_expected} "
@@ -149,6 +169,111 @@ def render_markdown(results: List[Tuple[str, ComparisonResult]]) -> str:
             lines.append("```")
             lines.append("")
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- #
+# Per-column CSV
+# --------------------------------------------------------------------------- #
+# The headline lists (columns_only_in_expected and friends) are fine at a
+# handful of columns and unreadable at 900 -- render_console dumps them as one
+# enormous line. A row-per-column CSV is the shape that actually scales, and is
+# sortable/filterable/diffable between runs.
+#
+# `status` deliberately reuses the vocabulary of the BCV analyser this replaced,
+# so the values are the ones the team already reads:
+#
+#     MATCHED              present on both sides, same type, no value diffs
+#     MATCHED - TYPE DIFF  present on both sides, types disagree
+#     MATCHED - VALUE DIFF present on both sides, values differ (row cases)
+#     DIFF                 present on one side only
+#
+# Column names use rowparity's own expected/actual vocabulary rather than BCV's
+# src/bcv, because this ships for every case type, not just a migration.
+
+CSV_FIELDS = ("case", "status", "column", "expected_type", "actual_type", "diff_rows")
+
+STATUS_MATCHED = "MATCHED"
+STATUS_TYPE_DIFF = "MATCHED - TYPE DIFF"
+STATUS_VALUE_DIFF = "MATCHED - VALUE DIFF"
+STATUS_DIFF = "DIFF"
+
+
+def _value_diff_counts(result: ComparisonResult) -> Dict[str, int]:
+    """How many changed rows each column took part in.
+
+    Derived from change_signatures, which the default engine computes over the
+    full table. Push-down engines build them from the fetched examples only, so
+    the counts there are a floor, not a total.
+    """
+    counts: Dict[str, int] = {}
+    for sig in result.change_signatures.values():
+        for column in sig.columns:
+            counts[column] = counts.get(column, 0) + sig.count
+    return counts
+
+
+def to_column_rows(result: ComparisonResult, case_name: str = "") -> List[Dict[str, Any]]:
+    """One row per column: what happened to it, and its type on each side."""
+    type_mismatch = {c: (et, at) for c, et, at in result.type_mismatches}
+    diff_counts = _value_diff_counts(result)
+    exp_schema, act_schema = result.expected_schema, result.actual_schema
+    rows: List[Dict[str, Any]] = []
+
+    # A type-mismatched column is normally in compared_columns too, but union
+    # them rather than trusting that: a producer that reported a mismatch
+    # without listing the column would otherwise drop it from the report
+    # silently, which is the worst way to lose a real finding.
+    both_sides = list(result.compared_columns)
+    both_sides += [c for c in type_mismatch if c not in set(result.compared_columns)]
+
+    for column in both_sides:
+        if column in type_mismatch:
+            status = STATUS_TYPE_DIFF
+            expected_type, actual_type = type_mismatch[column]
+        else:
+            status = STATUS_VALUE_DIFF if column in diff_counts else STATUS_MATCHED
+            expected_type = exp_schema.get(column, "")
+            actual_type = act_schema.get(column, "")
+        rows.append({
+            "case": case_name,
+            "status": status,
+            "column": column,
+            "expected_type": expected_type,
+            "actual_type": actual_type,
+            "diff_rows": diff_counts.get(column, ""),
+        })
+
+    for column in result.columns_only_in_expected:
+        rows.append({
+            "case": case_name, "status": STATUS_DIFF, "column": column,
+            "expected_type": exp_schema.get(column, ""), "actual_type": "", "diff_rows": "",
+        })
+    for column in result.columns_only_in_actual:
+        rows.append({
+            "case": case_name, "status": STATUS_DIFF, "column": column,
+            "expected_type": "", "actual_type": act_schema.get(column, ""), "diff_rows": "",
+        })
+    return rows
+
+
+def write_csv_reports(results: List[Tuple[str, ComparisonResult]], out_dir: str) -> List[str]:
+    """Write one <case>.csv per case into ``out_dir``. Returns the paths written."""
+    import csv
+    import os
+    import re
+
+    os.makedirs(out_dir, exist_ok=True)
+    written: List[str] = []
+    for name, result in results:
+        # Case names are author-supplied and end up as filenames.
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", name) or "case"
+        path = os.path.join(out_dir, f"{safe}.csv")
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=CSV_FIELDS)
+            writer.writeheader()
+            writer.writerows(to_column_rows(result, name))
+        written.append(path)
+    return written
 
 
 def write_reports(results: List[Tuple[str, ComparisonResult]], *, json_path: str = None, md_path: str = None):
