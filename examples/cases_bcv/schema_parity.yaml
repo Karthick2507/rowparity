@@ -3,7 +3,9 @@
 # schema_introspect.py, which uses Trino's DESCRIBE (a catalog lookup), so this
 # is safe to run against production-sized tables.
 #
-# Status mapping (verified against BCV/output/request_result.csv):
+# Status mapping (verified against the BCV analyser's own request_result.csv
+# before that tool was removed -- see commit 9e9281a -- and against a live
+# staging probe):
 #
 #   BCV Analyzer status                 rowparity field
 #   ------------------------------      -----------------------------
