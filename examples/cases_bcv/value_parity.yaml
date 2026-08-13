@@ -1,0 +1,87 @@
+# SRC vs BCV value parity — the rowparity equivalent of BCV Analyzer's
+# "Matched Column Value Validation" step.
+#
+# Two cases, deliberately separate, because they answer different questions
+# with opposite tolerance for ingestion lag:
+#
+#   bcv_request_completeness  did every sampled SRC transaction reach BCV?
+#                             Key column only, so it is cheap. Reports missing
+#                             and added honestly.
+#
+#   bcv_request_values        for transactions present in BOTH, do the values
+#                             agree? Pinned to the intersection, so a
+#                             not-yet-ingested transaction cannot masquerade
+#                             as a value defect.
+#
+# Run them as a pair. bcv_request_values alone cannot fail for missing data --
+# that is the point of the pinning, and it recreates BCV Analyzer's blind spot
+# if used on its own. (Its README: "Only rows present in both SRC and BCV are
+# compared; unmatched keys are skipped." It therefore could not detect a
+# dropped transaction at all. The completeness case closes that gap.)
+#
+# SAMPLING is deterministic: a hash of the join key, identical on both sides,
+# so the two queries independently select the same transactions with no
+# coordination. sample_modulus=1000 means roughly 1 transaction in 1000;
+# sample_modulus=1 compares the whole batch.
+#
+# BATCH_ID must name a batch that is not still being written. The comparison
+# assumes the batch does not change underneath it.
+#
+# Run:
+#   rowparity run examples/cases_bcv --param batch_id=20260812130000 \
+#       --select bcv_request_completeness bcv_request_values \
+#       --csv reports/bcv
+#
+# batch_id has no default on purpose (see below) -- omitting it is an error,
+# not an empty comparison that passes.
+
+vars:
+  src_catalog: mrm_log_flat
+  src_schema: default
+  bcv_catalog: etl
+  bcv_schema: public_test1
+  sample_modulus: "1000"
+  # batch_id is deliberately NOT defaulted. A placeholder default would query a
+  # batch that does not exist, return zero rows on both sides, and report
+  # EQUIVALENT -- a silent pass, the worst outcome for a verification tool.
+  # Leaving it undefined makes an omitted batch fail loudly at load instead.
+
+cases:
+  - name: bcv_request_completeness
+    description: >-
+      Every sampled SRC transaction must exist in BCV. Reads the key column
+      only. missing = dropped by the migration (or not yet ingested);
+      added = present in BCV but not SRC.
+    expected:
+      type: trino
+      query_file: sqls/src_request_keys.sql
+    actual:
+      type: trino
+      query_file: sqls/bcv_request_keys.sql
+    compare:
+      keys: [request__transaction_id]
+    tags: [bcv, values, completeness]
+
+  - name: bcv_request_values
+    description: >-
+      For transactions in both SRC and BCV, every shared column must hold the
+      same value. Columns SRC has and BCV does not are reported as schema
+      drift, not value failures.
+    expected:
+      type: trino
+      query_file: sqls/src_request_values.sql
+    actual:
+      type: trino
+      query_file: sqls/bcv_request_values.sql
+    compare:
+      keys: [request__transaction_id]
+      # Parent structure nodes -- a varchar column holding a serialised blob
+      # that also exists exploded into <field>__<child> columns. BCV skips
+      # these; comparing them duplicates the children and is noisy. Add the
+      # ones this table has as they show up in the CSV report.
+      ignore_columns: []
+      # float_tolerance is deliberately unset (exact). Both sides come from the
+      # same engine, so last-digit drift should not occur; if it does, that is
+      # a finding rather than something to tune away.
+      max_examples: 50
+    tags: [bcv, values]
