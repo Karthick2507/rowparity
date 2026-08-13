@@ -7,8 +7,10 @@ ignore_columns handling, and -- the point of the exercise -- that a
 ComparisonResult buckets columns the same way BCV Analyzer's status column
 does.
 
-The status mapping asserted here was validated against the real
-BCV/output/request_result.csv committed in this repo:
+The status mapping asserted here was validated against the BCV analyser's own
+output before that tool was removed from the repo -- BCV/output/request_result.csv
+as of commit 9e9281a, whose 1728 rows split 936 DIFF / 790 MATCHED / 2 TYPE
+DIFF, with 901 DIFFs having an empty bcv_field and 35 an empty src_field:
 
     DIFF (bcv_field empty)  -> columns_only_in_expected
     DIFF (src_field empty)  -> columns_only_in_actual
