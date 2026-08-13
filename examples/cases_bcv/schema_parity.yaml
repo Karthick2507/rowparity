@@ -1,0 +1,66 @@
+# SRC vs BCV schema parity — the rowparity equivalent of BCV Analyzer's
+# schema-comparison step. Zero rows are fetched: every source resolves through
+# schema_introspect.py, which uses Trino's DESCRIBE (a catalog lookup), so this
+# is safe to run against production-sized tables.
+#
+# Status mapping (verified against BCV/output/request_result.csv):
+#
+#   BCV Analyzer status                 rowparity field
+#   ------------------------------      -----------------------------
+#   DIFF        (bcv_field empty)  ->   columns_only_in_expected
+#   DIFF        (src_field empty)  ->   columns_only_in_actual
+#   MATCHED - TYPE DIFF            ->   type_mismatches
+#   MATCHED                        ->   compared_columns
+#
+# These cases report DIFFERENT for as long as BCV is missing any SRC column,
+# which for a migration in progress is the honest answer rather than a
+# failure. They are deliberately NOT tagged xfail: xfail would make the run
+# go green while columns are missing and red once they finally match, which
+# is backwards. Use ignore_columns to record gaps the team has explicitly
+# accepted (the equivalent of BCV's exclude.csv) so the case narrows to
+# unresolved work only.
+#
+# Run:
+#   export TRINO_HOST=presto-gateway.presto.stg.aws.fwmrm.net
+#   export TRINO_PORT=8080 TRINO_HTTP_SCHEME=https
+#   export TRINO_USER=...  TRINO_JWT_TOKEN=...
+#   rowparity run examples/cases_bcv --select bcv_request_schema
+
+cases:
+  - name: bcv_request_schema
+    description: >-
+      SRC mrm_log_flat.default.request must not contain columns the BCV
+      layout is missing. Confirmed live: 1697 SRC columns vs 837 BCV.
+    schema_check:
+      expected:
+        type: trino
+        table: mrm_log_flat.default.request
+      actual:
+        type: trino
+        table: etl.public_test1.request
+      ignore_columns: []
+    tags: [bcv, schema]
+
+  - name: bcv_slot_schema
+    description: SRC vs BCV schema parity for the slot table.
+    schema_check:
+      expected:
+        type: trino
+        table: mrm_log_flat.default.slot
+      actual:
+        type: trino
+        table: etl.public_test1.slot
+      ignore_columns: []
+    tags: [bcv, schema]
+
+  - name: bcv_ad_schema
+    description: SRC vs BCV schema parity for the ad table.
+    schema_check:
+      expected:
+        type: trino
+        table: mrm_log_flat.default.ad
+      actual:
+        type: trino
+        table: etl.public_test1.ad
+      ignore_columns: []
+    tags: [bcv, schema]
