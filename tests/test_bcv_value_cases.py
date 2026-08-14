@@ -35,6 +35,15 @@ def _case(name, params=PARAMS) -> Case:
     raise AssertionError(f"case {name!r} not found")
 
 
+def _strip_comments(sql: str) -> str:
+    """SQL with -- comment lines removed.
+
+    Assertions about query structure must not be fooled by prose: the header
+    comments describe the very constructs being asserted on.
+    """
+    return "\n".join(line for line in sql.splitlines() if not line.strip().startswith("--"))
+
+
 def _sql(case, side):
     spec = getattr(case, side)
     return resolve_query(spec, os.path.dirname(case.source_file), case.variables)
@@ -161,15 +170,69 @@ class TestSamplingIsIdenticalOnBothSides:
             assert "xxhash64(to_utf8(request__transaction_id))" in sql
 
 
-class TestBatchColumnsDifferPerSide:
-    def test_src_uses_process_batch_id_and_bcv_uses_batch_id(self):
-        case = _case("bcv_request_values")
-        src, bcv = _sql(case, "expected"), _sql(case, "actual")
-        assert f"process_batch_id = '{BATCH}'" in src
-        assert f"batch_id = '{BATCH}'" in bcv
-        # The BCV side must not use SRC's column name.
-        bcv_body = bcv.split("IN (")[0]
-        assert "process_batch_id" not in bcv_body
+class TestBatchColumnIsPerSideAndParameterised:
+    """The batch column was hardcoded per side, taken from BCV Analyzer's
+    README: process_batch_id on SRC, batch_id on BCV. A live run disproved
+    half of that -- SRC's name was right, but the BCV table has no batch_id at
+    all, and the whole run died on COLUMN_NOT_FOUND. It is a parameter now, so
+    a wrong name costs a flag rather than a round trip over VPN.
+    """
+
+    def test_each_side_takes_its_own_parameter(self):
+        case = _case(
+            "bcv_request_values",
+            {**PARAMS, "src_batch_column": "SRC_COL", "bcv_batch_column": "BCV_COL"},
+        )
+        # Strip comments before splitting: the header prose mentions "IN (...)"
+        # too, and splitting on that shifted every index by one.
+        src, bcv = (_strip_comments(_sql(case, side)) for side in ("expected", "actual"))
+        # Outer filter uses this side's column; the semi-join subquery uses the
+        # other side's. Getting those backwards silently filters on the wrong
+        # partition, so both halves are pinned.
+        assert f"SRC_COL = '{BATCH}'" in src.split("IN (")[0]
+        assert f"BCV_COL = '{BATCH}'" in src.split("IN (")[1]
+        assert f"BCV_COL = '{BATCH}'" in bcv.split("IN (")[0]
+        assert f"SRC_COL = '{BATCH}'" in bcv.split("IN (")[1]
+
+    def test_the_key_queries_use_their_own_side_only(self):
+        case = _case(
+            "bcv_request_completeness",
+            {**PARAMS, "src_batch_column": "SRC_COL", "bcv_batch_column": "BCV_COL"},
+        )
+        assert "SRC_COL" in _sql(case, "expected")
+        assert "BCV_COL" not in _sql(case, "expected")
+        assert "BCV_COL" in _sql(case, "actual")
+        assert "SRC_COL" not in _sql(case, "actual")
+
+    def test_the_resolver_uses_both(self):
+        # It INTERSECTs the batches each side knows about, so it needs both.
+        import os as _os
+
+        from rowparity.sources import resolve_query
+
+        case = _case(
+            "bcv_request_values",
+            {**PARAMS, "src_batch_column": "SRC_COL", "bcv_batch_column": "BCV_COL"},
+        )
+        sql = resolve_query(
+            {"type": "trino", "query_file": "sqls/latest_common_batch.sql"},
+            _os.path.dirname(case.source_file),
+            {**case.variables, "src_batch_column": "SRC_COL", "bcv_batch_column": "BCV_COL"},
+        )
+        assert "SRC_COL" in sql and "BCV_COL" in sql
+
+    def test_no_batch_column_name_is_left_hardcoded(self):
+        # A literal would silently override the parameter for that one side.
+        sql_dir = os.path.join(CASES_DIR, "sqls")
+        for fname in sorted(os.listdir(sql_dir)):
+            if not fname.endswith(".sql"):
+                continue
+            body = "\n".join(
+                line
+                for line in open(os.path.join(sql_dir, fname)).read().splitlines()
+                if not line.strip().startswith("--")
+            )
+            assert "process_batch_id" not in body, f"{fname} hardcodes a batch column"
 
 
 class TestIntersectionPinning:

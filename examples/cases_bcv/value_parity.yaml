@@ -45,6 +45,13 @@ vars:
   bcv_catalog: etl
   bcv_schema: public_test1
   sample_modulus: "1000"
+  # Which column carries the batch on each side. SRC and BCV do not
+  # necessarily agree: verified live that SRC uses process_batch_id, while the
+  # BCV layout does NOT have a column called batch_id (the name BCV Analyzer's
+  # README gave). Discover it with:
+  #   python scripts/find_batch_column.py
+  src_batch_column: process_batch_id
+  bcv_batch_column: process_batch_id
   # How many of the newest common batches to skip before picking one, so the
   # chosen batch is settled rather than merely present. Raise if the pipeline
   # runs behind.

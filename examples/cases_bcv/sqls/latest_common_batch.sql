@@ -22,10 +22,10 @@ SELECT b
 FROM (
     SELECT b, row_number() OVER (ORDER BY b DESC) AS rn
     FROM (
-        SELECT DISTINCT process_batch_id AS b
+        SELECT DISTINCT ${src_batch_column} AS b
         FROM ${src_catalog}.${src_schema}.request
         INTERSECT
-        SELECT DISTINCT batch_id AS b
+        SELECT DISTINCT ${bcv_batch_column} AS b
         FROM ${bcv_catalog}.${bcv_schema}.request
     )
 )

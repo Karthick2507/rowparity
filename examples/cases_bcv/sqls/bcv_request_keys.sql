@@ -1,8 +1,9 @@
 -- Case A (completeness), BCV side: the same deterministic sample.
 --
--- Note the column name differs from SRC: the BCV layout partitions on
--- `batch_id` where SRC uses `process_batch_id`. Same value, different column.
+-- The batch column name is a PARAMETER per side, not a literal. SRC and BCV
+-- need not agree on it, and a wrong guess costs a whole run: set
+-- bcv_batch_column / src_batch_column rather than editing this file.
 SELECT request__transaction_id
 FROM ${bcv_catalog}.${bcv_schema}.request
-WHERE batch_id = '${batch_id}'
+WHERE ${bcv_batch_column} = '${batch_id}'
   AND abs(from_big_endian_64(xxhash64(to_utf8(request__transaction_id)))) % ${sample_modulus} = 0
