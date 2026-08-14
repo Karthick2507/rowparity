@@ -144,6 +144,8 @@ def _build_case(
     source_file: str,
     file_vars: Optional[Dict[str, Any]] = None,
     cli_params: Optional[Dict[str, Any]] = None,
+    query_vars: Optional[Dict[str, str]] = None,
+    deferred_names: frozenset = frozenset(),
 ) -> Union[Case, ConceptCheckCase, SchemaCheckCase]:
     if "name" not in raw:
         raise ValueError(f"{source_file}: case is missing required field 'name': {raw!r}")
@@ -153,8 +155,20 @@ def _build_case(
     # can reach an engine still holding an unsubstituted placeholder.
     raw = dict(raw)
     case_vars = raw.pop("vars", None) or {}
+    raw.pop("param_queries", None)  # resolved once per file, see load_cases_from_file
     variables = params.resolve_variables(file_vars, case_vars, cli_params)
+    # Query-resolved values sit below --param/env (which short-circuit the
+    # query entirely) but above a vars: default.
+    for name, value in (query_vars or {}).items():
+        variables.setdefault(name, value)
     raw = params.substitute_spec(raw, variables, where=f"case '{raw['name']}' ({source_file})")
+    # Names whose query was skipped stood in for themselves just now, so that
+    # listing works. They must NOT survive onto the case: query_file contents
+    # are substituted at run time, and a literal "${batch_id}" reaching an
+    # engine is precisely the failure this design exists to prevent. Dropping
+    # them restores the clear "unresolved parameter" error instead.
+    for name in deferred_names:
+        variables.pop(name, None)
 
     if "schema_check" in raw:
         return build_schema_check_case(raw, source_file, variables=variables)
@@ -182,7 +196,9 @@ def _build_case(
 
 
 def load_cases_from_file(
-    path: str, params_: Optional[Dict[str, Any]] = None
+    path: str,
+    params_: Optional[Dict[str, Any]] = None,
+    resolve_queries: bool = True,
 ) -> List[Union[Case, ConceptCheckCase]]:
     with open(path, "r", encoding="utf-8") as fh:
         doc = yaml.safe_load(fh) or {}
@@ -192,27 +208,66 @@ def load_cases_from_file(
     # A file-level vars: block sits beside cases: and applies to all of them.
     # For a single-case document it is part of the case itself, and _build_case
     # picks it up there instead.
-    file_vars = doc.get("vars", {}) or {} if "cases" in doc else {}
-    if "cases" in doc:
-        raw_cases = doc["cases"]
-    else:
-        raw_cases = [doc]
+    multi = "cases" in doc
+    file_vars = (doc.get("vars", {}) or {}) if multi else {}
+    # param_queries: sits at document level either way -- beside cases:, or as
+    # a key of the single case, which is the document.
+    param_queries = doc.get("param_queries", {}) or {}
+    raw_cases = doc["cases"] if multi else [doc]
+
+    # Resolve query-backed parameters ONCE per file, not per case. Two cases
+    # that both key off the latest batch must see the same batch: resolving
+    # per case would let a batch landing mid-run compare two different
+    # populations, which is exactly the kind of difference that looks like a
+    # data defect.
+    query_vars: Dict[str, str] = {}
+    deferred: frozenset = frozenset()
+    if param_queries and resolve_queries:
+        from .param_queries import resolve_param_queries
+
+        seed = params.resolve_variables(file_vars, {}, params_)
+        query_vars = resolve_param_queries(
+            param_queries, seed, base_dir=os.path.dirname(path) or "."
+        )
+    elif param_queries:
+        # Resolution is off (rowparity list), but these names are legitimately
+        # declared -- failing with "unresolved parameter" would be wrong and
+        # would stop listing cases at all. Substitute each to its own literal
+        # placeholder: a single pass, so the text is unchanged and visibly
+        # still-unresolved rather than a fabricated value.
+        query_vars = {str(name).lower(): "${" + str(name) + "}" for name in param_queries}
+        deferred = frozenset(query_vars)
+
     cases = []
     for raw in raw_cases:
         merged = _merge_defaults(raw, defaults)
         merged.pop("defaults", None)
-        cases.append(_build_case(merged, path, file_vars=file_vars, cli_params=params_))
+        cases.append(
+            _build_case(
+                merged,
+                path,
+                file_vars=file_vars,
+                cli_params=params_,
+                query_vars=query_vars,
+                deferred_names=deferred,
+            )
+        )
     return cases
 
 
 def discover_cases(
-    path: str, params_: Optional[Dict[str, Any]] = None
+    path: str,
+    params_: Optional[Dict[str, Any]] = None,
+    resolve_queries: bool = True,
 ) -> List[Union[Case, ConceptCheckCase]]:
     """Load cases from a single file or, if ``path`` is a directory, every *.yml/*.yaml under it.
 
     ``params_`` carries ``--param NAME=VALUE`` overrides; they take precedence
     over both a case's ``vars:`` block and ``ROWPARITY_VAR_*`` environment
     variables.
+
+    ``resolve_queries`` runs any ``param_queries:`` block. ``rowparity list``
+    turns it off so that merely listing cases never touches a warehouse.
     """
     if os.path.isdir(path):
         files: List[str] = []
@@ -220,6 +275,6 @@ def discover_cases(
             files.extend(glob.glob(os.path.join(path, "**", ext), recursive=True))
         cases: List[Union[Case, ConceptCheckCase]] = []
         for f in sorted(files):
-            cases.extend(load_cases_from_file(f, params_))
+            cases.extend(load_cases_from_file(f, params_, resolve_queries))
         return cases
-    return load_cases_from_file(path, params_)
+    return load_cases_from_file(path, params_, resolve_queries)

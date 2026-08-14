@@ -26,8 +26,14 @@ from rowparity import schema_check as sc
 from rowparity.cases import discover_cases
 from rowparity.schema_check import SchemaCheckCase
 
-CASES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "examples", "cases_bcv"
+# The schema case FILE, not the directory. cases_bcv/ also holds value_parity
+# .yaml, whose param_queries: block resolves ${batch_id} by querying the
+# warehouse -- loading the whole directory here would try to reach Trino.
+CASES_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "examples",
+    "cases_bcv",
+    "schema_parity.yaml",
 )
 
 # Shaped after the live staging probe: a shared core, a SRC-only column, a
@@ -68,19 +74,23 @@ def stub_describe(monkeypatch):
 
 
 def _case(name: str) -> SchemaCheckCase:
-    for case in discover_cases(CASES_DIR):
+    for case in discover_cases(CASES_FILE):
         if case.name == name:
             return case
-    raise AssertionError(f"case {name!r} not found in {CASES_DIR}")
+    raise AssertionError(f"case {name!r} not found in {CASES_FILE}")
+
+
+def _schema_cases():
+    return discover_cases(CASES_FILE)
 
 
 class TestShippedCasesLoad:
     def test_all_three_tables_are_discovered(self):
-        names = {c.name for c in discover_cases(CASES_DIR)}
+        names = {c.name for c in _schema_cases()}
         assert names == {"bcv_request_schema", "bcv_slot_schema", "bcv_ad_schema"}
 
     def test_they_build_as_schema_check_cases(self):
-        for case in discover_cases(CASES_DIR):
+        for case in _schema_cases():
             assert isinstance(case, SchemaCheckCase), case.name
 
     def test_request_case_points_at_the_right_tables(self):
@@ -92,7 +102,7 @@ class TestShippedCasesLoad:
     def test_catalog_and_schema_are_switchable_without_editing_yaml(self):
         # The BCV target may be a test table today and the real one later;
         # that has to be a flag, not an edit per case.
-        cases = {c.name: c for c in discover_cases(CASES_DIR, {"bcv_schema": "public"})}
+        cases = {c.name: c for c in discover_cases(CASES_FILE, {"bcv_schema": "public"})}
         assert cases["bcv_request_schema"].actual["table"] == "etl.public.request"
         assert cases["bcv_slot_schema"].actual["table"] == "etl.public.slot"
         # The SRC side is untouched by that override.
@@ -101,7 +111,7 @@ class TestShippedCasesLoad:
     def test_no_case_is_tagged_xfail(self):
         # xfail would invert the signal: green while columns are missing, red
         # once the migration finally completes. See the note in the YAML.
-        for case in discover_cases(CASES_DIR):
+        for case in _schema_cases():
             assert "xfail" not in case.tags, case.name
 
 

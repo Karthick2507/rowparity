@@ -76,6 +76,9 @@ def run_schema_check(
         columns_only_in_expected=only_exp,
         columns_only_in_actual=only_act,
         type_mismatches=type_mismatches,
+        kind="schema",
+        expected_schema=exp_cols,
+        actual_schema=act_cols,
     )
 
 
