@@ -9,5 +9,5 @@
 -- Set sample_modulus=1 to compare the whole batch.
 SELECT request__transaction_id
 FROM ${src_catalog}.${src_schema}.request
-WHERE process_batch_id = '${batch_id}'
+WHERE ${src_batch_column} = '${batch_id}'
   AND abs(from_big_endian_64(xxhash64(to_utf8(request__transaction_id)))) % ${sample_modulus} = 0
