@@ -56,6 +56,45 @@ class TestBatchIdResolution:
         # And it is NOT also a literal default, which would shadow the query.
         assert "batch_id" not in doc["vars"]
 
+    def test_the_resolver_query_does_not_reference_what_it_resolves(self):
+        """A param query must not contain its own placeholder -- not even in a
+        comment. Substitution is plain text with no notion of SQL comments, so
+        a mention anywhere in the file makes the query demand the value it
+        exists to produce, and the whole run dies before it starts.
+        """
+        import re
+
+        import yaml
+
+        doc = yaml.safe_load(open(os.path.join(CASES_DIR, "value_parity.yaml")))
+        for name, spec in doc["param_queries"].items():
+            sql = open(os.path.join(CASES_DIR, spec["query_file"])).read()
+            placeholders = set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", sql))
+            assert name not in placeholders, (
+                f"param_queries['{name}'] resolves {name}, but its SQL still "
+                f"references ${{{name}}} -- circular, and fatal at load."
+            )
+
+    def test_every_placeholder_in_the_shipped_sql_is_satisfiable(self):
+        # A placeholder nobody provides fails the run; catching it here is far
+        # cheaper than discovering it against a live cluster.
+        import re
+
+        import yaml
+
+        doc = yaml.safe_load(open(os.path.join(CASES_DIR, "value_parity.yaml")))
+        provided = set(doc["vars"]) | set(doc["param_queries"])
+        sql_dir = os.path.join(CASES_DIR, "sqls")
+        for fname in sorted(os.listdir(sql_dir)):
+            if not fname.endswith(".sql"):
+                continue
+            sql = open(os.path.join(sql_dir, fname)).read()
+            placeholders = set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", sql))
+            assert placeholders <= provided, (
+                f"{fname} references {sorted(placeholders - provided)}, which "
+                f"nothing provides. Known: {sorted(provided)}"
+            )
+
     def test_pinning_it_short_circuits_the_query(self, monkeypatch):
         # --param must skip the query entirely rather than run it and discard
         # the answer. Any connection attempt here is a failure.

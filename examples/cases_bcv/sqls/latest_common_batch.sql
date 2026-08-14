@@ -1,5 +1,10 @@
--- Resolve ${batch_id} automatically: the newest batch that exists on BOTH
--- sides, excluding the most recent ones which may still be landing.
+-- Resolves the batch_id parameter automatically: the newest batch that exists
+-- on BOTH sides, excluding the most recent ones which may still be landing.
+--
+-- Do NOT write the placeholder form of that name anywhere in this file, not
+-- even in a comment. Substitution is plain text and has no idea what a SQL
+-- comment is, so mentioning it here would make this query demand the very
+-- value it exists to produce.
 --
 -- Picking the newest SRC batch would be wrong twice over: BCV may not have
 -- ingested it yet (every transaction would read as missing), and it may still
