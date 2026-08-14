@@ -300,10 +300,17 @@ def write_csv_reports(results: List[Tuple[str, ComparisonResult]], out_dir: str)
 
 
 def write_reports(results: List[Tuple[str, ComparisonResult]], *, json_path: str = None, md_path: str = None):
-    if json_path:
-        payload = [to_dict(r, name) for name, r in results]
-        with open(json_path, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, indent=2)
+    # Markdown first. These are independent artifacts, and writing JSON first
+    # meant a failure there took the Markdown report down with it -- losing
+    # both at once, on precisely the runs that had something to report.
     if md_path:
         with open(md_path, "w", encoding="utf-8") as fh:
             fh.write(render_markdown(results))
+    if json_path:
+        payload = [to_dict(r, name) for name, r in results]
+        with open(json_path, "w", encoding="utf-8") as fh:
+            # default=str: to_dict() embeds raw cell values from example rows,
+            # so any Decimal, date, datetime or bytes in a failing case would
+            # otherwise raise mid-write and leave a truncated, unparseable
+            # file. result_sink.py already serialises rows this way.
+            json.dump(payload, fh, indent=2, default=str)
