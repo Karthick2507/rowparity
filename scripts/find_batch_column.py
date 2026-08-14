@@ -1,10 +1,14 @@
 """Find which column carries the batch id, on each side.
 
-The BCV value-parity cases filter both tables to one batch. SRC and BCV do not
-necessarily name that column the same way -- verified live that SRC uses
-`process_batch_id` while the BCV layout has no `batch_id` at all, despite the
-BCV analyser's README describing exactly that split. Guessing costs a whole
-run against a warehouse over VPN, so ask instead.
+The BCV value-parity cases filter both tables to one batch, and the two sides
+do NOT name that column the same way: SRC uses `process_batch_id`, the target
+uses `batch_id`.
+
+Getting it wrong costs a full run over VPN to discover, and a staging table
+does not necessarily carry the same partition column as the environment the
+names were confirmed against -- so verify rather than assume. This reports
+whether the configured names actually exist, and what else looks batch-like
+if they do not.
 
 Schema-only: uses the same DESCRIBE path the schema_check cases use. No rows
 are read from either table.
@@ -64,6 +68,12 @@ def main() -> int:
     parser.add_argument("--src-schema", default="default")
     parser.add_argument("--bcv-catalog", default="etl")
     parser.add_argument("--bcv-schema", default="public_test1")
+    parser.add_argument(
+        "--src-batch-column",
+        default="process_batch_id",
+        help="the name the cases are configured with, to verify",
+    )
+    parser.add_argument("--bcv-batch-column", default="batch_id")
     args = parser.parse_args()
 
     src = f"{args.src_catalog}.{args.src_schema}.{args.table}"
@@ -71,6 +81,24 @@ def main() -> int:
 
     src_cols = _report("SRC", src)
     bcv_cols = _report("BCV", bcv)
+
+    # The direct question: do the names the cases are configured with actually
+    # exist? A run that fails on COLUMN_NOT_FOUND is answering this the slow
+    # way, over VPN, after the schema cases have already run.
+    print("\n--- Configured names " + "-" * 20)
+    for label, cols, table, configured in (
+        ("SRC", src_cols, src, args.src_batch_column),
+        ("BCV", bcv_cols, bcv, args.bcv_batch_column),
+    ):
+        if cols is None:
+            continue
+        if configured in cols:
+            print(f"  OK      {label}: {configured!r} exists on {table} ({cols[configured]})")
+        else:
+            print(f"  MISSING {label}: {configured!r} is NOT a column of {table}")
+            near = sorted(n for n in cols if configured.lower() in n.lower())
+            if near:
+                print(f"          names containing it: {near}")
 
     if src_cols and bcv_cols:
         shared = sorted(n for n, _ in _candidates(src_cols) if n in bcv_cols)
