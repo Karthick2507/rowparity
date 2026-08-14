@@ -13,14 +13,31 @@ from rowparity.history import build_case_histories, read_raw_history
 from rowparity.report_html import render_html_report, render_report_from_sink
 from rowparity.result_sink import DuckDBResultSink
 
-BASE = datetime(2026, 6, 30, tzinfo=timezone.utc)
+# history.py reads a ROLLING window ("the last N days"), so the fixtures have
+# to be anchored to now. A fixed calendar date passed when it was written and
+# then failed forever after -- silently, since the failure looks like a bug in
+# the reader rather than a rotten fixture.
+#
+# Two days back, at midnight UTC: recent enough to sit inside every window
+# these tests use, old enough that adding a few hours below cannot produce a
+# timestamp in the future, and midnight-anchored so +6h stays the same
+# calendar day (which is what the latest-wins test is about).
+BASE = (datetime.now(timezone.utc) - timedelta(days=2)).replace(
+    hour=0, minute=0, second=0, microsecond=0
+)
 
 
 def _write_days(db_path, case_name, tags, day_results):
-    """day_results: list of (offset_days, ComparisonResult)."""
-    for i, (offset, result) in enumerate(day_results):
+    """day_results: list of (days_ago, ComparisonResult).
+
+    Offsets count BACKWARDS. They previously counted forwards, which made one
+    of the assertions below unsatisfiable: a row written at the largest offset
+    was always the newest, so it could never be the one a rolling window
+    excluded.
+    """
+    for i, (days_ago, result) in enumerate(day_results):
         sink = DuckDBResultSink(db_path, run_id=f"{case_name}-{i}")
-        sink.write(case_name, tags, result, run_ts=BASE + timedelta(days=offset))
+        sink.write(case_name, tags, result, run_ts=BASE - timedelta(days=days_ago))
         sink.close()
 
 
@@ -86,9 +103,11 @@ def test_build_case_histories_change_signatures_grouped():
 
 
 def test_schema_drift_carried_in_history(db_path):
+    # Offsets are days AGO, so the clean day is the older one and drift
+    # appears on the more recent day. history is ordered oldest-first.
     _write_days(db_path, "case_a", [], [
-        (0, _r()),
-        (1, _r(equivalent=False, columns_only_in_actual=["new_col"])),
+        (1, _r()),
+        (0, _r(equivalent=False, columns_only_in_actual=["new_col"])),
     ])
     summary_rows, diffs_rows = read_raw_history(f"duckdb:{db_path}", days=30)
     cases = build_case_histories(summary_rows, diffs_rows)
