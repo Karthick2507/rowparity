@@ -37,7 +37,7 @@ from .sources import load_source
 _COMPARE_KEYS = {
     "keys", "select", "ignore_columns", "float_tolerance", "coerce_numeric_to_float",
     "trim_strings", "case_insensitive", "unordered_list_columns", "strict_columns",
-    "max_examples", "vectorized",
+    "max_examples", "vectorized", "null_equivalence",
 }
 
 
@@ -68,6 +68,17 @@ class Case:
     def run(self, base_dir: Optional[str] = None, sink=None, result_sink=None) -> ComparisonResult:
         base_dir = base_dir or (os.path.dirname(self.source_file) or ".")
         cfg = self.config()
+
+        # Equivalence classification happens in compare.py's per-row diff pass,
+        # which push-down engines do not run -- they would accept the option and
+        # silently classify nothing. Refuse instead of quietly differing.
+        if cfg.null_equivalence and self.engine in ("duckdb", "snowflake", "trino"):
+            raise ValueError(
+                f"case '{self.name}': null_equivalence is not supported with "
+                f"engine: {self.engine}. It is computed per changed row by the "
+                f"default engine; push-down engines fingerprint in-warehouse and "
+                f"never see individual values. Drop the engine: key for this case."
+            )
 
         if self.engine == "duckdb":
             result = self._run_duckdb_pushdown(base_dir, cfg)
