@@ -34,6 +34,12 @@ class CompareConfig:
     trim_strings: bool = False
     case_insensitive: bool = False
     unordered_list_columns: List[str] = field(default_factory=list)
+    # Label differences that are only a different spelling of absence
+    # (null vs 0 vs [] vs false). CLASSIFICATION ONLY: it never changes a
+    # verdict, and never makes NULL equal to anything in hashing.py. Off by
+    # default -- turning it on trades detection power for tolerance, and that
+    # has to be a deliberate, reviewable line in a case file.
+    null_equivalence: bool = False
     # If True, a column present on one side only (or with a different logical type)
     # fails the comparison. If False, we compare the intersection and just report.
     strict_columns: bool = False
@@ -59,6 +65,9 @@ class ColumnDiff:
     column: str
     expected: Any
     actual: Any
+    # Set when null_equivalence is on and this difference is only a different
+    # spelling of absence. The values still differ; this only records why.
+    equivalent: bool = False
 
 
 @dataclass
@@ -109,6 +118,11 @@ class ComparisonResult:
     # one side; left empty by row comparisons, which never introspect types.
     expected_schema: Dict[str, str] = field(default_factory=dict)
     actual_schema: Dict[str, str] = field(default_factory=dict)
+    # column -> how many changed rows whose difference in that column was
+    # classified as merely a different spelling of absence. Populated only
+    # when null_equivalence is on. Subtract from the per-column totals in
+    # change_signatures to get the count of genuine disagreements.
+    equivalent_diff_columns: Dict[str, int] = field(default_factory=dict)
 
     @property
     def total_differences(self) -> int:
@@ -259,6 +273,12 @@ def _compare_keyed(exp_rows, act_rows, exp_schema, act_schema, cols, cfg, canon_
             coldiffs = _column_diffs(e, a, exp_schema, act_schema, cols, cfg, canon_cfg, exp_canon, act_canon, ei, ai)
             diff = RowDiff(kind="changed", key=key, columns=coldiffs, expected_row=e, actual_row=a)
 
+            for cd in coldiffs:
+                if cd.equivalent:
+                    result.equivalent_diff_columns[cd.column] = (
+                        result.equivalent_diff_columns.get(cd.column, 0) + 1
+                    )
+
             sig = tuple(sorted(c.column for c in coldiffs))
             stats = result.change_signatures.setdefault(sig, ChangeSignature(columns=sig))
             stats.count += 1
@@ -279,7 +299,13 @@ def _column_diffs(e, a, exp_schema, act_schema, cols, cfg, canon_cfg,
             ce = canon_value(exp_schema.field(c).type, e.get(c), canon_cfg, unordered_list=unordered)
             ca = canon_value(act_schema.field(c).type, a.get(c), canon_cfg, unordered_list=unordered)
         if ce != ca:
-            diffs.append(ColumnDiff(column=c, expected=e.get(c), actual=a.get(c)))
+            ev, av = e.get(c), a.get(c)
+            equivalent = False
+            if cfg.null_equivalence:
+                from .equivalence import globally_equivalent
+
+                equivalent = globally_equivalent(ev, av)
+            diffs.append(ColumnDiff(column=c, expected=ev, actual=av, equivalent=equivalent))
     return diffs
 
 

@@ -94,6 +94,16 @@ def render_console(result: ComparisonResult, case_name: str = "") -> str:
             f"actual={result.duplicate_keys_actual} (keys should be unique)"
         )
 
+    if result.equivalent_diff_columns:
+        total = sum(result.equivalent_diff_columns.values())
+        cols = sorted(result.equivalent_diff_columns)
+        lines.append(
+            f"  globally equivalent: {total} column-difference(s) across "
+            f"{len(cols)} column(s) differ only in how absence is spelled "
+            f"(null / 0 / [] / false). Reported, not excused -- these still count."
+        )
+        lines.append(_render_column_list("    columns", cols))
+
     if result.change_signatures:
         lines.append(
             f"  change signatures ({len(result.change_signatures)} distinct, "
@@ -195,6 +205,10 @@ CSV_FIELDS = ("case", "status", "column", "expected_type", "actual_type", "diff_
 STATUS_MATCHED = "MATCHED"
 STATUS_TYPE_DIFF = "MATCHED - TYPE DIFF"
 STATUS_VALUE_DIFF = "MATCHED - VALUE DIFF"
+# Every difference in this column was only a different spelling of absence.
+# Mirrors the BCV analyser's third validation state: MATCHED is its Y,
+# EQUIVALENT its E, VALUE DIFF its N.
+STATUS_EQUIVALENT = "MATCHED - EQUIVALENT"
 STATUS_DIFF = "DIFF"
 
 
@@ -216,6 +230,7 @@ def to_column_rows(result: ComparisonResult, case_name: str = "") -> List[Dict[s
     """One row per column: what happened to it, and its type on each side."""
     type_mismatch = {c: (et, at) for c, et, at in result.type_mismatches}
     diff_counts = _value_diff_counts(result)
+    equiv_counts = result.equivalent_diff_columns
     exp_schema, act_schema = result.expected_schema, result.actual_schema
     rows: List[Dict[str, Any]] = []
 
@@ -231,7 +246,15 @@ def to_column_rows(result: ComparisonResult, case_name: str = "") -> List[Dict[s
             status = STATUS_TYPE_DIFF
             expected_type, actual_type = type_mismatch[column]
         else:
-            status = STATUS_VALUE_DIFF if column in diff_counts else STATUS_MATCHED
+            total = diff_counts.get(column, 0)
+            equivalent = equiv_counts.get(column, 0)
+            if total == 0:
+                status = STATUS_MATCHED
+            elif total <= equivalent:
+                # Nothing left once the absence-spelling diffs are accounted for.
+                status = STATUS_EQUIVALENT
+            else:
+                status = STATUS_VALUE_DIFF
             expected_type = exp_schema.get(column, "")
             actual_type = act_schema.get(column, "")
         rows.append({

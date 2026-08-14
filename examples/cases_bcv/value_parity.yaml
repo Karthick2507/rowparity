@@ -99,5 +99,14 @@ cases:
       # float_tolerance is deliberately unset (exact). Both sides come from the
       # same engine, so last-digit drift should not occur; if it does, that is
       # a finding rather than something to tune away.
+      #
+      # Label differences that are only a different spelling of absence -- an
+      # empty array where the other side stores null, a 0 where it stores
+      # nothing. These are the representational differences the migration is
+      # known to introduce. CLASSIFICATION ONLY: such rows still count as
+      # changed and the case still reports DIFFERENT. It separates "the values
+      # disagree" from "the values agree but spell absence differently" in the
+      # CSV, which is the distinction that makes 800 columns triageable.
+      null_equivalence: true
       max_examples: 50
     tags: [bcv, values]
