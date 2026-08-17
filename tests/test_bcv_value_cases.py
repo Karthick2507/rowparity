@@ -11,6 +11,7 @@ import os
 import re
 
 import pytest
+import yaml
 
 from rowparity.cases import Case, discover_cases
 from rowparity.params import ParamError
@@ -176,6 +177,11 @@ class TestBatchColumnIsPerSideAndParameterised:
     half of that -- SRC's name was right, but the BCV table has no batch_id at
     all, and the whole run died on COLUMN_NOT_FOUND. It is a parameter now, so
     a wrong name costs a flag rather than a round trip over VPN.
+
+    DESCRIBE against both live tables (scripts/find_batch_column.py) then showed
+    process_batch_id on each side. The parameters stay per-side anyway: another
+    environment need not agree, and the point of the split is that disagreement
+    is a flag rather than an edit.
     """
 
     def test_each_side_takes_its_own_parameter(self):
@@ -233,6 +239,15 @@ class TestBatchColumnIsPerSideAndParameterised:
                 if not line.strip().startswith("--")
             )
             assert "process_batch_id" not in body, f"{fname} hardcodes a batch column"
+
+    def test_shipped_defaults_match_the_live_schema(self):
+        # Pins what DESCRIBE actually reported, so the README's batch_id cannot
+        # creep back in from documentation. If a real environment disagrees,
+        # change this together with the YAML -- do not loosen it.
+        with open(os.path.join(CASES_DIR, "value_parity.yaml"), encoding="utf-8") as fh:
+            variables = yaml.safe_load(fh)["vars"]
+        assert variables["src_batch_column"] == "process_batch_id"
+        assert variables["bcv_batch_column"] == "process_batch_id"
 
 
 class TestIntersectionPinning:

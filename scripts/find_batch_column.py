@@ -1,14 +1,15 @@
 """Find which column carries the batch id, on each side.
 
-The BCV value-parity cases filter both tables to one batch, and the two sides
-do NOT name that column the same way: SRC uses `process_batch_id`, the target
-uses `batch_id`.
+The BCV value-parity cases filter both tables to one batch. On the environment
+checked so far both sides name that column `process_batch_id` -- but that was
+only established by running this script: documentation said the target used
+`batch_id`, and the target has no such column, which is what killed a live run
+with COLUMN_NOT_FOUND after the schema cases had already passed.
 
-Getting it wrong costs a full run over VPN to discover, and a staging table
-does not necessarily carry the same partition column as the environment the
-names were confirmed against -- so verify rather than assume. This reports
-whether the configured names actually exist, and what else looks batch-like
-if they do not.
+Getting it wrong costs a full run over VPN to discover, and another environment
+need not name the partition column the same way -- so verify rather than
+assume. This reports whether the configured names actually exist, and what else
+looks batch-like if they do not.
 
 Schema-only: uses the same DESCRIBE path the schema_check cases use. No rows
 are read from either table.
@@ -73,7 +74,7 @@ def main() -> int:
         default="process_batch_id",
         help="the name the cases are configured with, to verify",
     )
-    parser.add_argument("--bcv-batch-column", default="batch_id")
+    parser.add_argument("--bcv-batch-column", default="process_batch_id")
     args = parser.parse_args()
 
     src = f"{args.src_catalog}.{args.src_schema}.{args.table}"
