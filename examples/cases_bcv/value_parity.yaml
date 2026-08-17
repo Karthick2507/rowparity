@@ -45,16 +45,22 @@ vars:
   bcv_catalog: etl
   bcv_schema: public_test1
   sample_modulus: "1000"
-  # Which column carries the batch on each side. The two do NOT agree:
-  # SRC partitions on process_batch_id, the target on batch_id. Confirmed by
-  # the layout owner.
+  # Which column carries the batch on each side. Both are process_batch_id --
+  # confirmed by DESCRIBE against the live tables, not from documentation: the
+  # target has no batch_id column at all (scripts/find_batch_column.py, which
+  # reported it MISSING on etl.public_test1.request and process_batch_id as the
+  # only batch-like name).
+  #
+  # They stay two parameters even while holding the same value, because nothing
+  # guarantees a different environment names them alike, and one --param is a
+  # cheaper fix than editing five SQL files.
   #
   # If a run fails with COLUMN_NOT_FOUND on either name, the table being
   # pointed at does not have it -- check which environment bcv_schema
   # resolves to, then:
   #   python scripts/find_batch_column.py
   src_batch_column: process_batch_id
-  bcv_batch_column: batch_id
+  bcv_batch_column: process_batch_id
   # How many of the newest common batches to skip before picking one, so the
   # chosen batch is settled rather than merely present. Raise if the pipeline
   # runs behind.
