@@ -307,3 +307,36 @@ class TestCaseConfiguration:
     def test_catalogs_are_switchable(self):
         case = _case("bcv_request_values", {**PARAMS, "bcv_schema": "public"})
         assert "etl.public.request" in _sql(case, "actual")
+
+
+class TestStorageMetadataIsExcluded:
+    """BCV skipped exclude.csv columns from value validation as well as schema
+    comparison. The value case shares the schema cases' file so the two cannot
+    disagree about what is out of scope.
+    """
+
+    METADATA = ("__path__", "__offset__", "__file_size__", "__footer_size__")
+
+    def test_the_value_case_uses_the_shared_exclusion_file(self):
+        compare = _case("bcv_request_values").compare
+        assert compare["ignore_columns_file"] == "exclude.csv"
+        assert compare["ignore_columns_table"] == "request"
+
+    def test_all_four_metadata_columns_reach_compareconfig(self):
+        cfg = _case("bcv_request_values").config(CASES_DIR)
+        for column in self.METADATA:
+            assert column in cfg.ignore_columns, column
+
+    def test_the_completeness_case_needs_no_exclusions(self):
+        # It selects the key column only, so there is no metadata column in
+        # scope to exclude.
+        compare = _case("bcv_request_completeness").compare
+        assert "ignore_columns_file" not in compare
+
+    def test_the_shipped_file_covers_every_table_the_cases_use(self):
+        # A case pointing at a table the file does not cover raises, so the
+        # three schema cases plus this one must all be represented.
+        from rowparity.exclusions import load_exclusions
+
+        for table in ("request", "slot", "ad"):
+            assert load_exclusions("exclude.csv", table, CASES_DIR) == sorted(self.METADATA)

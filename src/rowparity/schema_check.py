@@ -18,6 +18,10 @@ YAML format::
         type: trino
         table: hive.analytics.orders_v2
       ignore_columns: [loaded_at, _updated_at]  # optional
+      # Or from a shared per-table CSV (see exclusions.py); unioned with the
+      # inline list above when both are present:
+      ignore_columns_file: exclude.csv          # optional, relative to this YAML
+      ignore_columns_table: orders              # required with the above
 
     # Works with any source type schema_introspect.py supports:
     # duckdb / sql / snowflake / spark / iceberg / delta / parquet / arrow / csv / inline
@@ -36,7 +40,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from .compare import ComparisonResult
+from .exclusions import ExclusionError, merge_ignore_columns
 from .schema_introspect import describe_source
+
+_SCHEMA_CHECK_KEYS = {
+    "expected", "actual", "ignore_columns",
+    "ignore_columns_file", "ignore_columns_table",
+}
 
 
 class SchemaCheckError(RuntimeError):
@@ -92,12 +102,25 @@ class SchemaCheckCase:
     tags: List[str] = field(default_factory=list)
     source_file: str = ""
     variables: Dict[str, str] = field(default_factory=dict)
+    # Resolved in run(), not at build time, so an explicit base_dir override
+    # applies to the exclusion file the same way it applies to query_file.
+    ignore_columns_file: Optional[str] = None
+    ignore_columns_table: Optional[str] = None
 
     def run(self, base_dir: Optional[str] = None, sink=None, result_sink=None) -> ComparisonResult:
         base_dir = base_dir or (os.path.dirname(self.source_file) or ".")
+        try:
+            ignore_columns = merge_ignore_columns(
+                self.ignore_columns,
+                self.ignore_columns_file,
+                self.ignore_columns_table,
+                base_dir=base_dir,
+            )
+        except ExclusionError as exc:
+            raise ExclusionError(f"case '{self.name}': {exc}") from exc
         result = run_schema_check(
             self.expected, self.actual,
-            ignore_columns=self.ignore_columns,
+            ignore_columns=ignore_columns,
             base_dir=base_dir,
             variables=self.variables,
         )
@@ -115,6 +138,15 @@ def build_schema_check_case(
             raise SchemaCheckError(
                 f"{source_file}: schema_check is missing required field '{required}'"
             )
+    # A typo'd key here used to be silently ignored, which for an exclusion key
+    # means "nothing was excluded" -- the failure mode exclusions.py exists to
+    # prevent. Reject unknown keys instead.
+    unknown = set(sc) - _SCHEMA_CHECK_KEYS
+    if unknown:
+        raise SchemaCheckError(
+            f"{source_file}: schema_check has unknown field(s) {sorted(unknown)}; "
+            f"valid fields are {sorted(_SCHEMA_CHECK_KEYS)}"
+        )
     return SchemaCheckCase(
         name=raw["name"],
         expected=sc["expected"],
@@ -124,4 +156,6 @@ def build_schema_check_case(
         tags=raw.get("tags", []) or [],
         source_file=source_file,
         variables=variables or {},
+        ignore_columns_file=sc.get("ignore_columns_file"),
+        ignore_columns_table=sc.get("ignore_columns_table"),
     )
