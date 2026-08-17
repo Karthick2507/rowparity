@@ -31,6 +31,7 @@ import yaml
 from . import params
 from .compare import CompareConfig, ComparisonResult, compare_tables
 from .concept_check import ConceptCheckCase, build_concept_check_case
+from .exclusions import ExclusionError, merge_ignore_columns
 from .schema_check import SchemaCheckCase, build_schema_check_case
 from .sources import load_source
 
@@ -38,7 +39,13 @@ _COMPARE_KEYS = {
     "keys", "select", "ignore_columns", "float_tolerance", "coerce_numeric_to_float",
     "trim_strings", "case_insensitive", "unordered_list_columns", "strict_columns",
     "max_examples", "vectorized", "null_equivalence",
+    "ignore_columns_file", "ignore_columns_table",
 }
+
+# Consumed while building CompareConfig and then dropped -- they resolve into
+# ignore_columns rather than being options of their own, so CompareConfig (and
+# every engine reading it) stays unaware that a file was involved.
+_EXCLUSION_KEYS = ("ignore_columns_file", "ignore_columns_table")
 
 
 _ENGINES = {None, "python", "duckdb", "snowflake", "trino"}
@@ -59,15 +66,30 @@ class Case:
     # read at run time.
     variables: Dict[str, str] = field(default_factory=dict)
 
-    def config(self) -> CompareConfig:
+    def config(self, base_dir: Optional[str] = None) -> CompareConfig:
         unknown = set(self.compare) - _COMPARE_KEYS
         if unknown:
             raise ValueError(f"case '{self.name}': unknown compare option(s): {sorted(unknown)}")
-        return CompareConfig(**self.compare)
+
+        options = {k: v for k, v in self.compare.items() if k not in _EXCLUSION_KEYS}
+        exclusion_file = self.compare.get("ignore_columns_file")
+        exclusion_table = self.compare.get("ignore_columns_table")
+        if exclusion_file or exclusion_table:
+            base_dir = base_dir or (os.path.dirname(self.source_file) or ".")
+            try:
+                options["ignore_columns"] = merge_ignore_columns(
+                    self.compare.get("ignore_columns"),
+                    exclusion_file,
+                    exclusion_table,
+                    base_dir=base_dir,
+                )
+            except ExclusionError as exc:
+                raise ExclusionError(f"case '{self.name}': {exc}") from exc
+        return CompareConfig(**options)
 
     def run(self, base_dir: Optional[str] = None, sink=None, result_sink=None) -> ComparisonResult:
         base_dir = base_dir or (os.path.dirname(self.source_file) or ".")
-        cfg = self.config()
+        cfg = self.config(base_dir)
 
         # Equivalence classification happens in compare.py's per-row diff pass,
         # which push-down engines do not run -- they would accept the option and

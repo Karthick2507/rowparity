@@ -19,8 +19,14 @@
 # failure. They are deliberately NOT tagged xfail: xfail would make the run
 # go green while columns are missing and red once they finally match, which
 # is backwards. Use ignore_columns to record gaps the team has explicitly
-# accepted (the equivalent of BCV's exclude.csv) so the case narrows to
-# unresolved work only.
+# accepted so the case narrows to unresolved work only.
+#
+# exclude.csv IS BCV Analyzer's file, adopted unchanged (table,column). Storage
+# metadata columns -- __path__, __offset__, __file_size__, __footer_size__ --
+# exist on SRC and have no business in the BCV layout, so comparing them
+# reports four permanent DIFFs per table that never get resolved. Each case
+# names its own table; rows for the others are ignored, which is what lets one
+# file serve the whole suite. See src/rowparity/exclusions.py.
 #
 # Run:
 #   export TRINO_HOST=presto-gateway.presto.stg.aws.fwmrm.net
@@ -54,6 +60,8 @@ cases:
         type: trino
         table: "${bcv_catalog}.${bcv_schema}.request"
       ignore_columns: []
+      ignore_columns_file: exclude.csv
+      ignore_columns_table: request
     tags: [bcv, schema]
 
   - name: bcv_slot_schema
@@ -66,6 +74,8 @@ cases:
         type: trino
         table: "${bcv_catalog}.${bcv_schema}.slot"
       ignore_columns: []
+      ignore_columns_file: exclude.csv
+      ignore_columns_table: slot
     tags: [bcv, schema]
 
   - name: bcv_ad_schema
@@ -78,4 +88,6 @@ cases:
         type: trino
         table: "${bcv_catalog}.${bcv_schema}.ad"
       ignore_columns: []
+      ignore_columns_file: exclude.csv
+      ignore_columns_table: ad
     tags: [bcv, schema]

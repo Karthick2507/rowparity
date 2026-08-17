@@ -107,10 +107,20 @@ cases:
       query_file: sqls/bcv_request_values.sql
     compare:
       keys: [request__transaction_id]
-      # Parent structure nodes -- a varchar column holding a serialised blob
-      # that also exists exploded into <field>__<child> columns. BCV skips
-      # these; comparing them duplicates the children and is noisy. Add the
-      # ones this table has as they show up in the CSV report.
+      # Storage metadata (__path__, __offset__, __file_size__, __footer_size__)
+      # comes from the shared exclusion file, the same one the schema cases use
+      # -- BCV skipped excluded columns from value validation as well as schema
+      # comparison, and one list for both is what keeps them from drifting.
+      ignore_columns_file: exclude.csv
+      ignore_columns_table: request
+      # Case-specific additions go here and are unioned with the file above.
+      #
+      # Parent structure nodes belong here once identified: a varchar column
+      # holding a serialised blob that also exists exploded into
+      # <field>__<child> columns. BCV skips these; comparing them duplicates the
+      # children and is noisy. Add the ones this table has as they show up in
+      # the CSV report. Left empty because guessing them is worse than a noisy
+      # first run that names them.
       ignore_columns: []
       # float_tolerance is deliberately unset (exact). Both sides come from the
       # same engine, so last-digit drift should not occur; if it does, that is

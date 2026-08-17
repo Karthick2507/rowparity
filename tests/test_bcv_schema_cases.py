@@ -120,7 +120,9 @@ class TestStatusMapping:
         result = _case("bcv_request_schema").run()
 
         # DIFF with an empty bcv_field -> SRC has it, BCV does not.
-        assert result.columns_only_in_expected == ["__file_size__", "data_partition"]
+        # __file_size__ is also SRC-only but is excluded via exclude.csv, so it
+        # does not appear here -- see TestStorageMetadataExclusion below.
+        assert result.columns_only_in_expected == ["data_partition"]
         # DIFF with an empty src_field -> BCV has it, SRC does not.
         assert result.columns_only_in_actual == ["bcv_only_marker"]
         # MATCHED - TYPE DIFF
@@ -139,6 +141,22 @@ class TestStatusMapping:
             "request__timestamp",
             "request__transaction_id",
         ]
+
+    def test_storage_metadata_is_excluded_not_reported(self, stub_describe):
+        # __file_size__ exists on SRC and has no place in the BCV layout. Left
+        # in, it is a permanent DIFF on every table that never gets resolved --
+        # which is why BCV kept exclude.csv. Proven by removing the exclusion
+        # below, so this cannot pass because the stub forgot the column.
+        result = _case("bcv_request_schema").run()
+        assert "__file_size__" not in result.columns_only_in_expected
+        assert "__file_size__" not in result.compared_columns
+        assert "__file_size__" not in result.expected_schema
+
+        case = _case("bcv_request_schema")
+        case.ignore_columns_file = None
+        case.ignore_columns_table = None
+        bare = case.run()
+        assert "__file_size__" in bare.columns_only_in_expected
 
     def test_reports_different_while_bcv_lags(self, stub_describe):
         # The honest answer during a migration: not equivalent yet.
