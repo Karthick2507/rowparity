@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Builds tiny golden/actual table pairs in Snowflake for validating
 snowflake_pushdown.py against a real warehouse -- separate from
 examples/build_tpch_data.py (DuckDB, runs in CI) since this needs a live

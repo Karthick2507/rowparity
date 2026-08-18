@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Find which column carries the batch id, on each side.
 
 The BCV value-parity cases filter both tables to one batch. On the environment
@@ -14,9 +15,12 @@ looks batch-like if they do not.
 Schema-only: uses the same DESCRIBE path the schema_check cases use. No rows
 are read from either table.
 
-Usage:
+Usage (either form; the shebang and execute bit make ./ work too):
     python scripts/find_batch_column.py
-    python scripts/find_batch_column.py --table slot
+    ./scripts/find_batch_column.py --table slot
+
+Or as part of the suite, which runs this before the cases that depend on it:
+    ./scripts/run_bcv.sh columns
 
 Then run with whatever it reports:
     rowparity run examples/cases_bcv --param bcv_batch_column=<name>

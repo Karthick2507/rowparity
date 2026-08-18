@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Sanity check before running any Trino/Presto rowparity case.
 
 Validates, in order, the things every later BCV phase depends on:
