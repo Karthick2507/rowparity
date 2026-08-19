@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Sanity check before running any real snowflake_pushdown.py case: confirms
 key-pair auth actually connects, and that the configured warehouse/database/
 schema are usable. Doesn't touch snowflake_pushdown.py at all -- this only
