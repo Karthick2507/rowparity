@@ -747,7 +747,7 @@ select
     , nw.inbound_order_type             as inbound_order_type
     , nw.inbound_order_transaction_type as inbound_order_transaction_type
     , date_trunc('HOUR', request__timestamp) as event_date
-from etl.public_test1.ad
+from etl.public_test1.ad   
 cross join unnest (
     partners__network_id,
     partners__site_id,
@@ -830,6 +830,7 @@ where
     and supply_source != 4                                                                          -- filter out DSP shell networks                     
     and not(bitwise_and(coalesce(request__extra_flags2,0), 8) > 0 and coalesce(nw.nw_role, '') = 'CRO')  -- filter out SSP shell networks
     and bitwise_and(bit_flag, bitwise_shift_left(1, 41, 64)) = 0                                    -- filter out partner tag buyer
+    and bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0 --sampling filter
 
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,189,190,259,260,261,262
  
@@ -1482,6 +1483,7 @@ where
     and supply_source != 4                                                                          -- filter out DSP shell networks                     
     and not(bitwise_and(coalesce(request__extra_flags2,0), 8) > 0 and coalesce(nw.nw_role, '') = 'CRO')  -- filter out SSP shell networks
     and bitwise_and(bit_flag, bitwise_shift_left(1, 41, 64)) = 0                                    -- filter out partner tag buyer
+    and bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0 --sampling filter
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,189,190,259,260,261,262
 union all
 
@@ -1895,7 +1897,7 @@ select
     , nw.inbound_order_type             as inbound_order_type
     , nw.inbound_order_transaction_type as inbound_order_transaction_type
     , date_trunc('HOUR', ack__timestamp) as event_date
-from etl.public_test1.ack
+from etl.public_test1.ack  
 cross join unnest (
     partners__network_id,
     partners__site_id,
@@ -1989,6 +1991,7 @@ where
     and (coalesce(ack__ack_entity_type, '') = 'ad'
         or (ack__event_type = 'e' and ack__event_category in ('ad_manager_error', 'vast_error')))
     and (ack__is_private_impression = false or network_is_ad_owner = true or is_extra_item_owner = true)
+    and bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0 --sampling filter
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,189,190,259,260,261,262
 ) as f
 left join ad_unit_map aum on aum.network_id = f.network_id

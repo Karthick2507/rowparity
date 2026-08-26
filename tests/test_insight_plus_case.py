@@ -75,10 +75,15 @@ class TestWiring:
         assert "etl.public_test1" in actual
         assert "mrm_log_flat.default" not in actual
 
-    def test_only_hoover_carries_the_sampling_filter(self, sql_files_present):
+    def test_both_sides_carry_the_sampling_filter(self, sql_files_present):
+        # Hoover++ was originally unsampled, on the understanding that its
+        # source was already the bit-59 sample. A live run disproved that:
+        # 2,719 rows against 1,113,423, a ratio of 409. Comparing a sampled
+        # side against an unsampled one measures the sampling, not the
+        # migration.
         case = _case()
         assert _sql(case, "expected").count("--sampling filter") == 3
-        assert "--sampling filter" not in _sql(case, "actual")
+        assert _sql(case, "actual").count("--sampling filter") == 3
 
 
 class TestBatchParameter:

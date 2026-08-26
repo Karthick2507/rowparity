@@ -255,6 +255,7 @@ def to_column_rows(result: ComparisonResult, case_name: str = "") -> List[Dict[s
     type_mismatch = {c: (et, at) for c, et, at in result.type_mismatches}
     diff_counts = _value_diff_counts(result)
     equiv_counts = result.equivalent_diff_columns
+    value_mismatch = set(result.column_value_mismatch)
     exp_schema, act_schema = result.expected_schema, result.actual_schema
     rows: List[Dict[str, Any]] = []
 
@@ -272,7 +273,14 @@ def to_column_rows(result: ComparisonResult, case_name: str = "") -> List[Dict[s
         else:
             total = diff_counts.get(column, 0)
             equivalent = equiv_counts.get(column, 0)
-            if total == 0:
+            if column in value_mismatch:
+                # Keyless: the column's value multiset differs between the two
+                # sides. There is no per-row count to report -- without a key
+                # rows cannot be paired -- but "this column's values differ" is
+                # the fact that makes 262 columns triageable, and calling it
+                # MATCHED beside a million row differences did not.
+                status = STATUS_VALUE_DIFF
+            elif total == 0:
                 status = STATUS_MATCHED
             elif total <= equivalent:
                 # Nothing left once the absence-spelling diffs are accounted for.
