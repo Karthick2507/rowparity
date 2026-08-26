@@ -32,7 +32,16 @@ from typing import Any, Dict, Iterable, Mapping, Optional
 
 # Only identifier-shaped names are placeholders. Anything else containing a
 # '$' -- a shell snippet in a comment, a regex -- passes through untouched.
-_PLACEHOLDER = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+#
+# Dots are allowed inside the name because real query files arrive already
+# templated by another system, and those names are namespaced:
+# ``${arena.presto.var.process_batch_id}``. Refusing to recognise them was
+# worse than it sounds -- the name did not match, so it was neither substituted
+# nor reported unresolved, and the literal text reached Presto inside quotes as
+# a valid string that matches no batch. Both sides then return zero rows and the
+# run reports EQUIVALENT: a clean pass proving nothing. Recognising the name
+# turns that into either a substitution or a loud error.
+_PLACEHOLDER = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_.]*)\}")
 
 ENV_PREFIX = "ROWPARITY_VAR_"
 

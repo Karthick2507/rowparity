@@ -100,6 +100,48 @@ class TestSubstitute:
         assert "'a'" in str(exc.value) and "'b'" in str(exc.value)
 
 
+class TestNamespacedNames:
+    """Query files templated by another system carry dotted, namespaced names.
+
+    Before dots were recognised, ``${arena.presto.var.process_batch_id}`` was
+    neither substituted nor reported unresolved -- it reached Presto as a
+    literal string inside quotes, a valid predicate matching no batch. Both
+    sides returned zero rows and the run reported EQUIVALENT: a green result
+    proving nothing. These tests exist to keep that failure mode closed.
+    """
+
+    NAME = "arena.presto.var.process_batch_id"
+
+    def test_dotted_name_substitutes(self):
+        sql = "WHERE process_batch_id = '${%s}'" % self.NAME
+        assert substitute(sql, {self.NAME: "20260812010000"}) == (
+            "WHERE process_batch_id = '20260812010000'"
+        )
+
+    def test_dotted_name_unresolved_raises_rather_than_passing_through(self):
+        # The whole point: silence here is what produced the false pass.
+        with pytest.raises(ParamError) as exc:
+            substitute("WHERE b = '${%s}'" % self.NAME, {}, where="hoover.sql")
+        assert self.NAME in str(exc.value)
+
+    def test_dotted_name_from_cli_param(self):
+        assert parse_cli_params([f"{self.NAME}=20260812010000"]) == {
+            self.NAME: "20260812010000"
+        }
+
+    def test_dotted_name_is_case_insensitive_like_any_other(self):
+        assert substitute("${ARENA.PRESTO.VAR.X}", {"arena.presto.var.x": "9"}) == "9"
+
+    def test_a_trailing_or_leading_dot_is_still_a_placeholder(self):
+        # Not worth rejecting: it resolves or it raises, and both are loud.
+        assert substitute("${a.}", {"a.": "1"}) == "1"
+
+    def test_a_name_starting_with_a_dot_is_not_a_placeholder(self):
+        # The leading character still has to be identifier-shaped, so a stray
+        # "${.foo}" keeps passing through rather than becoming a hard error.
+        assert substitute("${.foo}", {}) == "${.foo}"
+
+
 class TestSubstituteSpec:
     def test_recurses_dicts_lists_and_leaves_scalars(self):
         spec = {
