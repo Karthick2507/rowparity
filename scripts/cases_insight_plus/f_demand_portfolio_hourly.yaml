@@ -5,13 +5,18 @@
 # one Presto connection, compared in memory.
 #
 #   Hoover    mrm_log_flat.default.{ad,ack}   WITH the bit-59 sampling filter
-#   Hoover++  etl.public_test1.{ad,ack}       WITHOUT it
+#   Hoover++  etl.public_test1.{ad,ack}       WITH the same filter
 #
-# The two SQL files are identical apart from those two things -- verified
-# mechanically, see tests/test_insight_plus_sql_sync.py. Hoover++ needs no
-# sampling filter because its source data IS the bit-59 sample already; the
-# filter exists only to narrow Hoover down to the same population. That is also
-# why request__bit_flags does not exist on the Hoover++ side.
+# The two SQL files are identical apart from that catalog -- verified
+# mechanically, see tests/test_insight_plus_sql_sync.py. Hoover++ is generated
+# from Hoover by swapping the catalog, so nothing else can drift.
+#
+# Hoover++ was originally run WITHOUT the sampling filter, on the understanding
+# that its source data was already the bit-59 sample. The first live run
+# disproved that: Hoover returned 2,719 rows and Hoover++ 1,113,423 -- a ratio
+# of 409, which is a sampling difference, not a migration defect. Every sum was
+# over a different number of underlying rows, so the run measured the sampling
+# and nothing else. Both sides are filtered now.
 #
 # Run:
 #   export TRINO_HOST=presto-gateway.presto.stg.aws.fwmrm.net

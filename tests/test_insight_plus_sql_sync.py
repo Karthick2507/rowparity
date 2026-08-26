@@ -12,13 +12,18 @@ Both files are ~2000 lines with a positional GROUP BY (``group by 1,2,...,77,
 changes what the query means, while still parsing and running cleanly. No
 reviewer catches that by eye.
 
-The only differences allowed:
+**The only difference allowed is the catalog the fact tables are read from.**
 
-1. the catalog/schema the fact tables are read from
-2. the bit-59 sampling filter, present on Hoover and absent on Hoover++
+That was not always true. Hoover++ originally carried no sampling filter, on
+the understanding that its source was already the bit-59 sample. A live run
+disproved it: Hoover produced 2,719 rows and Hoover++ 1,113,423 -- a ratio of
+409, which is a sampling difference, not a migration defect. The filter now
+applies to both sides, and Hoover++ is generated from Hoover by swapping the
+catalog, so nothing else can drift.
 
 Everything else -- projections, joins, CASE ladders, WHERE predicates, GROUP BY
-ordinals -- must match byte for byte once (1) and (2) are normalised away.
+ordinals, the sampling filter itself -- must match byte for byte once the
+catalog is normalised away.
 """
 import os
 import re
@@ -52,11 +57,15 @@ def _read(path: str) -> str:
 
 
 def _normalise(text: str) -> str:
-    """Strip the two intended differences, plus trailing whitespace."""
+    """Strip the one intended difference, plus trailing whitespace.
+
+    The sampling filter is deliberately NOT stripped any more: it applies to
+    both sides now, so it has to match like everything else. Stripping it would
+    let one side lose it silently -- which is precisely the bug that cost a
+    77-minute run.
+    """
     out = []
     for line in text.splitlines():
-        if SAMPLING_MARKER in line:
-            continue
         for literal, token in _CATALOGS:
             line = line.replace(literal, token)
         out.append(line.rstrip())
@@ -102,39 +111,41 @@ class TestTheTwoFilesAreOneQuery:
         assert a, "no GROUP BY found -- has the query shape changed?"
 
 
-class TestTheIntendedDifferencesAreStillThere:
-    """Guard the other direction: normalising must not hide a real problem.
+class TestBothSidesSampleIdentically:
+    """The population guard.
 
-    If the sampling filter were dropped from Hoover, or Hoover++ started
-    reading the Hoover tables, the test above would still pass -- the files
-    would simply be identical. These assert the differences that are supposed
-    to exist.
+    Comparing a sampled side against an unsampled one is not a comparison at
+    all: every sum is over a different number of rows. That is not a tolerance
+    problem, and no rowparity setting rescues it -- the run simply measures the
+    sampling ratio. It cost 77 minutes to learn once.
     """
 
-    def test_hoover_samples_every_union_branch(self, sources):
-        hoover, _ = sources
-        count = hoover.count(SAMPLING_MARKER)
+    @pytest.mark.parametrize("which", [0, 1], ids=["hoover", "hoover++"])
+    def test_every_union_branch_is_sampled(self, sources, which):
+        count = sources[which].count(SAMPLING_MARKER)
         assert count == EXPECTED_SAMPLING_LINES, (
-            f"expected {EXPECTED_SAMPLING_LINES} sampling filters in Hoover "
-            f"(one per UNION ALL branch), found {count}. A branch without the "
-            f"filter contributes unsampled rows and skews the whole aggregate."
+            f"expected {EXPECTED_SAMPLING_LINES} sampling filters (one per UNION "
+            f"ALL branch), found {count}. A branch without the filter contributes "
+            f"unsampled rows and skews the whole aggregate -- and because the "
+            f"other branches are still sampled, the total looks plausible."
         )
 
-    def test_hoover_plus_samples_nothing(self, sources):
-        _, plus = sources
-        assert SAMPLING_MARKER not in plus, (
-            "Hoover++ carries a sampling filter. Its source data is already the "
-            "bit-59 sample, so filtering again would sample the sample."
-        )
+    def test_the_sampling_filter_tests_bit_59_on_both_sides(self, sources):
+        for text in sources:
+            for line in text.splitlines():
+                if SAMPLING_MARKER in line:
+                    assert "request__bit_flags" in line
+                    assert re.search(
+                        r"bitwise_left_shift\(\s*BIGINT\s*'1'\s*,\s*59\s*\)", line
+                    ), f"not the expected bit-59 test: {line.strip()}"
 
-    def test_the_sampling_filter_tests_bit_59(self, sources):
-        hoover, _ = sources
-        for line in hoover.splitlines():
-            if SAMPLING_MARKER in line:
-                assert "request__bit_flags" in line
-                assert re.search(r"bitwise_left_shift\(\s*BIGINT\s*'1'\s*,\s*59\s*\)", line), (
-                    f"sampling filter is not the expected bit-59 test: {line.strip()}"
-                )
+    def test_a_side_losing_its_filter_would_fail(self, sources):
+        # The specific regression: silently reverting Hoover++ to unsampled.
+        hoover, plus = sources
+        tampered = "\n".join(
+            ln for ln in plus.splitlines() if SAMPLING_MARKER not in ln
+        )
+        assert _normalise(hoover) != _normalise(tampered)
 
     def test_each_side_reads_only_its_own_catalog(self, sources):
         hoover, plus = sources
