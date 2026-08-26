@@ -57,6 +57,7 @@ results.duckdb
 reports/*.json
 reports/*.md
 reports/*.html
+reports/bcv/*.csv
 
 # Snowflake key-pair auth — private keys must never reach git
 .env.snowflake
