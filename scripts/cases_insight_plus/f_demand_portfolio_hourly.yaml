@@ -1,0 +1,76 @@
+# Hoover vs Hoover++ query parity — f_demand_portfolio_hourly.
+#
+# Runs the same aggregate on both layouts and compares the two result sets.
+# Nothing is written to a table: both sides are queries, executed once each on
+# one Presto connection, compared in memory.
+#
+#   Hoover    mrm_log_flat.default.{ad,ack}   WITH the bit-59 sampling filter
+#   Hoover++  etl.public_test1.{ad,ack}       WITHOUT it
+#
+# The two SQL files are identical apart from those two things -- verified
+# mechanically, see tests/test_insight_plus_sql_sync.py. Hoover++ needs no
+# sampling filter because its source data IS the bit-59 sample already; the
+# filter exists only to narrow Hoover down to the same population. That is also
+# why request__bit_flags does not exist on the Hoover++ side.
+#
+# Run:
+#   export TRINO_HOST=presto-gateway.presto.stg.aws.fwmrm.net
+#   export TRINO_PORT=8080 TRINO_HTTP_SCHEME=https
+#   export TRINO_USER=...
+#   read -rs TRINO_JWT_TOKEN && export TRINO_JWT_TOKEN
+#
+#   rowparity run scripts/cases_insight_plus \
+#       --param arena.presto.var.process_batch_id=20260812010000 \
+#       --csv reports/insight_plus
+#
+# The batch parameter is REQUIRED and has no default. A default would name a
+# batch that may not exist, both sides would return zero rows, and the run would
+# report EQUIVALENT -- a green result proving nothing. Unresolved is a hard
+# error instead, which is the whole reason params.py recognises dotted names.
+
+cases:
+  - name: f_demand_portfolio_hourly
+    description: >-
+      The f_demand_portfolio_hourly aggregate must produce identical rows
+      whether built from the Hoover layout (sampled to bit 59) or the Hoover++
+      layout (already sampled). Both sides are queries; neither is materialised.
+
+    expected:
+      type: trino
+      query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_hoover.sql
+
+    actual:
+      type: trino
+      query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_hoover++.sql
+
+    compare:
+      # No keys: this is an aggregate, and none of the row-level identifiers
+      # survive the GROUP BY. Keyless is a multiset diff of row fingerprints --
+      # it detects any difference, but cannot attribute one to a column, since
+      # without a key there is no way to pair a missing row with the added row
+      # it corresponds to. Rows that differ are reported as missing + added,
+      # never as "changed".
+      #
+      # Add keys here if a future query has a unique column set; rowparity
+      # switches to keyed comparison on their presence alone.
+
+      # Sums over DOUBLE are not associative, so two engines summing the same
+      # values in a different partition order can differ in the last bits.
+      # Left unset (exact) deliberately until a live run shows whether these
+      # metrics are DECIMAL -- in which case exact is correct and tightening it
+      # later would be a regression. If a run reports diffs that are all
+      # last-digit, that is the signal to set this rather than a defect.
+      # float_tolerance: 1e-9
+
+      # Arrays reaching the output straight from the source, whose element
+      # order Presto does not guarantee. rowparity treats list as ORDERED by
+      # default, so without this a pure ordering difference reads as a data
+      # difference. The single-element array[...] constructions in this query
+      # (time_position_classes, slot_ad_unit_ids) cannot vary and are not listed.
+      unordered_list_columns:
+        - global_advertiser_ids
+        - global_brand_ids
+
+      max_examples: 50
+
+    tags: [insight_plus, hoover]

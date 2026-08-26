@@ -3,10 +3,21 @@
 Everything about the BCV work: what it is, why each piece exists, how to run it,
 and one scenario traced end to end through the code.
 
-**Status: paused, not finished.** The schema half is verified against the live
-staging cluster. The value half is built, unit-tested, and has **never completed
-a live run** — every attempt so far failed before the comparison began. See
-[Verification status](#10-verification-status) before trusting any of it.
+> **HISTORICAL — the cases and scripts described here have been removed.**
+> This phase ended by decision, superseded by the Hoover / Hoover++ query-parity
+> work. Deleted: `examples/cases_bcv/`, `scripts/run_bcv.sh`,
+> `scripts/find_batch_column.py`, `tests/test_bcv_*.py`. Recover any of them
+> from git history at `0fde893` if needed.
+>
+> The **framework** modules this phase added are still present and in use —
+> `params.py`, `param_queries.py`, `equivalence.py`, `exclusions.py`,
+> `schema_check.py`, `_describe_trino`, and the per-column CSV reporter. This
+> document remains the record of why each behaves as it does.
+
+**Status when paused: not finished.** The schema half was verified against the
+live staging cluster. The value half was built, unit-tested, and **never
+completed a live run** — every attempt failed before the comparison began. See
+[Verification status](#10-verification-status) before trusting any claim here.
 
 Branch: `claude/rowparity-etl-review-rzyk89` · last BCV commit `0fde893`
 
