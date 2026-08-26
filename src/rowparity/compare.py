@@ -124,6 +124,19 @@ class ComparisonResult:
     # change_signatures to get the count of genuine disagreements.
     equivalent_diff_columns: Dict[str, int] = field(default_factory=dict)
 
+    # Wall-clock seconds, filled in by Case.run(). Kept as three numbers rather
+    # than one total because "the query was slow" and "the comparison was slow"
+    # have nothing in common: the first is a warehouse problem, the second is
+    # ours. Zero means "not measured" -- compare_tables() called directly does
+    # not set them.
+    expected_load_seconds: float = 0.0
+    actual_load_seconds: float = 0.0
+    compare_seconds: float = 0.0
+
+    @property
+    def total_seconds(self) -> float:
+        return self.expected_load_seconds + self.actual_load_seconds + self.compare_seconds
+
     @property
     def total_differences(self) -> int:
         return self.missing_count + self.added_count + self.changed_count

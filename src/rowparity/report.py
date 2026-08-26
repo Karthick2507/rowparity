@@ -77,6 +77,18 @@ def render_console(result: ComparisonResult, case_name: str = "") -> str:
     title = f"Case '{case_name}'" if case_name else "Comparison"
     lines.append(f"{title}: {result.summary()}")
 
+    if result.total_seconds > 0:
+        from .progress import format_duration
+
+        lines.append(
+            "  timing: expected {} | actual {} | compare {} | total {}".format(
+                format_duration(result.expected_load_seconds),
+                format_duration(result.actual_load_seconds),
+                format_duration(result.compare_seconds),
+                format_duration(result.total_seconds),
+            )
+        )
+
     if result.columns_only_in_expected:
         lines.append(_render_column_list("columns only in expected", result.columns_only_in_expected))
     if result.columns_only_in_actual:
@@ -154,6 +166,18 @@ def to_dict(result: ComparisonResult, case_name: str = "") -> Dict[str, Any]:
         "duplicate_keys_actual": result.duplicate_keys_actual,
         "compared_columns": result.compared_columns,
         "change_signatures": [_signature_to_dict(s) for s in result.signatures_by_count()],
+        # Kept split rather than totalled: a slow warehouse query and a slow
+        # comparison need different fixes. Accumulated across runs by the
+        # result sink, these answer how many cases fit in a window.
+        # Microseconds, not milliseconds: rounding to 3 places turned a fast
+        # step into 0.0, which is exactly how an unmeasured step is reported.
+        # "instant" and "never ran" must not look alike.
+        "timing_seconds": {
+            "expected_load": round(result.expected_load_seconds, 6),
+            "actual_load": round(result.actual_load_seconds, 6),
+            "compare": round(result.compare_seconds, 6),
+            "total": round(result.total_seconds, 6),
+        },
     }
 
 
