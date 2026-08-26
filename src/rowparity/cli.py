@@ -11,6 +11,7 @@ import sys
 import uuid
 from typing import List, Tuple
 
+from . import progress
 from .cases import discover_cases
 from .compare import ComparisonResult
 from .params import ParamError, parse_cli_params
@@ -20,6 +21,14 @@ from .result_sink import make_result_sink
 
 
 def _run(args) -> int:
+    # On before anything else: a case that runs two multi-minute warehouse
+    # queries is silent for as long as they take, which from the terminal is
+    # indistinguishable from a hang.
+    progress.configure(
+        enabled=not getattr(args, "quiet", False),
+        heartbeat_seconds=getattr(args, "heartbeat", None),
+    )
+
     # Case loading happens before the per-case error handling below, so a bad
     # --param or an unresolved ${name} would otherwise surface as a traceback
     # -- the opposite of the clear message ParamError goes to the trouble of
@@ -140,6 +149,16 @@ def main(argv=None) -> int:
     )
     run_p.add_argument("--json", help="write a JSON summary here")
     run_p.add_argument("--md", help="write a Markdown report here")
+    run_p.add_argument(
+        "--quiet", action="store_true",
+        help="suppress the live per-step progress on stderr. Results still go "
+             "to stdout; only the 'running query ...' / heartbeat lines go away.",
+    )
+    run_p.add_argument(
+        "--heartbeat", type=float, default=None, metavar="SECONDS",
+        help="how often to print 'still running' while a step is in flight "
+             "(default 30). 0 disables the heartbeat but keeps step lines.",
+    )
     run_p.add_argument(
         "--csv", metavar="DIR",
         help="write one <case>.csv per case here: a row per column with its "

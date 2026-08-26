@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import yaml
 
-from . import params
+from . import params, progress
 from .compare import CompareConfig, ComparisonResult, compare_tables
 from .concept_check import ConceptCheckCase, build_concept_check_case
 from .exclusions import ExclusionError, merge_ignore_columns
@@ -102,16 +102,41 @@ class Case:
                 f"never see individual values. Drop the engine: key for this case."
             )
 
-        if self.engine == "duckdb":
-            result = self._run_duckdb_pushdown(base_dir, cfg)
-        elif self.engine == "snowflake":
-            result = self._run_snowflake_pushdown(base_dir, cfg)
-        elif self.engine == "trino":
-            result = self._run_trino_pushdown(base_dir, cfg)
+        progress.emit(f"Case '{self.name}'")
+
+        if self.engine in ("duckdb", "snowflake", "trino"):
+            # Push-down does its work inside the warehouse, so there is no
+            # per-side load to time separately -- only the whole operation.
+            runner = {
+                "duckdb": self._run_duckdb_pushdown,
+                "snowflake": self._run_snowflake_pushdown,
+                "trino": self._run_trino_pushdown,
+            }[self.engine]
+            with progress.step(f"{self.engine} push-down") as st:
+                result = runner(base_dir, cfg)
+            result.compare_seconds = st.elapsed
         else:
-            expected_tbl = load_source(self.expected, base_dir=base_dir, variables=self.variables)
-            actual_tbl = load_source(self.actual, base_dir=base_dir, variables=self.variables)
-            result = compare_tables(expected_tbl, actual_tbl, cfg)
+            with progress.step(f"expected  ({self.expected.get('type', '?')})") as st:
+                expected_tbl = load_source(
+                    self.expected, base_dir=base_dir, variables=self.variables
+                )
+                st.result(progress.describe_table(expected_tbl))
+            expected_seconds = st.elapsed
+
+            with progress.step(f"actual    ({self.actual.get('type', '?')})") as st:
+                actual_tbl = load_source(
+                    self.actual, base_dir=base_dir, variables=self.variables
+                )
+                st.result(progress.describe_table(actual_tbl))
+            actual_seconds = st.elapsed
+
+            with progress.step("comparing") as st:
+                result = compare_tables(expected_tbl, actual_tbl, cfg)
+                st.result(f"{len(result.compared_columns)} columns compared")
+            result.expected_load_seconds = expected_seconds
+            result.actual_load_seconds = actual_seconds
+            result.compare_seconds = st.elapsed
+
             if sink:
                 sink.write(self.name, "expected", expected_tbl, result.compared_columns, cfg)
                 sink.write(self.name, "actual", actual_tbl, result.compared_columns, cfg)
