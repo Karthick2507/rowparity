@@ -29,7 +29,12 @@ from typing import Any, Dict, List, Optional, Union
 import yaml
 
 from . import params, progress
-from .compare import CompareConfig, ComparisonResult, compare_tables
+from .compare import (
+    CompareConfig,
+    ComparisonResult,
+    EmptyComparisonError,
+    compare_tables,
+)
 from .concept_check import ConceptCheckCase, build_concept_check_case
 from .exclusions import ExclusionError, merge_ignore_columns
 from .schema_check import SchemaCheckCase, build_schema_check_case
@@ -38,7 +43,7 @@ from .sources import load_source
 _COMPARE_KEYS = {
     "keys", "select", "ignore_columns", "float_tolerance", "coerce_numeric_to_float",
     "trim_strings", "case_insensitive", "unordered_list_columns", "strict_columns",
-    "max_examples", "vectorized", "null_equivalence",
+    "max_examples", "vectorized", "null_equivalence", "allow_empty",
     "ignore_columns_file", "ignore_columns_table",
 }
 
@@ -141,9 +146,40 @@ class Case:
                 sink.write(self.name, "expected", expected_tbl, result.compared_columns, cfg)
                 sink.write(self.name, "actual", actual_tbl, result.compared_columns, cfg)
 
+        self._guard_empty(result, cfg)
+
         if result_sink:
             result_sink.write(self.name, self.tags, result)
         return result
+
+    def _guard_empty(self, result: ComparisonResult, cfg: CompareConfig) -> None:
+        """Refuse to call a comparison over zero rows equivalent.
+
+        Two empty tables are trivially equivalent, so a run that fetched nothing
+        reports EQUIVALENT and exits 0 -- identical in every visible way to a
+        real pass. A live run did exactly this: eight minutes of warehouse time,
+        both sides empty because the batch had aged out of staging, and a green
+        "1/1 equivalent" at the end. A verification tool that reports success
+        for having verified nothing is worse than one that crashes.
+
+        Only row comparisons are guarded. schema_check and concept_check
+        legitimately report zero rows -- fetching none is the entire point of
+        them -- and they carry a different `kind`.
+        """
+        if cfg.allow_empty or result.kind != "rows":
+            return
+        if result.expected_rows or result.actual_rows:
+            return
+        raise EmptyComparisonError(
+            f"case '{self.name}': both sides returned 0 rows, so nothing was "
+            f"compared. This would otherwise report EQUIVALENT and exit 0, which "
+            f"is indistinguishable from a real pass. Usual causes: the batch or "
+            f"partition no longer exists, a ${{parameter}} names something that "
+            f"was never there, or a filter matched nothing on both sides. Check "
+            f"the queries return rows before trusting a comparison of them. Set "
+            f"compare.allow_empty: true if an empty result is genuinely expected "
+            f"for this case."
+        )
 
     def _run_duckdb_pushdown(self, base_dir: str, cfg: CompareConfig) -> ComparisonResult:
         from . import duckdb_pushdown as pd
