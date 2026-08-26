@@ -1,7 +1,7 @@
 /* only include transction_type in ('CRO', 'R') */
 with ad_unit_map as (
 select network_id,array_union(array_agg(id), array[1,2,3,4,5,6]) as ids
-from db.public_test1.d_ad_unit
+from db.default.d_ad_unit
 where network_id > 0
 group by 1
 )
