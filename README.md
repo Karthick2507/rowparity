@@ -217,6 +217,55 @@ follows the system light/dark theme.
 
 ---
 
+## Reading a report
+
+Each report lists one row per column, with one of five statuses. Read the label
+as two halves: **`MATCHED`** answers *"does this column exist on both sides with
+the same type?"*, and the suffix says what is wrong beyond that.
+
+| Status | Exists on both? | Types agree? | Values agree? |
+|---|:---:|:---:|:---:|
+| `MATCHED` | yes | yes | yes |
+| `MATCHED - TYPE DIFF` | yes | **no** | — |
+| `MATCHED - VALUE DIFF` | yes | yes | **no** |
+| `MATCHED - EQUIVALENT` | yes | yes | differ only in how they spell "absent" |
+| `DIFF` | **one side only** | — | — |
+
+### `MATCHED - VALUE DIFF` in detail
+
+The most common source of confusion is seeing `int64 / int64` beside
+`MATCHED - VALUE DIFF` and reading it as a type problem. It is not — identical
+types are the `MATCHED` half doing its job. A type disagreement is reported as
+`MATCHED - TYPE DIFF` instead.
+
+What "the values differ" means depends on whether the case has a key:
+
+| | Keyed | Keyless |
+|---|---|---|
+| How it is detected | rows are paired by key; the column differed in at least one pair | the column's whole multiset of values differs between the sides |
+| **Diff rows** column | a **number** — how many paired rows differ in it | **blank** — no per-row count exists |
+| Precision | exact and per-row | whole-column only |
+
+**The blank vs the number is the tell.** A number means real attribution; a
+blank means the check could only compare the column as a whole.
+
+One trap worth knowing: in a **keyless** run where the two sides return
+different row counts, *every* column has extra values on one side, so *every*
+column reports `MATCHED - VALUE DIFF`. That is correct and localises nothing.
+The HTML report detects this and says so. The fix is to compare equal
+populations, or give the case a key.
+
+### What to do about it
+
+* **Keyed** — read the **Diff rows** count and the change signatures. A
+  signature like `81x {revenue, co_revenue}` is a specific, investigable claim:
+  two metrics drifting together across 81 rows usually points at one
+  calculation.
+* **Keyless** — do not try to triage from the column table. Fix the population
+  or add a key first.
+
+---
+
 ## pytest
 
 ```python

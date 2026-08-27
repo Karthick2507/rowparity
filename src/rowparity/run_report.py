@@ -39,8 +39,13 @@ MAX_VALUE_CHARS = 120
 
 
 def _short(value: Any) -> str:
+    # ASCII "..." rather than a single-character ellipsis: this text is embedded
+    # in the page's JSON and travels wherever the report is forwarded. The
+    # template declares utf-8, but a report that survives being emailed,
+    # re-saved, or piped through a tool that re-encodes should not sprout
+    # mojibake on the way.
     text = "NULL" if value is None else str(value)
-    return text if len(text) <= MAX_VALUE_CHARS else text[: MAX_VALUE_CHARS - 1] + "…"
+    return text if len(text) <= MAX_VALUE_CHARS else text[: MAX_VALUE_CHARS - 3] + "..."
 
 
 def _example_to_dict(diff) -> Dict[str, Any]:
@@ -82,6 +87,8 @@ def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
         "status": "EQUIVALENT" if result.equivalent else "DIFFERENT",
         "kind": result.kind,
         "keys": list(result.keys) if result.keys else None,
+        "expected_label": result.expected_label,
+        "actual_label": result.actual_label,
         "expected_rows": result.expected_rows,
         "actual_rows": result.actual_rows,
         "missing": result.missing_count,

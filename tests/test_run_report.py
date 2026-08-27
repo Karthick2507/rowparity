@@ -280,3 +280,135 @@ def test_every_status_has_styling_in_the_template(status):
     with open(_TEMPLATE_PATH, encoding="utf-8") as fh:
         template = fh.read()
     assert f'"{status}"' in template, f"{status} missing from the template's status map"
+
+
+class TestSideLabels:
+    """The two sides are named, not called "expected" and "actual".
+
+    A reader opening a migration report should not have to remember which of
+    two abstract words is their source of truth. Labels are per-case config
+    rather than hardcoded, because the template ships with the framework and
+    every project names its sides differently.
+    """
+
+    def _labelled(self, **labels):
+        case = Case(
+            name="c",
+            expected={"type": "inline", "rows": [{"id": 1, "v": "a"}]},
+            actual={"type": "inline", "rows": [{"id": 2, "v": "b"}]},
+            compare={"keys": ["id"]},
+            **labels,
+        )
+        return case.run()
+
+    def test_labels_default_to_expected_and_actual(self):
+        result = self._labelled()
+        assert result.expected_label == "expected"
+        assert result.actual_label == "actual"
+
+    def test_labels_reach_the_result(self):
+        result = self._labelled(expected_label="Hoover", actual_label="Hoover++")
+        assert result.expected_label == "Hoover"
+        assert result.actual_label == "Hoover++"
+
+    def test_labels_reach_the_payload(self):
+        case = build_payload([("c", self._labelled(
+            expected_label="Hoover", actual_label="Hoover++"))])["cases"][0]
+        assert case["expected_label"] == "Hoover"
+        assert case["actual_label"] == "Hoover++"
+
+    def test_labels_are_read_from_yaml(self, tmp_path):
+        from rowparity.cases import discover_cases
+
+        path = tmp_path / "c.yaml"
+        path.write_text(
+            "name: labelled\n"
+            "expected_label: Hoover\n"
+            "actual_label: Hoover++\n"
+            "expected: {type: inline, rows: [{id: 1}]}\n"
+            "actual: {type: inline, rows: [{id: 1}]}\n"
+            "compare: {keys: [id]}\n",
+            encoding="utf-8",
+        )
+        case = discover_cases(str(path), {})[0]
+        assert case.expected_label == "Hoover"
+        assert case.actual_label == "Hoover++"
+
+    def test_the_template_builds_metric_labels_from_them(self):
+        from rowparity.run_report import _TEMPLATE_PATH
+
+        with open(_TEMPLATE_PATH, encoding="utf-8") as fh:
+            template = fh.read()
+        for fragment in ('"Rows in "', '"Missing in "', '"Added in "', '", not in "'):
+            assert fragment in template, f"{fragment} missing from the metric labels"
+
+    def test_the_shipped_case_names_hoover(self):
+        # The report is the deliverable; unlabelled it would read
+        # "expected"/"actual" to whoever it gets forwarded to.
+        import yaml as _yaml
+
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts", "cases_insight_plus", "f_demand_portfolio_hourly.yaml",
+        )
+        if not os.path.isfile(path):
+            pytest.skip("insight_plus case not present")
+        with open(path, encoding="utf-8") as fh:
+            case = _yaml.safe_load(fh)["cases"][0]
+        assert case["expected_label"] == "Hoover"
+        assert case["actual_label"] == "Hoover++"
+
+
+class TestEncoding:
+    """Mojibake in the rendered page.
+
+    A report showed "Row examples a-tilde-euro-quote 50 shown" -- a real em dash
+    read as Windows-1252 because the template declared no charset and the
+    browser guessed. Two defences, because this report gets forwarded, saved and
+    re-encoded by tools nobody controls:
+
+      1. the template declares utf-8, which is the actual fix
+      2. its own text is ASCII, so there is nothing left to mangle
+    """
+
+    TEMPLATES = ["run_report.html", "report.html"]
+
+    @pytest.mark.parametrize("name", TEMPLATES)
+    def test_template_declares_a_charset_first(self, name):
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__import__("rowparity").__file__)),
+            "templates", name,
+        )
+        with open(path, encoding="utf-8") as fh:
+            head = fh.read(200)
+        assert '<meta charset="utf-8">' in head, f"{name} does not declare its encoding"
+
+    @pytest.mark.parametrize("name", TEMPLATES)
+    def test_template_text_is_ascii(self, name):
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__import__("rowparity").__file__)),
+            "templates", name,
+        )
+        with open(path, encoding="utf-8") as fh:
+            content = fh.read()
+        offenders = sorted({c for c in content if ord(c) > 127})
+        assert not offenders, f"{name} contains non-ASCII: {offenders}"
+
+    def test_rendered_report_declares_its_charset(self):
+        html = render_run_report([("c", _result(ROWS, ROWS, keys=["id"]))])
+        assert html.lstrip().startswith('<meta charset="utf-8">')
+
+    def test_truncation_marker_is_ascii(self):
+        from rowparity.run_report import MAX_VALUE_CHARS, _short
+
+        truncated = _short("x" * (MAX_VALUE_CHARS * 2))
+        assert truncated.endswith("...")
+        assert all(ord(c) < 128 for c in truncated)
+
+    def test_a_non_ascii_data_value_still_round_trips(self):
+        # Data may legitimately be non-ASCII -- that is what the charset
+        # declaration is for. Only the template's own text is held to ASCII.
+        result = _result([{"id": 1, "v": "café — ünïcode"}],
+                         [{"id": 1, "v": "plain"}], keys=["id"])
+        payload = _payload_from_html(render_run_report([("c", result)]))
+        assert payload["cases"][0]["changed"] == 1

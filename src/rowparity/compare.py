@@ -138,6 +138,11 @@ class ComparisonResult:
     # when null_equivalence is on. Subtract from the per-column totals in
     # change_signatures to get the count of genuine disagreements.
     equivalent_diff_columns: Dict[str, int] = field(default_factory=dict)
+    # How to name the two sides in reports. "expected"/"actual" is accurate but
+    # abstract; a reader looking at a migration wants "Hoover" and "Hoover++".
+    # Presentation, not comparison -- nothing here reads them.
+    expected_label: str = "expected"
+    actual_label: str = "actual"
     # Keyless only: columns whose value multiset differs between the two sides.
     # Keyed comparisons attribute differences per row via change_signatures and
     # do not need this. See _compare_keyless for how it is computed.

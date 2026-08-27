@@ -36,6 +36,11 @@
 
 cases:
   - name: f_demand_portfolio_hourly
+    # How the two sides are named in the HTML report. Without these it says
+    # "expected" and "actual", which are accurate and mean nothing to a reader
+    # who has to remember which one is the source of truth.
+    expected_label: Hoover
+    actual_label: Hoover++
     description: >-
       The f_demand_portfolio_hourly aggregate must produce identical rows
       whether built from the Hoover layout (sampled to bit 59) or the Hoover++
