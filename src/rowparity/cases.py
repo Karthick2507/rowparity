@@ -70,6 +70,9 @@ class Case:
     # a Case exists; these are kept for query_file contents, which are only
     # read at run time.
     variables: Dict[str, str] = field(default_factory=dict)
+    # Human names for the two sides, used by reports only.
+    expected_label: str = "expected"
+    actual_label: str = "actual"
 
     def config(self, base_dir: Optional[str] = None) -> CompareConfig:
         unknown = set(self.compare) - _COMPARE_KEYS
@@ -145,6 +148,9 @@ class Case:
             if sink:
                 sink.write(self.name, "expected", expected_tbl, result.compared_columns, cfg)
                 sink.write(self.name, "actual", actual_tbl, result.compared_columns, cfg)
+
+        result.expected_label = self.expected_label
+        result.actual_label = self.actual_label
 
         self._guard_empty(result, cfg)
 
@@ -286,6 +292,8 @@ def _build_case(
         source_file=source_file,
         engine=engine,
         variables=variables,
+        expected_label=raw.get("expected_label", "expected"),
+        actual_label=raw.get("actual_label", "actual"),
     )
 
 

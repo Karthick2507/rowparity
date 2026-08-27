@@ -1,4 +1,5 @@
-<title>rowparity — Run Report</title>
+<meta charset="utf-8">
+<title>rowparity - Run Report</title>
 <style>
   :root {
     --canvas: #FFFFFF;
@@ -173,6 +174,23 @@
   .kind.added   { color: var(--success-fg); }
   .kind.changed { color: var(--attention-fg); }
 
+  /* ---- error block ---- */
+  .errhead { font-size: 13px; margin-bottom: 10px; }
+  .errhead b { font-weight: 600; }
+  pre.err {
+    margin: 0; padding: 12px 14px;
+    background: var(--canvas-inset); border: 1px solid var(--border-muted);
+    border-radius: var(--radius);
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.45;
+    color: var(--fg);
+    /* pre, not pre-wrap: driver errors point at the offending token with a
+       caret on the next line, and wrapping moves the caret away from what it
+       points at. Scroll sideways instead of destroying the alignment. */
+    white-space: pre;
+    overflow-x: auto;
+    max-height: 320px; overflow-y: auto;
+  }
+
   .empty { color: var(--fg-subtle); font-size: 13px; padding: 12px; }
   details { margin-top: 16px; }
   summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--fg-muted); }
@@ -185,12 +203,12 @@
 
 <div class="wrap">
   <h1>rowparity run report</h1>
-  <p class="sub">Generated __ROWPARITY_GENERATED_AT__ · <span id="runid"></span></p>
+  <p class="sub">Generated __ROWPARITY_GENERATED_AT__ | <span id="runid"></span></p>
   <div class="summary" id="summary"></div>
   <div id="cases"></div>
   <footer>
     One run, not a trend. For pass-rate history across runs use
-    <code>rowparity report --result-sink … --html</code>.
+    <code>rowparity report --result-sink ... --html</code>.
   </footer>
 </div>
 
@@ -252,21 +270,29 @@
     if (c.timing) {
       head.appendChild(el("span", "timing",
         "expected " + c.timing.expected_text +
-        " · actual " + c.timing.actual_text +
-        " · compare " + c.timing.compare_text +
-        " · total " + c.timing.total_text));
+        " | actual " + c.timing.actual_text +
+        " | compare " + c.timing.compare_text +
+        " | total " + c.timing.total_text));
     }
     card.appendChild(head);
 
     var body = el("div", "body");
     if (c.status === "ERROR") {
-      var err = el("div", "note");
-      err.appendChild(el("div", null, "⚠"));
-      var box = el("div");
-      box.appendChild(el("div", null, c.error_type + " — this case did not run, so nothing was compared."));
-      box.appendChild(el("div", "mono", c.error));
-      err.appendChild(box);
-      body.appendChild(err);
+      // No icon: the ERROR badge in the header already says this. A lone "!"
+      // on its own line reads as leftover punctuation, not a warning.
+      var head = el("div", "errhead");
+      head.appendChild(el("b", null, "This case did not run."));
+      head.appendChild(document.createTextNode(
+        " Nothing was compared, so there is no verdict for it - " +
+        "neither a pass nor a difference."));
+      body.appendChild(head);
+
+      // <pre>, so a driver's line/caret pointer survives. Collapsing it to one
+      // line throws away the part of the message that says WHERE the problem
+      // is, which is usually the only part worth reading.
+      var pre = el("pre", "err", c.error_type + ": " + c.error);
+      body.appendChild(pre);
+
       card.appendChild(body);
       return card;
     }
@@ -287,12 +313,17 @@
 
   function renderMetrics(c) {
     var wrap = el("div", "metrics");
+    // Named after the two sides rather than "expected"/"actual". A reader
+    // looking at a migration report should not have to remember which of the
+    // two abstract words is their source of truth.
+    var A = c.expected_label || "expected";
+    var B = c.actual_label || "actual";
     [
-      ["expected rows", c.expected_rows, false],
-      ["actual rows", c.actual_rows, false],
-      ["missing", c.missing, c.missing > 0],
-      ["added", c.added, c.added > 0],
-      ["changed", c.changed, c.changed > 0]
+      ["Rows in " + A, c.expected_rows, false],
+      ["Rows in " + B, c.actual_rows, false],
+      ["Missing in " + B, c.missing, c.missing > 0],
+      ["Added in " + B + ", not in " + A, c.added, c.added > 0],
+      ["Changed", c.changed, c.changed > 0]
     ].forEach(function (m) {
       var box = el("div", "metric" + (m[2] ? " warn" : ""));
       box.appendChild(el("div", "n", num(m[1])));
@@ -328,7 +359,7 @@
     // "the columns are fine", which is not what was checked.
     if (!c.keys && (c.missing || c.added)) {
       out.push(note("info", "Keyless run:",
-        "MATCHED below means present on both sides with the same type — not that " +
+        "MATCHED below means present on both sides with the same type - not that " +
         "values agree. Without a key, rows cannot be paired, so differences appear " +
         "as missing + added and never as changed. Columns marked VALUE DIFF have a " +
         "differing multiset of values."));
@@ -340,7 +371,7 @@
       out.push(note("", "Row counts differ:",
         "one side has " + Math.abs(c.actual_rows - c.expected_rows) + " more row(s), so " +
         "every column has extra values and every column will read VALUE DIFF. " +
-        "Correct, but it cannot localise anything — compare equal populations, or key the case."));
+        "Correct, but it cannot localise anything - compare equal populations, or key the case."));
     }
     return out;
   }
@@ -362,7 +393,7 @@
     var bar = el("div", "filters");
     var search = el("input");
     search.type = "search";
-    search.placeholder = "filter columns…";
+    search.placeholder = "filter columns...";
     bar.appendChild(search);
 
     present.forEach(function (status) {
@@ -418,7 +449,7 @@
       // reader cannot see and does not have.
       var hiddenMatched = (counts["MATCHED"] && !active["MATCHED"]) ? counts["MATCHED"] : 0;
       footer.textContent = shown + " of " + c.columns.length + " column(s) shown" +
-        (hiddenMatched ? " · " + hiddenMatched + " MATCHED hidden" : "");
+        (hiddenMatched ? " | " + hiddenMatched + " MATCHED hidden" : "");
     }
     search.addEventListener("input", draw);
     draw();
@@ -429,7 +460,7 @@
     var d = el("details");
     d.open = true;
     d.appendChild(el("summary", null,
-      "Change signatures — " + c.change_signatures.length + " distinct pattern(s)"));
+      "Change signatures - " + c.change_signatures.length + " distinct pattern(s)"));
     var scroll = el("div", "scroll");
     var table = el("table");
     var hr = el("tr");
@@ -443,8 +474,8 @@
       var ex = "";
       if (sig.example && sig.example.length) {
         ex = sig.example.map(function (e) {
-          return e.column + ": " + e.expected + " → " + e.actual;
-        }).join("  ·  ");
+          return e.column + ": " + e.expected + " -> " + e.actual;
+        }).join("  |  ");
       }
       tr.appendChild(el("td", "mono", ex));
       tb.appendChild(tr);
@@ -457,7 +488,7 @@
 
   function renderExamples(c) {
     var d = el("details");
-    d.appendChild(el("summary", null, "Row examples — " + c.examples.length + " shown"));
+    d.appendChild(el("summary", null, "Row examples - " + c.examples.length + " shown"));
     var scroll = el("div", "scroll");
     var table = el("table");
     var hr = el("tr");
@@ -471,9 +502,9 @@
       var detail = "";
       if (ex.kind === "changed" && ex.columns) {
         detail = ex.columns.map(function (col) {
-          return col.column + ": " + col.expected + " → " + col.actual +
+          return col.column + ": " + col.expected + " -> " + col.actual +
                  (col.equivalent ? " (equivalent)" : "");
-        }).join("  ·  ");
+        }).join("  |  ");
       } else {
         detail = ex.row || "";
       }
