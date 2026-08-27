@@ -88,6 +88,35 @@ def resolve_variables(
     return merged
 
 
+def merge_side_vars(
+    side_vars: Optional[Mapping[str, Any]], variables: Optional[Mapping[str, str]]
+) -> Dict[str, str]:
+    """Overlay one source spec's own ``vars:`` block on the case variables.
+
+    This is what lets a single SQL file serve both sides of a comparison::
+
+        expected: { type: trino, query_file: q.sql, vars: { facts: old_catalog } }
+        actual:   { type: trino, query_file: q.sql, vars: { facts: new_catalog } }
+
+    Before this, "same query, different catalog" meant two near-identical
+    copies of a 2,000-line file kept in step by a test. That works for one
+    query and does not survive a hundred: the files drift, the run still
+    succeeds, and it reports SQL differences as data differences.
+
+    **A side var outranks --param and the environment**, which inverts the
+    precedence everywhere else in this module. That is deliberate. A side var
+    is not a knob, it is half of what makes the two sides different; letting
+    ``--param facts=x`` reach both sides would point them at the same catalog
+    and produce a confident EQUIVALENT for comparing a table with itself. A
+    case that *wants* a side overridable can say so by templating the value
+    (``vars: {facts: "${old_catalog}"}``), which resolves normally and stays
+    fully controllable from the CLI.
+    """
+    merged = dict(variables or {})
+    merged.update(_stringify(side_vars))
+    return merged
+
+
 def substitute(text: str, variables: Mapping[str, str], *, where: str = "") -> str:
     """Replace every ``${name}`` in *text*; raise if any cannot be resolved."""
     missing: list = []

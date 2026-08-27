@@ -24,6 +24,15 @@ import pyarrow as pa
 from .hashing import CanonConfig, canon_columns_vectorized, canon_row, canon_value, row_digest
 
 
+class IdenticalSourcesError(RuntimeError):
+    """Both sides resolve to the same source, so the comparison proves nothing.
+
+    Sibling of ``EmptyComparisonError``: same failure mode -- a green run that
+    verified nothing -- reached from the other direction. There the two sides
+    had no rows to disagree about; here they are the same rows, so they cannot.
+    """
+
+
 class EmptyComparisonError(RuntimeError):
     """Both sides returned zero rows, so the comparison proved nothing.
 
@@ -59,6 +68,10 @@ class CompareConfig:
     # out, a mistyped parameter, or a filter that matched nothing. Set True only
     # where an empty result is a legitimate expected outcome.
     allow_empty: bool = False
+    # The mirror image of allow_empty: both sides pointing at the same source
+    # compare a table with itself and report EQUIVALENT regardless of the data.
+    # Set True only where self-comparison is the actual intent.
+    allow_identical_sources: bool = False
     # Canonicalize whole columns at once (numpy / Arrow compute) instead of
     # dispatching per cell, falling back to the row-wise path for nulls and
     # types that don't vectorize (decimal, date, time, binary, nested). Same

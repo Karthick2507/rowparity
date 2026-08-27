@@ -7,9 +7,12 @@
 #   Hoover    mrm_log_flat.default.{ad,ack}   WITH the bit-59 sampling filter
 #   Hoover++  etl.public_test1.{ad,ack}       WITH the same filter
 #
-# The two SQL files are identical apart from that catalog -- verified
-# mechanically, see tests/test_insight_plus_sql_sync.py. Hoover++ is generated
-# from Hoover by swapping the catalog, so nothing else can drift.
+# ONE SQL file serves both sides. It reads `from ${facts}.ad`, and each side's
+# `vars:` block below says what ${facts} is. There were two near-identical
+# copies of this 2,000-line query before, kept in step by a test that diffed
+# them; the file is 185 KB, so "identical apart from three lines" was a promise
+# a test had to keep rather than something you could see. One file cannot drift
+# from itself.
 #
 # Hoover++ was originally run WITHOUT the sampling filter, on the understanding
 # that its source data was already the bit-59 sample. The first live run
@@ -46,13 +49,31 @@ cases:
       whether built from the Hoover layout (sampled to bit 59) or the Hoover++
       layout (already sampled). Both sides are queries; neither is materialised.
 
+    # Shared by BOTH sides. The sampling filter lives here rather than in either
+    # side's vars: on purpose -- it is the one thing that must never differ
+    # between them. Comparing a sampled side against an unsampled one measures
+    # the sampling ratio and nothing else, which is what the 409x run above was.
+    # Defined once and used by both, that bug is not expressible.
+    #
+    # To run unsampled (both sides, together): --param sampling_filter=true
+    vars:
+      sampling_filter: "bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0"
+
+    # Per-side vars: the only difference between the two runs. These outrank
+    # --param deliberately (see params.merge_side_vars) -- a --param reaching
+    # both sides would point them at the same catalog, and a comparison of a
+    # table with itself passes no matter what the data holds.
     expected:
       type: trino
-      query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_hoover.sql
+      query_file: ../../sql/insight_plus/f_demand_portfolio_hourly.sql
+      vars:
+        facts: mrm_log_flat.default
 
     actual:
       type: trino
-      query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_hoover++.sql
+      query_file: ../../sql/insight_plus/f_demand_portfolio_hourly.sql
+      vars:
+        facts: etl.public_test1
 
     compare:
       # The 83 GROUP BY dimensions. Not a business key -- nobody would call it

@@ -201,6 +201,8 @@ support exclusion files.
 ```python
 progress.emit(f"Case '{self.name}'")
 
+self._guard_identical_sides(base_dir, cfg)   # ← before a single row is fetched
+
 if self.engine in ("duckdb", "snowflake", "trino"):
     ...push-down: fingerprinting happens inside the warehouse...
 else:
@@ -216,6 +218,14 @@ else:
 With no `engine:` set, this takes the **default engine** branch: fetch both
 sides into memory, compare in Python.
 
+`_guard_identical_sides()` runs **first**, before any connection is opened. It
+fires only when both sides name the same `query_file` *and* resolve it to the
+same text — which means a per-side `vars:` block was copy-pasted and one value
+never changed. Left alone that runs the full aggregate twice against one
+catalog and reports EQUIVALENT with exit 0, indistinguishable from a real pass.
+It is `_guard_empty` (§6.6) reached from the other direction: there the two
+sides had no rows to disagree about, here they are the same rows.
+
 Each `progress.step()` prints `-> …`, starts a daemon heartbeat thread, runs the
 body, then prints `OK … <elapsed> <summary>`. On exception it prints
 `FAILED … <elapsed>` and re-raises untouched — "it failed after four minutes" is
@@ -229,26 +239,47 @@ still worth being told.
 `type: trino` that is `sources._trino()`:
 
 ```python
-query = resolve_query(spec, base_dir, variables)     # ← the SQL file is read HERE
+if spec.get("vars"):                                  # ← per-side vars merged HERE
+    variables = merge_side_vars(spec["vars"], variables)
+query = resolve_query(spec, base_dir, variables)      # ← the SQL file is read HERE
 con = _trino_connect(spec)
 try:
     cur = con.cursor()
     cur.execute(query)
-    rows = cur.fetchall()
-    if not rows:
-        col_names = [d[0] for d in (cur.description or [])]
-        return pa.table({col: [] for col in col_names})
-    col_names = [d[0] for d in cur.description]
-    return pa.Table.from_pylist([dict(zip(col_names, row)) for row in rows])
+    col_names = [d[0] for d in (cur.description or [])]
+    batch_rows = int(spec.get("fetch_batch_rows") or _trino_batch_rows(len(col_names)))
+    tables = []
+    while True:
+        rows = cur.fetchmany(batch_rows)               # ← batched, not fetchall()
+        if not rows:
+            break
+        tables.append(pa.Table.from_pylist([dict(zip(col_names, r)) for r in rows]))
+    return pa.concat_tables(tables, promote_options="permissive")
 finally:
     con.close()
 ```
 
+Rows arrive in **batches**. `fetchall()` built the whole result as Python
+tuples and then a second full copy as dicts before Arrow saw anything — about
+3–5 KB per row at 262 columns, so a few hundred thousand rows was tens of
+gigabytes. Each batch is converted and released; only columnar Arrow
+accumulates. `promote_options="permissive"` is what makes that safe: types are
+inferred per batch, so a column that is all-NULL in one batch and `int64` in
+the next could not otherwise be concatenated at all.
+
+**`params.merge_side_vars()`** overlays this side's own `vars:` block on the
+case variables, for this side only. It is what lets both sides share one
+`query_file` and still run different queries — `from ${facts}.ad` becomes
+`from mrm_log_flat.default.ad` for Hoover and `from etl.public_test1.ad` for
+Hoover++. A side var **outranks `--param`**, inverting the precedence used
+everywhere else: a `--param` reaching both sides would point them at the same
+catalog, and comparing a table with itself passes regardless of the data.
+
 **`sources.resolve_query()`** resolves `query_file` relative to the YAML's
 directory, reads it, and calls `params.substitute()` on the **file contents**.
 This is where `${arena.presto.var.process_batch_id}` becomes
-`20260812010000`. An unresolved name raises `ParamError` here — caught by the
-loop above, reported, exit 1.
+`20260812010000` and `${facts}` becomes the side's catalog. An unresolved name
+raises `ParamError` here — caught by the loop above, reported, exit 1.
 
 **`trino_auth.connect()`** merges a case's `connection:` block over `TRINO_*`
 environment variables (**YAML wins**), requires `host`, and picks an auth mode:
@@ -485,12 +516,14 @@ shell
      └─ for case in cases:  try:
          └─ Case.run
              ├─ Case.config              ──► CompareConfig
+             ├─ Case._guard_identical_sides   ──► refuse a self-comparison
              ├─ progress.step "expected"
              │   └─ sources.load_source → sources._trino
+             │       ├─ params.merge_side_vars  ──► ${facts} → this side's catalog
              │       ├─ sources.resolve_query   ──► ${…} → 20260812010000
              │       ├─ trino_auth.connect      ──► JWT / Basic / none
-             │       └─ execute → fetchall → pa.Table
-             ├─ progress.step "actual"   ──► same, other catalog
+             │       └─ execute → fetchmany loop → concat_tables → pa.Table
+             ├─ progress.step "actual"   ──► same file, other catalog
              ├─ progress.step "comparing"
              │   └─ compare.compare_tables
              │       ├─ compare._resolve_columns  ──► MATCHED / DIFF / TYPE DIFF

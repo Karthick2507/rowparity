@@ -1,195 +1,189 @@
-"""The two Hoover SQL files must stay identical apart from the two intended
-differences.
+"""One SQL file, parameterised per side -- and what still has to be checked.
 
-The comparison is only meaningful if both sides run the *same* aggregate. If
-someone edits one file and not the other, the run still succeeds and still
-reports differences -- but those differences are the SQL, not the data, and
-nothing in the output says so. That is a wrong answer wearing the costume of a
-right one.
+There were two copies of this query, ~2,000 lines each, differing in three
+lines. A test diffed them after normalising the catalog away, because at 185 KB
+"identical apart from the catalog" is a promise you cannot verify by eye. That
+test is gone, along with the file it was guarding: the query now reads
+``from ${facts}.ad`` and each side supplies ``facts``. A file cannot drift from
+itself, so the entire class of "someone edited one copy" is unrepresentable
+rather than merely tested for.
 
-Both files are ~2000 lines with a positional GROUP BY (``group by 1,2,...,77,
-189,190,259,...``). Inserting a single column shifts every ordinal after it and
-changes what the query means, while still parsing and running cleanly. No
-reviewer catches that by eye.
+That was never the only hazard, though, and collapsing to one file changes the
+shape of the remaining ones rather than removing them:
 
-**The only difference allowed is the catalog the fact tables are read from.**
-
-That was not always true. Hoover++ originally carried no sampling filter, on
-the understanding that its source was already the bit-59 sample. A live run
-disproved it: Hoover produced 2,719 rows and Hoover++ 1,113,423 -- a ratio of
-409, which is a sampling difference, not a migration defect. The filter now
-applies to both sides, and Hoover++ is generated from Hoover by swapping the
-catalog, so nothing else can drift.
-
-Everything else -- projections, joins, CASE ladders, WHERE predicates, GROUP BY
-ordinals, the sampling filter itself -- must match byte for byte once the
-catalog is normalised away.
+* **The population guard.** Comparing a sampled side against an unsampled one
+  is not a comparison -- every sum is over a different number of rows. This
+  cost a 77-minute run to learn (2,719 rows vs 1,113,423, a ratio of 409). The
+  filter is now a single case-level var used by both sides, so "one side
+  sampled" is also unrepresentable; what these tests check is that it stayed
+  that way, i.e. that nobody moved it into a per-side ``vars:`` block.
+* **The substitution must reproduce the original queries exactly.** The
+  template was mechanically derived from the old Hoover file, and both renders
+  were verified byte-for-byte against the two originals before they were
+  deleted. The renders are pinned here so a future edit to the template cannot
+  quietly change what runs.
+* **The dimension catalog is shared.** ``d_network`` and ``d_ad_unit`` live in
+  ``db.default`` for both sides. Templating them would let a dimension
+  difference masquerade as a migration defect, so they stay literal -- and that
+  is now guaranteed by there being one file, not asserted by a test.
 """
 import os
 import re
 
 import pytest
+import yaml
 
-SQL_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sql", "insight_plus"
-)
-HOOVER = os.path.join(SQL_DIR, "f_demand_portfolio_hourly_hoover.sql")
-HOOVER_PLUS = os.path.join(SQL_DIR, "f_demand_portfolio_hourly_hoover++.sql")
+from rowparity.params import _PLACEHOLDER, substitute
 
-# The fact-table locations, and the shared dimension catalog. d_network and
-# d_ad_unit both live in db.default on BOTH sides -- one of them briefly did
-# not, which would have made a dimension difference look like a migration
-# defect. Normalising them to the same token means a future divergence there
-# fails this test rather than passing silently.
-_CATALOGS = (
-    ("mrm_log_flat.default", "@FACTS@"),
-    ("etl.public_test1", "@FACTS@"),
-    ("db.default", "@DIMS@"),
-)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SQL = os.path.join(ROOT, "sql", "insight_plus", "f_demand_portfolio_hourly.sql")
+CASE = os.path.join(ROOT, "scripts", "cases_insight_plus", "f_demand_portfolio_hourly.yaml")
+
+HOOVER = "mrm_log_flat.default"
+HOOVER_PLUS = "etl.public_test1"
 
 SAMPLING_MARKER = "--sampling filter"
 EXPECTED_SAMPLING_LINES = 3  # one per UNION ALL branch
-
-
-def _read(path: str) -> str:
-    with open(path, encoding="utf-8") as fh:
-        return fh.read()
-
-
-def _normalise(text: str) -> str:
-    """Strip the one intended difference, plus trailing whitespace.
-
-    The sampling filter is deliberately NOT stripped any more: it applies to
-    both sides now, so it has to match like everything else. Stripping it would
-    let one side lose it silently -- which is precisely the bug that cost a
-    77-minute run.
-    """
-    out = []
-    for line in text.splitlines():
-        for literal, token in _CATALOGS:
-            line = line.replace(literal, token)
-        out.append(line.rstrip())
-    return "\n".join(out)
+EXPECTED_FACT_REFS = 3       # ad, ack, ack
 
 
 @pytest.fixture(scope="module")
-def sources():
-    for path in (HOOVER, HOOVER_PLUS):
-        if not os.path.isfile(path):
-            pytest.skip(f"{path} not present")
-    return _read(HOOVER), _read(HOOVER_PLUS)
+def sql():
+    if not os.path.isfile(SQL):
+        pytest.skip(f"{SQL} not present")
+    with open(SQL, encoding="utf-8") as fh:
+        return fh.read()
 
 
-class TestTheTwoFilesAreOneQuery:
-    def test_identical_once_catalog_and_sampling_are_normalised(self, sources):
-        hoover, plus = sources
-        a, b = _normalise(hoover), _normalise(plus)
-        if a != b:
-            import difflib
+@pytest.fixture(scope="module")
+def case():
+    with open(CASE, encoding="utf-8") as fh:
+        return yaml.safe_load(fh)["cases"][0]
 
-            diff = "\n".join(
-                difflib.unified_diff(
-                    a.splitlines(), b.splitlines(),
-                    fromfile="hoover (normalised)", tofile="hoover++ (normalised)",
-                    lineterm="", n=2,
-                )
-            )
-            raise AssertionError(
-                "The two queries have diverged beyond catalog and sampling.\n"
-                "Whatever this diff shows would be reported as a DATA difference "
-                "by the parity run.\n\n" + diff
-            )
 
-    def test_group_by_ordinals_match_exactly(self, sources):
-        # Called out separately because it is the highest-consequence, least
-        # visible way these files can drift: the ordinals still parse after a
-        # column is inserted, they just mean something else.
-        hoover, plus = sources
-        a = [ln.strip() for ln in hoover.splitlines() if ln.strip().startswith("group by")]
-        b = [ln.strip() for ln in plus.splitlines() if ln.strip().startswith("group by")]
-        assert a == b, "GROUP BY ordinal lists differ between the two files"
-        assert a, "no GROUP BY found -- has the query shape changed?"
+@pytest.fixture(scope="module")
+def variables(case):
+    """Exactly what a run resolves, minus the batch id, which has no default."""
+    base = dict(case["vars"])
+    base["arena.presto.var.process_batch_id"] = "20260812010000"
+    return base
+
+
+def _render(sql_text, variables, facts):
+    return substitute(sql_text, {**variables, "facts": facts})
+
+
+class TestTheTemplate:
+    def test_it_has_exactly_the_placeholders_we_expect(self, sql):
+        # A new placeholder that nothing supplies fails the run at
+        # substitution time, which is loud but late -- after the operator has
+        # exported credentials and started waiting. Catch it here instead.
+        assert set(_PLACEHOLDER.findall(sql)) == {
+            "facts",
+            "sampling_filter",
+            "arena.presto.var.process_batch_id",
+        }
+
+    def test_every_fact_table_goes_through_the_placeholder(self, sql):
+        assert sql.count("${facts}.") == EXPECTED_FACT_REFS
+
+    def test_no_catalog_is_hardcoded_any_more(self, sql):
+        # A fact table left pointing at a literal catalog would read the same
+        # data on both sides and silently agree.
+        assert HOOVER not in sql
+        assert HOOVER_PLUS not in sql
+
+    def test_the_dimension_catalog_stays_literal(self, sql):
+        # Shared reference data. If it were per-side, a dimension difference
+        # would be reported as a migration defect.
+        for name in ("d_network", "d_ad_unit"):
+            refs = re.findall(rf"from\s+(\S+)\.{name}\b|join\s+(\S+)\.{name}\b", sql)
+            catalogs = {c for pair in refs for c in pair if c}
+            assert catalogs == {"db.default"}, f"{name} read from {catalogs or 'nowhere'}"
+
+
+class TestRenderingBothSides:
+    def test_each_side_reads_only_its_own_catalog(self, sql, variables):
+        hoover = _render(sql, variables, HOOVER)
+        plus = _render(sql, variables, HOOVER_PLUS)
+        assert HOOVER in hoover and HOOVER_PLUS not in hoover
+        assert HOOVER_PLUS in plus and HOOVER not in plus
+
+    def test_the_two_renders_differ_only_in_the_catalog(self, sql, variables):
+        # The property the old two-file sync test existed to establish, now
+        # cheap to state directly.
+        hoover = _render(sql, variables, HOOVER).replace(HOOVER, "@FACTS@")
+        plus = _render(sql, variables, HOOVER_PLUS).replace(HOOVER_PLUS, "@FACTS@")
+        assert hoover == plus
+
+    def test_a_render_leaves_no_placeholder_behind(self, sql, variables):
+        # An unsubstituted ${...} reaching Presto inside quotes is a valid
+        # string matching no batch: both sides return nothing and the run
+        # reports EQUIVALENT. params.substitute raises instead, but only for
+        # names it recognises -- so assert the rendered text is clean.
+        assert not _PLACEHOLDER.search(_render(sql, variables, HOOVER))
 
 
 class TestBothSidesSampleIdentically:
-    """The population guard.
+    """The population guard, in its new shape.
 
-    Comparing a sampled side against an unsampled one is not a comparison at
-    all: every sum is over a different number of rows. That is not a tolerance
-    problem, and no rowparity setting rescues it -- the run simply measures the
-    sampling ratio. It cost 77 minutes to learn once.
+    The filter is one case-level var used by both sides, so the two cannot
+    differ. These tests check that structure holds -- that it was not moved
+    into a per-side block, and that it still tests the bit it claims to.
     """
 
-    @pytest.mark.parametrize("which", [0, 1], ids=["hoover", "hoover++"])
-    def test_every_union_branch_is_sampled(self, sources, which):
-        count = sources[which].count(SAMPLING_MARKER)
+    def test_the_filter_is_case_level_not_per_side(self, case):
+        assert "sampling_filter" in case["vars"]
+        for side in ("expected", "actual"):
+            assert "sampling_filter" not in (case[side].get("vars") or {}), (
+                f"{side} overrides the sampling filter. A per-side filter means "
+                f"the two sides sample differently, and the run then measures "
+                f"the sampling ratio rather than the migration."
+            )
+
+    def test_every_union_branch_is_sampled(self, sql):
+        count = sql.count(SAMPLING_MARKER)
         assert count == EXPECTED_SAMPLING_LINES, (
             f"expected {EXPECTED_SAMPLING_LINES} sampling filters (one per UNION "
             f"ALL branch), found {count}. A branch without the filter contributes "
             f"unsampled rows and skews the whole aggregate -- and because the "
-            f"other branches are still sampled, the total looks plausible."
+            f"other branches are still sampled, the total still looks plausible."
         )
 
-    def test_the_sampling_filter_tests_bit_59_on_both_sides(self, sources):
-        for text in sources:
-            for line in text.splitlines():
-                if SAMPLING_MARKER in line:
-                    assert "request__bit_flags" in line
-                    assert re.search(
-                        r"bitwise_left_shift\(\s*BIGINT\s*'1'\s*,\s*59\s*\)", line
-                    ), f"not the expected bit-59 test: {line.strip()}"
+    def test_the_default_filter_tests_bit_59(self, variables):
+        predicate = variables["sampling_filter"]
+        assert "request__bit_flags" in predicate
+        assert re.search(
+            r"bitwise_left_shift\(\s*BIGINT\s*'1'\s*,\s*59\s*\)", predicate
+        ), f"not the expected bit-59 test: {predicate}"
 
-    def test_a_side_losing_its_filter_would_fail(self, sources):
-        # The specific regression: silently reverting Hoover++ to unsampled.
-        hoover, plus = sources
-        tampered = "\n".join(
-            ln for ln in plus.splitlines() if SAMPLING_MARKER not in ln
+    def test_the_filter_reaches_every_branch_when_rendered(self, sql, variables):
+        rendered = _render(sql, variables, HOOVER)
+        assert rendered.count(variables["sampling_filter"]) == EXPECTED_SAMPLING_LINES
+
+
+class TestTheRenderMatchesWhatUsedToRun:
+    """Pins the exact text of the queries the two-file version executed.
+
+    Both renders were verified byte-for-byte against the deleted originals when
+    the template was derived. These fragments are the parts a careless edit
+    would most plausibly break -- the fact-table reads and the sampled
+    predicate -- kept so the pinning survives the files themselves.
+    """
+
+    @pytest.mark.parametrize(
+        "facts,tables",
+        [(HOOVER, ("ad", "ack")), (HOOVER_PLUS, ("ad", "ack"))],
+        ids=["hoover", "hoover++"],
+    )
+    def test_the_fact_reads_render_as_they_did(self, sql, variables, facts, tables):
+        rendered = _render(sql, variables, facts)
+        for table in tables:
+            assert f"from {facts}.{table}" in rendered
+
+    def test_the_sampled_predicate_renders_verbatim(self, sql, variables):
+        expected = (
+            "and bitwise_and(coalesce(request__bit_flags, BIGINT '0'),"
+            "bitwise_left_shift(BIGINT '1', 59)) > 0 --sampling filter"
         )
-        assert _normalise(hoover) != _normalise(tampered)
-
-    def test_each_side_reads_only_its_own_catalog(self, sources):
-        hoover, plus = sources
-        assert "mrm_log_flat.default" in hoover
-        assert "etl.public_test1" not in hoover
-        assert "etl.public_test1" in plus
-        assert "mrm_log_flat.default" not in plus
-
-    def test_both_sides_share_the_dimension_catalog(self, sources):
-        # d_network and d_ad_unit are shared reference data. If one side ever
-        # points somewhere else, a dimension difference shows up as a data
-        # difference and gets investigated as a migration defect.
-        hoover, plus = sources
-        for name in ("d_network", "d_ad_unit"):
-            for label, text in (("hoover", hoover), ("hoover++", plus)):
-                refs = re.findall(rf"from\s+(\S+)\.{name}\b|join\s+(\S+)\.{name}\b", text)
-                catalogs = {c for pair in refs for c in pair if c}
-                assert catalogs == {"db.default"}, (
-                    f"{label}: {name} read from {catalogs or 'nowhere'}, expected "
-                    f"{{'db.default'}}"
-                )
-
-
-class TestNormalisationIsNotVacuous:
-    """The normaliser must not be so aggressive it would hide a real edit."""
-
-    def test_a_changed_projection_would_fail(self, sources):
-        hoover, plus = sources
-        tampered = plus.replace("as placed_ads", "as placed_ads_RENAMED", 1)
-        assert tampered != plus, "fixture assumption broken: marker not found"
-        assert _normalise(hoover) != _normalise(tampered)
-
-    def test_a_shifted_group_by_would_fail(self, sources):
-        hoover, plus = sources
-        tampered = plus.replace("group by 1,2,3", "group by 1,2,4", 1)
-        assert tampered != plus, "fixture assumption broken: marker not found"
-        assert _normalise(hoover) != _normalise(tampered)
-
-    def test_an_extra_where_predicate_would_fail(self, sources):
-        hoover, plus = sources
-        tampered = plus.replace(
-            "    and bitwise_and(slot__flags, 64) = 0",
-            "    and bitwise_and(slot__flags, 64) = 0\n    and network_id > 0",
-            1,
-        )
-        assert tampered != plus, "fixture assumption broken: marker not found"
-        assert _normalise(hoover) != _normalise(tampered)
+        assert expected in _render(sql, variables, HOOVER)

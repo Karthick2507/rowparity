@@ -46,6 +46,11 @@ def load_source(
     ``variables`` carries resolved ``${name}`` values for ``query_file:``
     contents. Spec dicts themselves are already substituted by the case
     loader, so this only matters for SQL read from disk at run time.
+
+    A spec may carry its own ``vars:`` block, which overlays ``variables``
+    for this side only. That is how one SQL file serves both sides of a
+    comparison that differs solely in where it reads from -- see
+    ``params.merge_side_vars`` for why those win over ``--param``.
     """
     if not isinstance(spec, dict) or "type" not in spec:
         raise SourceError(f"source spec must be a dict with a 'type' key, got: {spec!r}")
@@ -53,6 +58,14 @@ def load_source(
     handler = _HANDLERS.get(kind)
     if handler is None:
         raise SourceError(f"unknown source type '{kind}'. Known: {sorted(_HANDLERS)}")
+    # Only rebuild the mapping when the side actually declares vars. Passing an
+    # empty dict where None was expected is not equivalent: resolve_query reads
+    # `variables is not None` as "substitution is in play", so an empty dict
+    # would start rejecting ${...} in query files that previously passed through.
+    if spec.get("vars"):
+        from .params import merge_side_vars
+
+        variables = merge_side_vars(spec["vars"], variables)
     return handler(spec, base_dir, variables)
 
 
