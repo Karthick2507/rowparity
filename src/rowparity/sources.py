@@ -31,6 +31,8 @@ from typing import Any, Dict, List
 
 import pyarrow as pa
 
+from . import progress
+
 
 class SourceError(RuntimeError):
     pass
@@ -255,7 +257,43 @@ def _delta(spec, base_dir, variables=None) -> pa.Table:
     )
 
 
+# Rows are pulled in batches sized to a cell budget rather than a row count.
+# A 262-column row is two orders of magnitude heavier than a 1-column row, so a
+# fixed row count is either wasteful on narrow results or enormous on wide ones.
+_TRINO_TARGET_CELLS = 2_000_000
+_TRINO_MIN_BATCH_ROWS = 1_000
+_TRINO_MAX_BATCH_ROWS = 100_000
+
+
+def _trino_batch_rows(n_columns: int) -> int:
+    if n_columns <= 0:
+        return _TRINO_MAX_BATCH_ROWS
+    rows = _TRINO_TARGET_CELLS // n_columns
+    return max(_TRINO_MIN_BATCH_ROWS, min(_TRINO_MAX_BATCH_ROWS, rows))
+
+
 def _trino(spec, base_dir, variables=None) -> pa.Table:
+    """Run a query on Trino and return its result as an Arrow table.
+
+    Rows arrive in batches rather than all at once. ``fetchall()`` built the
+    entire result as Python tuples and then a second full copy as dicts before
+    Arrow saw anything -- roughly 3-5 KB per row of interpreter overhead at 262
+    columns, so a few hundred thousand rows was tens of gigabytes and the
+    process died rather than finishing. Each batch is converted and released, so
+    peak Python memory is one batch regardless of result size; what accumulates
+    is columnar Arrow, which is far smaller.
+
+    ``promote_options="permissive"`` on the concat is what makes batching safe.
+    Types are inferred per batch, so a column that happens to be entirely NULL
+    in one batch infers as Arrow ``null`` while a later batch infers ``int64``.
+    Without promotion those batches cannot be concatenated at all -- batching
+    would have turned a memory problem into a correctness one.
+
+    A column that is NULL in *every* batch still lands as ``null`` type, which
+    can read as a type mismatch against the other side. That is unchanged from
+    the previous behaviour and needs an explicit schema from
+    ``cursor.description`` to fix properly.
+    """
     from .trino_auth import connect as _trino_connect
 
     query = resolve_query(spec, base_dir, variables)
@@ -268,12 +306,28 @@ def _trino(spec, base_dir, variables=None) -> pa.Table:
     try:
         cur = con.cursor()
         cur.execute(query)
-        rows = cur.fetchall()
-        if not rows:
-            col_names = [d[0] for d in (cur.description or [])]
+        col_names = [d[0] for d in (cur.description or [])]
+        batch_rows = int(spec.get("fetch_batch_rows") or _trino_batch_rows(len(col_names)))
+
+        tables: List[pa.Table] = []
+        fetched = 0
+        while True:
+            rows = cur.fetchmany(batch_rows)
+            if not rows:
+                break
+            tables.append(pa.Table.from_pylist([dict(zip(col_names, r)) for r in rows]))
+            fetched += len(rows)
+            # A multi-minute fetch otherwise shows only "still running". A row
+            # count says whether it is progressing or stuck.
+            progress.emit(f"     ... fetched {fetched:,} rows")
+
+        if not tables:
+            # Keep the columns: cursor.description is populated even when the
+            # result is empty, and a table with no columns loses the schema.
             return pa.table({col: [] for col in col_names})
-        col_names = [d[0] for d in cur.description]
-        return pa.Table.from_pylist([dict(zip(col_names, row)) for row in rows])
+        if len(tables) == 1:
+            return tables[0]
+        return pa.concat_tables(tables, promote_options="permissive")
     finally:
         con.close()
 

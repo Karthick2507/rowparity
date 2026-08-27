@@ -265,14 +265,23 @@ to git.
 
 Three details in `_trino` worth knowing:
 
-* **`fetchall()` materialises everything.** No streaming or batching, so memory
-  scales with the result. Comfortable at ~100k rows × 262 columns; not at
-  millions.
+* **Rows arrive in batches, not all at once.** `fetchall()` built the whole
+  result as Python tuples and then a second full copy as dicts before Arrow saw
+  anything, so peak memory grew linearly with the result — measured at 262
+  columns: 0.51 GB at 25k rows, 0.97 GB at 50k, 1.92 GB at 100k. Batched, peak
+  is **flat at 0.15 GB** across all three, because only one batch is ever in
+  Python at a time and what accumulates is columnar Arrow. Batch size follows a
+  cell budget rather than a row count, since a 262-column row is two orders of
+  magnitude heavier than a 1-column one.
 * **The zero-row branch preserves columns** from `cursor.description`. Without
   it an empty result would lose its schema entirely.
 * **`from_pylist` has no explicit schema**, so Arrow infers types from Python
-  values. A column that is entirely `NULL` can infer as Arrow `null` type — the
-  one latent trap on this path.
+  values — per batch, which is a hazard batching introduces: a column all-`NULL`
+  in one batch infers as `null` while a later batch infers `int64`.
+  `promote_options="permissive"` on the concat unifies those, so batching cannot
+  turn a memory problem into a correctness one. A column that is `NULL` in
+  *every* batch still lands as `null` type; fixing that properly needs an
+  explicit schema built from `cursor.description`.
 
 Both sides are now `pyarrow.Table`. **Nothing downstream knows the data came
 from Trino.**
