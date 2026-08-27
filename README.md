@@ -198,10 +198,22 @@ actual:
 
 ```bash
 rowparity run examples/cases --json reports/qa.json --md reports/qa.md
+rowparity run examples/cases --csv reports/columns      # one row per column
+rowparity run examples/cases --html reports/run.html    # this run, as a page
 rowparity run examples/cases --result-sink duckdb:./reports/results.duckdb
 rowparity report --result-sink duckdb:./reports/results.duckdb --html reports/report.html
 rowparity list examples/cases
 ```
+
+Two HTML reports, answering different questions:
+
+| | |
+|---|---|
+| `run --html` | **this run** — per-case verdict, timings, row parity, a filterable per-column table, change signatures, and any case that failed to run at all |
+| `report --html` | **history** — pass-rate trend, per-case ledger with sparklines, schema-drift over time, read back from a result sink |
+
+`run --html` is self-contained: no network, no CDN, opens from `file://`, and
+follows the system light/dark theme.
 
 ---
 

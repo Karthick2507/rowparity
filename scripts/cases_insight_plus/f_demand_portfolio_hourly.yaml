@@ -26,7 +26,8 @@
 #
 #   rowparity run scripts/cases_insight_plus \
 #       --param arena.presto.var.process_batch_id=20260812010000 \
-#       --csv reports/insight_plus
+#       --csv reports/insight_plus \
+#       --html reports/insight_plus/run.html
 #
 # The batch parameter is REQUIRED and has no default. A default would name a
 # batch that may not exist, both sides would return zero rows, and the run would
