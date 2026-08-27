@@ -266,6 +266,84 @@ populations, or give the case a key.
 
 ---
 
+## Running against a live Trino / Presto cluster
+
+The `scripts/cases_insight_plus/` case compares one query run against **Hoover**
+(`mrm_log_flat.default.*`, with the bit-59 sampling filter) with the same query
+run against **Hoover++** (`etl.public_test1.*`). Both sides go through one Trino
+connection; nothing is staged to a table in between.
+
+### 1. Get the code
+
+```bash
+cd rowparity
+git pull origin claude/rowparity-etl-review-rzyk89
+```
+
+Nothing needs reinstalling — `pyproject.toml` is unchanged and `pip install -e`
+means the source tree is what runs.
+
+### 2. Point at the cluster
+
+```bash
+export TRINO_HOST=presto-gateway.presto.stg.aws.fwmrm.net
+export TRINO_PORT=8080
+export TRINO_HTTP_SCHEME=https
+export TRINO_USER=<your-user>
+
+read -rs TRINO_JWT_TOKEN && export TRINO_JWT_TOKEN   # paste, press Enter
+```
+
+`read -rs` keeps the token off the terminal and out of shell history. **Never**
+put it in the case YAML — those are committed to git. See
+[`trino_auth.py`](src/rowparity/trino_auth.py) for the full env-var list and the
+per-case `connection:` override.
+
+### 3. Run
+
+```bash
+rowparity run scripts/cases_insight_plus \
+    --param arena.presto.var.process_batch_id=20260812010000 \
+    --csv  reports/insight_plus \
+    --html reports/insight_plus/run.html \
+    --result-sink duckdb:./reports/results.duckdb
+```
+
+`--param` is required: the batch id has no default on purpose, so a stale batch
+can never be compared by accident.
+
+While it runs, each step reports itself on stderr — the query being submitted,
+`... fetched 7,633 rows` as batches stream back, and a per-step duration. The
+last line is `Wrote HTML report to reports/insight_plus/run.html`; that line is
+how you know you have a real report rather than console output redirected into a
+`.html` file.
+
+### 4. Read the output
+
+| Artifact | What it is |
+|---|---|
+| `reports/insight_plus/run.html` | the report — verdict, timings, row parity, filterable per-column table, change signatures |
+| `reports/insight_plus/*.csv` | the same per-column table, for spreadsheets |
+| `reports/results.duckdb` | accumulating history; every run appends |
+
+Open the HTML through `file://`, not an IDE's built-in web server — the page is
+self-contained and needs no server.
+
+After two or more runs, the history page becomes useful:
+
+```bash
+rowparity report --result-sink duckdb:./reports/results.duckdb \
+                 --html reports/history.html
+```
+
+### Sanity check
+
+For batch `20260812010000` the two sides return **2,719** and **2,778** rows.
+If those counts come back different, something changed in how rows are fetched —
+investigate that before reading anything into the diff.
+
+---
+
 ## pytest
 
 ```python
