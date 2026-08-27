@@ -412,3 +412,83 @@ class TestEncoding:
                          [{"id": 1, "v": "plain"}], keys=["id"])
         payload = _payload_from_html(render_run_report([("c", result)]))
         assert payload["cases"][0]["changed"] == 1
+
+
+class TestErrorBlockRendering:
+    """A driver error is mostly useless without its shape.
+
+    DuckDB, Trino and Snowflake all report syntax and binder errors as several
+    lines ending in a caret under the offending token:
+
+        Binder Error: Referenced column "nope" not found in FROM clause!
+        Candidate bindings: "group_id"
+
+        LINE 1: SELECT nope FROM hoover
+                       ^
+
+    Collapsed onto one line, the caret points at nothing and the part of the
+    message that says WHERE the problem is has been thrown away.
+    """
+
+    MULTILINE = (
+        'Binder Error: Referenced column "nope" not found in FROM clause!\n'
+        'Candidate bindings: "group_id"\n'
+        '\n'
+        'LINE 1: SELECT nope FROM hoover\n'
+        '               ^'
+    )
+
+    def test_newlines_survive_into_the_payload(self):
+        payload = build_payload([], [("broken", ValueError(self.MULTILINE))])
+        assert "\n" in payload["cases"][0]["error"]
+        assert payload["cases"][0]["error"].count("\n") == 4
+
+    def test_newlines_survive_into_the_html(self):
+        html = render_run_report([], [("broken", ValueError(self.MULTILINE))])
+        payload = _payload_from_html(html)
+        assert payload["cases"][0]["error"].endswith("^")
+
+    def test_the_error_is_rendered_in_a_pre_block(self):
+        from rowparity.run_report import _TEMPLATE_PATH
+
+        with open(_TEMPLATE_PATH, encoding="utf-8") as fh:
+            template = fh.read()
+        assert 'el("pre", "err"' in template, "error text is not rendered in a <pre>"
+
+    def test_the_pre_block_does_not_wrap(self):
+        # pre-wrap would re-flow long lines and move the caret away from the
+        # token it points at, which is the whole reason to keep the shape.
+        from rowparity.run_report import _TEMPLATE_PATH
+
+        with open(_TEMPLATE_PATH, encoding="utf-8") as fh:
+            template = fh.read()
+        block = template.split("pre.err {", 1)[1].split("}", 1)[0]
+        # Comments out first: the rule carries one explaining why pre-wrap is
+        # wrong here, and searching raw text finds the explanation rather than
+        # a declaration. Same trap as prose inside a SQL file.
+        declarations = re.sub(r"/\*.*?\*/", "", block, flags=re.S)
+        assert "white-space: pre;" in declarations
+        assert "pre-wrap" not in declarations
+        assert "overflow-x: auto" in declarations, "no horizontal scroll; long lines get cut off"
+
+    def test_no_stray_punctuation_icon(self):
+        # The ERROR badge in the header already marks it. A bare "!" left over
+        # from an icon reads as leftover punctuation, not a warning.
+        from rowparity.run_report import _TEMPLATE_PATH
+
+        with open(_TEMPLATE_PATH, encoding="utf-8") as fh:
+            template = fh.read()
+        assert 'el("div", null, "!")' not in template
+
+    def test_the_headline_says_no_verdict_was_reached(self):
+        # The distinction that matters: an errored case is neither a pass nor a
+        # difference, and a reader skimming badges should not file it as either.
+        html = render_run_report([], [("broken", ValueError("x"))])
+        assert "This case did not run." in html
+        assert "no verdict" in html
+
+    def test_the_exception_type_is_shown_with_the_message(self):
+        payload = build_payload([], [("broken", ValueError("boom"))])
+        case = payload["cases"][0]
+        assert case["error_type"] == "ValueError"
+        assert case["error"] == "boom"
