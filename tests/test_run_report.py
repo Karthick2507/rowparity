@@ -492,3 +492,49 @@ class TestErrorBlockRendering:
         case = payload["cases"][0]
         assert case["error_type"] == "ValueError"
         assert case["error"] == "boom"
+
+
+class TestConsoleOutputIsAscii:
+    """Console text ends up in places that guess their own encoding.
+
+    A run's stdout gets redirected into files, pasted into tickets and chat,
+    and -- as happened here -- saved with an .html extension and opened in a
+    browser, where a real em dash read as Windows-1252 became "a-tilde-euro-
+    quote". The HTML report declares its charset and cannot do this; plain
+    console text has no way to declare anything, so it is held to ASCII.
+
+    Markdown deliberately keeps its check marks: .md is a utf-8 medium by
+    convention, read through GitHub or a viewer rather than a raw browser.
+    """
+
+    def test_render_console_is_ascii(self):
+        from rowparity.report import render_console
+
+        exp = [{"id": i, "a": i, "b": "x" * 200} for i in range(30)]
+        act = [{"id": i, "a": i + 1, "b": "y" * 200} for i in range(30)]
+        text = render_console(_result(exp, act, keys=["id"]), "c")
+        offenders = sorted({c for c in text if ord(c) > 127})
+        assert not offenders, f"console output contains non-ASCII: {offenders}"
+
+    def test_change_signature_line_is_ascii(self):
+        from rowparity.report import _render_signature
+
+        result = _result(
+            [{"id": i, "v": i} for i in range(10)],
+            [{"id": i, "v": i + 1} for i in range(10)],
+            keys=["id"],
+        )
+        for sig in result.signatures_by_count():
+            line = _render_signature(sig)
+            assert all(ord(c) < 128 for c in line), line
+
+    def test_truncation_marker_is_ascii(self):
+        from rowparity.report import _short
+
+        assert _short("x" * 500).endswith("...")
+
+    def test_keyless_console_output_is_ascii(self):
+        from rowparity.report import render_console
+
+        text = render_console(_result(ROWS, [{"id": 9, "v": "z"}]), "c")
+        assert all(ord(c) < 128 for c in text)

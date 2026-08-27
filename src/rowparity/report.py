@@ -15,7 +15,7 @@ from .compare import ChangeSignature, ComparisonResult, RowDiff
 
 def _short(value: Any, limit: int = 80) -> str:
     s = repr(value)
-    return s if len(s) <= limit else s[: limit - 1] + "…"
+    return s if len(s) <= limit else s[: limit - 3] + "..."
 
 
 def _fmt_key(key) -> str:
@@ -52,7 +52,7 @@ def _render_signature(sig: ChangeSignature) -> str:
         pairs = ", ".join(
             f"{c.column}: {_short(c.expected)} -> {_short(c.actual)}" for c in sig.example.columns
         )
-        detail = f" — e.g. key={_fmt_key(sig.example.key)}: {pairs}"
+        detail = f" - e.g. key={_fmt_key(sig.example.key)}: {pairs}"
     return f"    {sig.count}x  {{{cols}}}{detail}"
 
 
@@ -130,7 +130,7 @@ def render_console(result: ComparisonResult, case_name: str = "") -> str:
         for diff in result.examples:
             lines.append(_render_example(diff))
         if result.total_differences > shown:
-            lines.append(f"  … and {result.total_differences - shown} more")
+            lines.append(f"  ... and {result.total_differences - shown} more")
     return "\n".join(lines)
 
 
