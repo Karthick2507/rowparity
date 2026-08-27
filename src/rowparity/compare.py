@@ -24,6 +24,15 @@ import pyarrow as pa
 from .hashing import CanonConfig, canon_columns_vectorized, canon_row, canon_value, row_digest
 
 
+class EmptyComparisonError(RuntimeError):
+    """Both sides returned zero rows, so the comparison proved nothing.
+
+    Raised rather than returned as a difference because it is not a difference:
+    it is a configuration or data-availability problem, and it needs to be
+    distinguishable from "the tables genuinely disagree".
+    """
+
+
 @dataclass
 class CompareConfig:
     keys: Optional[List[str]] = None
@@ -44,6 +53,12 @@ class CompareConfig:
     # fails the comparison. If False, we compare the intersection and just report.
     strict_columns: bool = False
     max_examples: int = 20
+    # Two empty tables are trivially equivalent, and that is the problem: a run
+    # over zero rows compares nothing and reports EQUIVALENT with exit 0. It is
+    # indistinguishable from a real pass and is almost always a batch that aged
+    # out, a mistyped parameter, or a filter that matched nothing. Set True only
+    # where an empty result is a legitimate expected outcome.
+    allow_empty: bool = False
     # Canonicalize whole columns at once (numpy / Arrow compute) instead of
     # dispatching per cell, falling back to the row-wise path for nulls and
     # types that don't vectorize (decimal, date, time, binary, nested). Same
