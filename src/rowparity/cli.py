@@ -18,6 +18,7 @@ from .params import ParamError, parse_cli_params
 from .report import render_console, write_csv_reports, write_reports
 from .report_html import render_report_from_sink
 from .result_sink import make_result_sink
+from .run_report import write_run_report
 
 
 def _run(args) -> int:
@@ -55,6 +56,11 @@ def _run(args) -> int:
             print(f"WARNING: could not initialise result sink: {exc}", file=sys.stderr)
 
     results: List[Tuple[str, ComparisonResult]] = []
+    # Errored cases never produce a ComparisonResult, so they are invisible
+    # to every reporter that walks `results`. Collected here so the HTML
+    # report can show them: a report that silently omits the case that blew
+    # up is worse than no report.
+    errors: List[Tuple[str, BaseException]] = []
     only = set(args.select) if args.select else None
     failures = 0
     xfail_confirmed = 0
@@ -67,6 +73,7 @@ def _run(args) -> int:
             result = case.run(result_sink=result_sink)
         except Exception as exc:  # a source/config error should fail the case, not crash the run
             print(f"Case '{case.name}': ERROR - {type(exc).__name__}: {exc}\n")
+            errors.append((case.name, exc))
             failures += 1
             continue
         results.append((case.name, result))
@@ -91,6 +98,14 @@ def _run(args) -> int:
     if getattr(args, "csv", None):
         paths = write_csv_reports(results, args.csv)
         print(f"Wrote {len(paths)} per-column CSV report(s) to {args.csv}/")
+    if getattr(args, "html", None):
+        try:
+            write_run_report(args.html, results, errors, run_id=run_id)
+            print(f"Wrote HTML report to {args.html}")
+        except Exception as exc:
+            # A report is an artifact of the run, not the run. Losing it
+            # must not change the verdict the comparison already reached.
+            print(f"WARNING: could not write HTML report: {exc}", file=sys.stderr)
 
     total = len(results)
     n_xfail = xfail_confirmed + xfail_unexpected_pass
@@ -149,6 +164,14 @@ def main(argv=None) -> int:
     )
     run_p.add_argument("--json", help="write a JSON summary here")
     run_p.add_argument("--md", help="write a Markdown report here")
+    run_p.add_argument(
+        "--html", metavar="FILE",
+        help="write a self-contained HTML report for THIS run here. Unlike "
+             "`rowparity report --html`, which renders pass-rate history from "
+             "a result sink, this shows one run: per-case verdict, timings, "
+             "row parity, a filterable per-column table, change signatures, "
+             "and any case that failed to run at all.",
+    )
     run_p.add_argument(
         "--quiet", action="store_true",
         help="suppress the live per-step progress on stderr. Results still go "

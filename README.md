@@ -104,6 +104,15 @@ Every row is reduced to a **canonical fingerprint** — a Blake2b hash of the ro
 - **NULL is distinct** — `NULL ≠ "" ≠ 0 ≠ {}`
 - **Nested types follow SQL semantics** — `list` ordered, `struct`/`map` unordered by key
 
+With a business key, rows are paired on that key first and the fingerprint then
+answers "are these two paired rows identical?" — which is what turns a
+difference into `changed` with the drifting columns named, rather than an
+unattributable `missing` + `added` pair.
+
+📖 **[CODE_FLOW.md](CODE_FLOW.md)** walks one `rowparity run` command end to end
+— CLI → case loading → `${…}` substitution → source fetch → fingerprint →
+comparison → report → exit code — with the code at each step.
+
 ---
 
 ## Install
@@ -189,10 +198,22 @@ actual:
 
 ```bash
 rowparity run examples/cases --json reports/qa.json --md reports/qa.md
+rowparity run examples/cases --csv reports/columns      # one row per column
+rowparity run examples/cases --html reports/run.html    # this run, as a page
 rowparity run examples/cases --result-sink duckdb:./reports/results.duckdb
 rowparity report --result-sink duckdb:./reports/results.duckdb --html reports/report.html
 rowparity list examples/cases
 ```
+
+Two HTML reports, answering different questions:
+
+| | |
+|---|---|
+| `run --html` | **this run** — per-case verdict, timings, row parity, a filterable per-column table, change signatures, and any case that failed to run at all |
+| `report --html` | **history** — pass-rate trend, per-case ledger with sparklines, schema-drift over time, read back from a result sink |
+
+`run --html` is self-contained: no network, no CDN, opens from `file://`, and
+follows the system light/dark theme.
 
 ---
 
@@ -266,5 +287,6 @@ make test
 | | |
 |---|---|
 | [FEATURES.md](FEATURES.md) | Full reference for every feature, option, and source type |
+| [CODE_FLOW.md](CODE_FLOW.md) | One `rowparity run` traced through the code, step by step |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Developer setup, project layout, adding sources and cases |
 | [`ci/Jenkinsfile`](ci/Jenkinsfile) | CI pipeline reference |
