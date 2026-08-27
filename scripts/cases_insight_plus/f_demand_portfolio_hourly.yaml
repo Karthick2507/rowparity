@@ -49,15 +49,118 @@ cases:
       query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_hoover++.sql
 
     compare:
-      # No keys: this is an aggregate, and none of the row-level identifiers
-      # survive the GROUP BY. Keyless is a multiset diff of row fingerprints --
-      # it detects any difference, but cannot attribute one to a column, since
-      # without a key there is no way to pair a missing row with the added row
-      # it corresponds to. Rows that differ are reported as missing + added,
-      # never as "changed".
+      # The 83 GROUP BY dimensions. Not a business key -- nobody would call it
+      # one -- but unique by construction after the outer aggregation, which is
+      # all a key has to be.
       #
-      # Add keys here if a future query has a unique column set; rowparity
-      # switches to keyed comparison on their presence alone.
+      # This case ran keyless first, and the result was undiagnosable: 158
+      # missing + 217 added with no way to tell whether those were the same
+      # logical rows with drifting metrics or genuinely different groups.
+      # Without a key nothing can pair a missing row with the added row it
+      # corresponds to, so every difference surfaces as missing + added and
+      # never as "changed" -- and the per-column report flagged all 262 columns,
+      # because one side had 59 extra rows and so every column's value multiset
+      # differed. True, and useless.
+      #
+      # Keyed on the dimensions, the same run separates the two questions:
+      #   missing / added  -> dimension combinations absent from one side
+      #                       (a structural difference)
+      #   changed          -> same dimensions, different metrics
+      #                       (value drift, with only the drifting columns named)
+      # and change_signatures groups the changed rows by which columns differ,
+      # so hundreds collapse into a handful of patterns.
+      #
+      # 83 dimensions + 179 sum() metrics = 262 output columns. The split is
+      # asserted against the query itself in tests/test_insight_plus_case.py, so
+      # adding a column to the SELECT without updating this list fails a test
+      # rather than silently changing what "the same row" means.
+      #
+      # If these turn out not to be unique, rowparity reports duplicate_keys_*
+      # rather than guessing -- and that would itself be a finding.
+      keys:
+        - ack_traffic_type
+        - ad_id
+        - bidding_buyer_id
+        - buyer_group_id
+        - buyer_id
+        - buyer_platform_id
+        - content_form_id
+        - content_form_visibility
+        - content_owner_id
+        - content_owner_visibility
+        - creative_id
+        - deal_id
+        - delivered_platform_device_id
+        - distributor_id
+        - dsp_id
+        - event_date
+        - evergreen_ad_indicator
+        - geo_country_visibility
+        - global_advertiser_ids
+        - global_brand_ids
+        - global_currency_id
+        - global_currency_version
+        - inbound_order_id
+        - inbound_order_transaction_type
+        - live_linear_indicator
+        - local_advertiser_id
+        - market_ad_id
+        - network_id
+        - outbound_exchange_listing_ids
+        - outbound_exchange_order_id
+        - outbound_order_id
+        - partition_key
+        - partner_tag_indicator
+        - placement_id
+        - primary_ad_indicator
+        - priority_tier
+        - priority_type
+        - priority_value
+        - process_batch_id
+        - process_stage
+        - profile_id
+        - profile_type
+        - promo_ad_indicator
+        - request_fill_status
+        - request_traffic_type
+        - reseller_id
+        - reseller_network_type
+        - reseller_visibility
+        - sales_channel
+        - sales_strategy
+        - site_id
+        - site_section_id
+        - slot_ad_unit_ids
+        - slot_fill_status
+        - slot_removed_by_constrained_indicator
+        - slot_removed_by_ux_indicator
+        - slot_sequence_normalized
+        - slot_user_drop_off
+        - ssp_bidder_indicator
+        - standard_app_bundle_id
+        - standard_app_id
+        - standard_brand_id
+        - standard_brand_visibility
+        - standard_channel_id
+        - standard_channel_visibility
+        - standard_device_type_id
+        - standard_endpoint_id
+        - standard_endpoint_owner_id
+        - standard_endpoint_owner_visibility
+        - standard_endpoint_visibility
+        - standard_environment_id
+        - standard_os_id
+        - standard_programmer_id
+        - standard_programmer_visibility
+        - standard_publisher_id
+        - standard_site_domain_id
+        - stream_mode_id
+        - supply_source
+        - supply_source_detail
+        - time_position_classes
+        - transaction_type
+        - user_agent_visibility
+        - user_country_id
 
       # Sums over DOUBLE are not associative, so two engines summing the same
       # values in a different partition order can differ in the last bits.
