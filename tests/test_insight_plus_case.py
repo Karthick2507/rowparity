@@ -14,6 +14,7 @@ and the run reported EQUIVALENT. A green result proving nothing is the worst
 outcome available to a verification tool, so it gets tests.
 """
 import os
+import re
 
 import pytest
 import yaml
@@ -113,12 +114,15 @@ class TestBatchParameter:
 
 
 class TestComparisonSettings:
-    def test_keyless(self, sql_files_present):
-        # An aggregate: no row-level identifier survives the GROUP BY. Keyless
-        # detects any difference but reports it as missing + added, never as
-        # "changed", because without a key rows cannot be paired.
-        assert "keys" not in _case().compare
-        assert _case().config().keys is None
+    def test_keyed_on_the_group_by_dimensions(self, sql_files_present):
+        # This case ran keyless first. No row-level identifier survives the
+        # GROUP BY, so there appeared to be no key -- but the GROUP BY set
+        # itself is one, unique by construction after aggregation. Keyless, a
+        # live run gave 158 missing + 217 added with no way to tell drifting
+        # metrics from genuinely different groups. See
+        # TestKeysMatchTheQueryDimensions below.
+        assert _case().config().keys is not None
+        assert len(_case().config().keys) == 83
 
     def test_source_ordered_arrays_are_compared_unordered(self, sql_files_present):
         # rowparity treats list as ORDERED. These two reach the output straight
@@ -136,3 +140,113 @@ class TestComparisonSettings:
     def test_examples_are_bounded(self, sql_files_present):
         # 100k rows of diff would be unreadable and would bloat every report.
         assert _case().config().max_examples == 50
+
+
+# --------------------------------------------------------------------------- #
+# Keys: the GROUP BY dimensions, kept in sync with the query
+# --------------------------------------------------------------------------- #
+HOOVER_SQL = os.path.join(
+    REPO, "sql", "insight_plus", "f_demand_portfolio_hourly_hoover.sql"
+)
+
+
+def _strip_sql_comments(sql: str) -> str:
+    # Before splitting, never after: a comment like "-- no use, could be
+    # removed" contains a comma, and splitting first tears the SELECT item in
+    # half. Commented-out columns (--,ivt_indicator) would also be read as real
+    # ones, which added three phantom dimensions the first time this was tried.
+    sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.S)
+    return "\n".join(re.sub(r"--.*$", "", line) for line in sql.splitlines())
+
+
+def _outer_select_items(sql: str):
+    """The outer SELECT list, split on top-level commas."""
+    body = _strip_sql_comments(sql).split("\nfrom (", 1)[0]
+    body = body[body.rfind("\nselect") + len("\nselect"):]
+    items, depth, current = [], 0, []
+    for ch in body:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            items.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    items.append("".join(current))
+    return [i.strip() for i in items if i.strip()]
+
+
+def _output_name(item: str):
+    m = re.search(r"\bas\s+([a-z_][a-z0-9_]*)\s*$", item, re.I | re.S)
+    if m:
+        return m.group(1)
+    m = re.fullmatch(r"(?:[a-z_][a-z0-9_]*\.)?([a-z_][a-z0-9_]*)", item.strip(), re.I)
+    return m.group(1) if m else None
+
+
+def _dimensions_and_metrics():
+    """Split the query's output columns into GROUP BY dimensions and sum() metrics."""
+    with open(HOOVER_SQL, encoding="utf-8") as fh:
+        sql = fh.read()
+    dims, metrics, unparsed = [], [], []
+    for item in _outer_select_items(sql):
+        name = _output_name(item)
+        if name is None:
+            unparsed.append(item)
+            continue
+        (metrics if re.search(r"\bsum\s*\(", item, re.I) else dims).append(name)
+    return dims, metrics, unparsed
+
+
+class TestKeysMatchTheQueryDimensions:
+    """The keys are the 83 GROUP BY dimensions.
+
+    Not a business key -- nobody would call it one -- but unique by
+    construction after the outer aggregation, which is all a key needs to be.
+
+    This case ran keyless first and the output could not be acted on: 158
+    missing + 217 added, with no way to tell whether those were the same
+    logical rows with drifting metrics or genuinely different groups, and all
+    262 columns flagged because one side had 59 extra rows.
+
+    The risk keys introduce is silent rot: add a column to the SELECT, forget
+    this list, and "the same row" quietly means something else. Hence these.
+    """
+
+    def test_the_parser_accounts_for_every_output_column(self):
+        # If this fails, every assertion below is measuring the wrong thing.
+        dims, metrics, unparsed = _dimensions_and_metrics()
+        assert unparsed == [], f"could not parse: {unparsed[:3]}"
+        assert len(dims) + len(metrics) == 262
+        assert len(dims) == 83
+        assert len(metrics) == 179
+
+    def test_keys_are_exactly_the_dimensions(self, sql_files_present):
+        dims, _, _ = _dimensions_and_metrics()
+        assert sorted(_case().config().keys) == sorted(dims)
+
+    def test_no_metric_is_used_as_a_key(self, sql_files_present):
+        # Keying on a sum() would make the key change whenever the data does,
+        # which pairs nothing and turns every drift into missing + added --
+        # exactly the keyless behaviour the keys exist to escape.
+        _, metrics, _ = _dimensions_and_metrics()
+        assert set(_case().config().keys).isdisjoint(metrics)
+
+    def test_keys_are_unique_names(self, sql_files_present):
+        keys = _case().config().keys
+        assert len(keys) == len(set(keys))
+
+    def test_array_dimensions_that_may_reorder_are_compared_unordered(self, sql_files_present):
+        # These are in the key, so their canonical form decides which rows pair
+        # up. If Presto returns the elements in a different order on the two
+        # sides, an ordered comparison makes the same group look like two.
+        cfg = _case().config()
+        unordered = set(cfg.unordered_list_columns)
+        for column in ("global_advertiser_ids", "global_brand_ids"):
+            assert column in cfg.keys
+            assert column in unordered
+
+    def test_the_case_is_keyed_not_keyless(self, sql_files_present):
+        assert _case().config().keys, "keys were dropped; the report loses attribution"
