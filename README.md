@@ -150,6 +150,44 @@ pip install rowparity[all]         # all drivers
 
 Any source that accepts `query:` also accepts **`query_file: path/to/file.sql`** for large SQL that doesn't belong inline in YAML.
 
+### One query file, two sides
+
+When the two sides run the *same* query against different places — a migration,
+where only the catalog or schema moved — give both sides the same `query_file`
+and a per-side `vars:` block:
+
+```yaml
+expected:
+  type: trino
+  query_file: ../../sql/insight_plus/f_demand_portfolio_hourly.sql
+  vars: { facts: mrm_log_flat.default }     # Hoover
+
+actual:
+  type: trino
+  query_file: ../../sql/insight_plus/f_demand_portfolio_hourly.sql
+  vars: { facts: etl.public_test1 }         # Hoover++
+```
+
+with the SQL reading `from ${facts}.ad`. The alternative — two copies of a
+2,000-line query differing in three lines — needs a test to diff them, and does
+not survive being done a hundred times. **One file cannot drift from itself.**
+
+Three rules worth knowing:
+
+* **A side var outranks `--param` and the environment**, inverting the normal
+  precedence. A side var is half of what makes the two sides different, not a
+  run-time knob; a `--param` reaching both sides would point them at the same
+  catalog and report a confident EQUIVALENT for comparing a table with itself.
+  A side that *should* be overridable says so by templating its value
+  (`vars: { facts: "${old_catalog}" }`), which resolves normally.
+* **Anything that must be identical on both sides belongs in the case-level
+  `vars:`, not a per-side block.** A sampling filter is the example: defined
+  once and used by both, "one side sampled, one side not" stops being a bug you
+  can write.
+* **If both sides read one file and resolve it identically, the run refuses to
+  start** — that is a half-edited copy-paste, and it would otherwise pass no
+  matter what the data held. Opt out with `compare.allow_identical_sources: true`.
+
 ---
 
 ## Push-down engines
@@ -190,6 +228,8 @@ actual:
 | `case_insensitive` | `false` | casefold strings |
 | `strict_columns` | `false` | fail if column sets or types differ |
 | `max_examples` | `20` | example diffs to show |
+| `allow_empty` | `false` | permit a run where both sides fetched zero rows |
+| `allow_identical_sources` | `false` | permit both sides resolving one `query_file` identically |
 | `vectorized` | `false` | ~1.2× speed-up on default engine |
 
 ---

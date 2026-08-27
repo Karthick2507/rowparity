@@ -20,7 +20,7 @@ import pytest
 import yaml
 
 from rowparity.cases import Case, discover_cases
-from rowparity.params import ParamError
+from rowparity.params import ParamError, merge_side_vars
 from rowparity.sources import resolve_query
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,8 +39,15 @@ def _case(params=PARAMS) -> Case:
 
 
 def _sql(case: Case, side: str) -> str:
+    """Render one side's SQL exactly as load_source would.
+
+    Both sides read the same file, so the side's own vars: block is what makes
+    them different queries. Resolving with case.variables alone would leave
+    ${facts} unresolved and raise -- which is the point of merging here.
+    """
     spec = case.expected if side == "expected" else case.actual
-    return resolve_query(spec, os.path.dirname(case.source_file), case.variables)
+    variables = merge_side_vars(spec.get("vars"), case.variables)
+    return resolve_query(spec, os.path.dirname(case.source_file), variables)
 
 
 @pytest.fixture(scope="module")
@@ -67,6 +74,18 @@ class TestWiring:
         # For an aggregate this expensive that is the wrong trade, and the
         # Trino push-down path has never been run against a live cluster.
         assert _case().engine is None
+
+    def test_the_two_sides_share_one_query_file(self, sql_files_present):
+        # The scale-out change. Two copies of a 185 KB query kept in step by a
+        # diffing test does not survive 137 queries; one file per query with a
+        # per-side catalog cannot drift from itself at all.
+        case = _case()
+        assert case.expected["query_file"] == case.actual["query_file"]
+
+    def test_the_sides_differ_only_in_the_fact_catalog(self, sql_files_present):
+        case = _case()
+        assert case.expected["vars"] == {"facts": "mrm_log_flat.default"}
+        assert case.actual["vars"] == {"facts": "etl.public_test1"}
 
     def test_each_side_reads_its_own_catalog(self, sql_files_present):
         case = _case()
@@ -146,7 +165,7 @@ class TestComparisonSettings:
 # Keys: the GROUP BY dimensions, kept in sync with the query
 # --------------------------------------------------------------------------- #
 HOOVER_SQL = os.path.join(
-    REPO, "sql", "insight_plus", "f_demand_portfolio_hourly_hoover.sql"
+    REPO, "sql", "insight_plus", "f_demand_portfolio_hourly.sql"
 )
 
 

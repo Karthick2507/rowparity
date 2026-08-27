@@ -33,17 +33,19 @@ from .compare import (
     CompareConfig,
     ComparisonResult,
     EmptyComparisonError,
+    IdenticalSourcesError,
     compare_tables,
 )
 from .concept_check import ConceptCheckCase, build_concept_check_case
 from .exclusions import ExclusionError, merge_ignore_columns
 from .schema_check import SchemaCheckCase, build_schema_check_case
-from .sources import load_source
+from .sources import load_source, resolve_query
 
 _COMPARE_KEYS = {
     "keys", "select", "ignore_columns", "float_tolerance", "coerce_numeric_to_float",
     "trim_strings", "case_insensitive", "unordered_list_columns", "strict_columns",
     "max_examples", "vectorized", "null_equivalence", "allow_empty",
+    "allow_identical_sources",
     "ignore_columns_file", "ignore_columns_table",
 }
 
@@ -112,6 +114,8 @@ class Case:
 
         progress.emit(f"Case '{self.name}'")
 
+        self._guard_identical_sides(base_dir, cfg)
+
         if self.engine in ("duckdb", "snowflake", "trino"):
             # Push-down does its work inside the warehouse, so there is no
             # per-side load to time separately -- only the whole operation.
@@ -157,6 +161,53 @@ class Case:
         if result_sink:
             result_sink.write(self.name, self.tags, result)
         return result
+
+    def _guard_identical_sides(self, base_dir: str, cfg: CompareConfig) -> None:
+        """Refuse to run one shared query file that resolves the same both sides.
+
+        One SQL file parameterised per side removes the risk that two copies of
+        a query drift apart. It introduces the mirror image: both sides
+        resolving to the *same* catalog, because a ``vars:`` block was
+        copy-pasted and half-edited. Nothing about that looks wrong -- the run
+        succeeds, every row matches, and it reports EQUIVALENT with exit 0
+        after however long the warehouse took. It is the ``_guard_empty``
+        failure again in a new costume: a confident pass that verified nothing.
+
+        **Scoped to the shared-``query_file`` case on purpose.** Two sides
+        naming the same parquet path, or carrying two identical ``inline:``
+        blocks, are hand-written fixtures whose author can see both sides at
+        once; refusing those would reject a lot of legitimate cases to catch a
+        mistake nobody makes. Pointing both sides at one file, on the other
+        hand, has exactly one purpose -- to parameterise them differently -- so
+        a run where that produced no difference is a bug every time.
+        """
+        if cfg.allow_identical_sources:
+            return
+        shared = self.expected.get("query_file")
+        if not shared or shared != self.actual.get("query_file"):
+            return
+        try:
+            expected_sql = resolve_query(
+                self.expected, base_dir, params.merge_side_vars(self.expected.get("vars"), self.variables)
+            )
+            actual_sql = resolve_query(
+                self.actual, base_dir, params.merge_side_vars(self.actual.get("vars"), self.variables)
+            )
+        except Exception:
+            # Not this guard's job to report. Let the real load raise it, in
+            # the step where the operator is already looking for the error.
+            return
+        if expected_sql != actual_sql:
+            return
+        raise IdenticalSourcesError(
+            f"case '{self.name}': '{self.expected_label}' and '{self.actual_label}' "
+            f"both read {shared} and resolve it to exactly the same query, so this "
+            f"would compare a source with itself and report EQUIVALENT no matter "
+            f"what the data holds. The usual cause is a copy-pasted per-side "
+            f"'vars:' block where one value was never changed -- check that the "
+            f"two sides name different places. Set compare.allow_identical_sources: "
+            f"true if comparing a source with itself is genuinely the intent."
+        )
 
     def _guard_empty(self, result: ComparisonResult, cfg: CompareConfig) -> None:
         """Refuse to call a comparison over zero rows equivalent.
