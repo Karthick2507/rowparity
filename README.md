@@ -104,6 +104,15 @@ Every row is reduced to a **canonical fingerprint** — a Blake2b hash of the ro
 - **NULL is distinct** — `NULL ≠ "" ≠ 0 ≠ {}`
 - **Nested types follow SQL semantics** — `list` ordered, `struct`/`map` unordered by key
 
+With a business key, rows are paired on that key first and the fingerprint then
+answers "are these two paired rows identical?" — which is what turns a
+difference into `changed` with the drifting columns named, rather than an
+unattributable `missing` + `added` pair.
+
+📖 **[CODE_FLOW.md](CODE_FLOW.md)** walks one `rowparity run` command end to end
+— CLI → case loading → `${…}` substitution → source fetch → fingerprint →
+comparison → report → exit code — with the code at each step.
+
 ---
 
 ## Install
@@ -266,5 +275,6 @@ make test
 | | |
 |---|---|
 | [FEATURES.md](FEATURES.md) | Full reference for every feature, option, and source type |
+| [CODE_FLOW.md](CODE_FLOW.md) | One `rowparity run` traced through the code, step by step |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Developer setup, project layout, adding sources and cases |
 | [`ci/Jenkinsfile`](ci/Jenkinsfile) | CI pipeline reference |
