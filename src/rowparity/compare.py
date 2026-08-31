@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import pyarrow as pa
@@ -72,6 +73,16 @@ class CompareConfig:
     # compare a table with itself and report EQUIVALENT regardless of the data.
     # Set True only where self-comparison is the actual intent.
     allow_identical_sources: bool = False
+    # Key column(s) to split the row differences by, so a comparison over a
+    # UNION of several branches can say which branch disagrees.
+    #
+    # Restricted to key columns because a key is the only thing guaranteed
+    # identical on both sides of a paired row. Break down by a non-key column
+    # and a *changed* row has two different group values -- one per side -- so
+    # there is no answer to which group it belongs to, and whichever side the
+    # code happened to read would be an arbitrary choice presented as a fact.
+    # Keyed comparisons only.
+    breakdown_by: Optional[List[str]] = None
     # Canonicalize whole columns at once (numpy / Arrow compute) instead of
     # dispatching per cell, falling back to the row-wise path for nulls and
     # types that don't vectorize (decimal, date, time, binary, nested). Same
@@ -108,6 +119,57 @@ class RowDiff:
 
 
 @dataclass
+class ColumnDelta:
+    """How one column moved, across every changed row of one signature.
+
+    A signature says *which* columns move together and how often. It never said
+    which direction, by how much, or whether it was consistent -- and those are
+    different bugs. "11 -> 10" from a single example cannot distinguish "every
+    row loses exactly one" from "the deltas are all over the place"; the first
+    is a diagnosis and the second is a starting point.
+    """
+    column: str
+    rows: int = 0
+    # Direction tallies. Nulls are counted apart from value moves: "became
+    # null" is a different failure from "got smaller", and averaging them
+    # together would hide both.
+    lower: int = 0          # actual < expected
+    higher: int = 0         # actual > expected
+    became_null: int = 0
+    was_null: int = 0
+    numeric: int = 0        # rows where a delta could actually be computed
+    min_delta: Optional[float] = None
+    max_delta: Optional[float] = None
+    # Non-numeric columns get the most common (expected -> actual) pair
+    # instead, which is the same idea in the only form strings support.
+    top_pair: Optional[Tuple[Any, Any]] = None
+    top_pair_count: int = 0
+
+    @property
+    def constant_delta(self) -> Optional[float]:
+        """The delta, if every numeric row moved by exactly the same amount.
+
+        This is the word the whole feature is for. Four metrics all reporting a
+        constant delta in the same direction is not "9 rows changed" -- it is a
+        systematic, reproducible loss, stated by the report rather than left in
+        the data for someone to notice.
+        """
+        if self.numeric and self.numeric == self.rows and self.min_delta == self.max_delta:
+            return self.min_delta
+        return None
+
+    @property
+    def direction(self) -> str:
+        if self.lower and not self.higher:
+            return "lower"
+        if self.higher and not self.lower:
+            return "higher"
+        if self.lower or self.higher:
+            return "mixed"
+        return "null-only" if (self.became_null or self.was_null) else "other"
+
+
+@dataclass
 class ChangeSignature:
     """All 'changed' rows (keyed mode) that disagree on the same set of columns.
 
@@ -118,6 +180,48 @@ class ChangeSignature:
     columns: Tuple[str, ...]
     count: int = 0
     example: Optional[RowDiff] = None
+    # Per-column movement across every row in this signature -- see ColumnDelta.
+    deltas: Dict[str, ColumnDelta] = field(default_factory=dict)
+    # This signature's rows split by the breakdown column, when one is set.
+    breakdown: Dict[Any, int] = field(default_factory=dict)
+    # How extreme `example` is, so the kept row is the most diagnostic one
+    # rather than whichever happened to be read first.
+    _example_score: float = -1.0
+
+    def share_of(self, changed_count: int) -> float:
+        """Fraction of all changed rows this signature accounts for."""
+        return (self.count / changed_count) if changed_count else 0.0
+
+
+@dataclass
+class BreakdownGroup:
+    """Row counts for one value of the breakdown column.
+
+    Exists so a run over a UNION of several branches can say *which branch*
+    disagrees. The three-way `slot_user_drop_off` union is the motivating case:
+    without this, 149 missing and 208 added rows are one undifferentiated pile.
+    """
+    value: Any
+    expected_rows: int = 0
+    actual_rows: int = 0
+    missing: int = 0
+    added: int = 0
+    changed: int = 0
+
+    @property
+    def differences(self) -> int:
+        return self.missing + self.added + self.changed
+
+    @property
+    def differing_share(self) -> float:
+        """Differences as a fraction of the larger side.
+
+        Ranking by absolute count buries a small branch that is badly broken
+        under a large branch that is slightly off. 58 missing from 892 rows is
+        a worse signal than 71 from 1,204, and only the ratio says so.
+        """
+        base = max(self.expected_rows, self.actual_rows)
+        return (self.differences / base) if base else 0.0
 
 
 @dataclass
@@ -160,6 +264,12 @@ class ComparisonResult:
     # Keyed comparisons attribute differences per row via change_signatures and
     # do not need this. See _compare_keyless for how it is computed.
     column_value_mismatch: List[str] = field(default_factory=list)
+    # Row differences split by cfg.breakdown_by, computed over every row rather
+    # than over the bounded `examples` list -- a breakdown derived from 50 of
+    # 366 differing rows would describe a sample while looking like the whole
+    # picture. Empty when no breakdown column is set.
+    breakdown_columns: List[str] = field(default_factory=list)
+    breakdown: Dict[Any, "BreakdownGroup"] = field(default_factory=dict)
 
     # Wall-clock seconds, filled in by Case.run(). Kept as three numbers rather
     # than one total because "the query was slow" and "the comparison was slow"
@@ -304,14 +414,73 @@ def _compare_keyed(exp_rows, act_rows, exp_schema, act_schema, cols, cfg, canon_
 
     exp_keys, act_keys = set(exp_index), set(act_index)
 
+    # Positions of the breakdown columns within the key tuple. The tuple holds
+    # canonicalised *values*, not a hash, so this is a plain lookup -- which is
+    # the whole reason the breakdown is restricted to key columns.
+    bd_columns = list(cfg.breakdown_by or [])
+    # Every breakdown column must be part of the key -- see CompareConfig for
+    # why. cases.py checks this before a row is fetched; this is the backstop
+    # for compare_tables() called directly.
+    for c in bd_columns:
+        if c not in keys:
+            raise ValueError(
+                f"breakdown_by column '{c}' must be one of the key columns; a "
+                f"non-key column has a different value on each side of a "
+                f"changed row, so the row belongs to no single group"
+            )
+    result.breakdown_columns = bd_columns
+
+    def _bd(row: dict):
+        """Group identity: the raw column value(s) from the row.
+
+        Raw rather than canonical, which is a deliberate trade. The canonical
+        form is a type-tagged tuple -- ("s", "Removed") -- so keying on it
+        would force every reader of `result.breakdown` through a `.value`
+        lookup to find out which group they were holding. Keying on the raw
+        value makes `breakdown["Removed"]` mean what it looks like.
+
+        What that costs: with trim_strings on, " A" and "A" are one row to the
+        comparison but two groups here. That is rare, and it shows up as two
+        near-identical rows in the report rather than as a silently wrong
+        number -- the right way round for a mistake to fail.
+        """
+        raw = [row.get(c) for c in bd_columns]
+        return raw[0] if len(raw) == 1 else tuple(raw)
+
+    def _group(key: Tuple, row: Optional[dict] = None) -> Optional[BreakdownGroup]:
+        if not bd_columns or row is None:
+            return None
+        value = _bd(row)
+        group = result.breakdown.get(value)
+        if group is None:
+            group = result.breakdown[value] = BreakdownGroup(value=value)
+        return group
+
+    # Side totals per group, so the report can show differences as a share of
+    # each branch rather than only as an absolute count.
+    for key, idxs in exp_index.items():
+        group = _group(key, exp_rows[idxs[0]])
+        if group is not None:
+            group.expected_rows += len(idxs)
+    for key, idxs in act_index.items():
+        group = _group(key, act_rows[idxs[0]])
+        if group is not None:
+            group.actual_rows += len(idxs)
+
     for key in exp_keys - act_keys:
         idxs = exp_index[key]
         result.missing_count += len(idxs)
+        group = _group(key, exp_rows[idxs[0]])
+        if group is not None:
+            group.missing += len(idxs)
         _maybe_example(result, cfg, RowDiff(kind="missing", key=key, expected_row=exp_rows[idxs[0]]))
 
     for key in act_keys - exp_keys:
         idxs = act_index[key]
         result.added_count += len(idxs)
+        group = _group(key, act_rows[idxs[0]])
+        if group is not None:
+            group.added += len(idxs)
         _maybe_example(result, cfg, RowDiff(kind="added", key=key, actual_row=act_rows[idxs[0]]))
 
     for key in exp_keys & act_keys:
@@ -336,13 +505,95 @@ def _compare_keyed(exp_rows, act_rows, exp_schema, act_schema, cols, cfg, canon_
                         result.equivalent_diff_columns.get(cd.column, 0) + 1
                     )
 
+            group = _group(key, e)
+            if group is not None:
+                group.changed += 1
+
             sig = tuple(sorted(c.column for c in coldiffs))
             stats = result.change_signatures.setdefault(sig, ChangeSignature(columns=sig))
             stats.count += 1
-            if stats.example is None:
+            if bd_columns:
+                label = _bd(e)
+                stats.breakdown[label] = stats.breakdown.get(label, 0) + 1
+
+            score = _accumulate_deltas(stats, coldiffs, cfg)
+            # Keep the most extreme row rather than whichever arrived first.
+            # An arbitrary example is a fine illustration and a poor lead; the
+            # largest movement is the one worth looking at.
+            if stats.example is None or score > stats._example_score:
                 stats.example = diff
+                stats._example_score = score
 
             _maybe_example(result, cfg, diff)
+
+
+def _as_number(value) -> Optional[float]:
+    """A float for delta arithmetic, or None if this value has no magnitude.
+
+    bool is excluded deliberately: it is an int in Python, and reporting that a
+    flag "moved by -1" is worse than saying nothing.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float, Decimal)):
+        try:
+            return float(value)
+        except (ValueError, OverflowError):
+            return None
+    return None
+
+
+def _accumulate_deltas(stats: ChangeSignature, coldiffs, cfg: CompareConfig) -> float:
+    """Fold one changed row into the signature's per-column movement profile.
+
+    Returns how extreme this row is, used to pick the example to keep.
+    """
+    worst = 0.0
+    for cd in coldiffs:
+        delta = stats.deltas.get(cd.column)
+        if delta is None:
+            delta = stats.deltas[cd.column] = ColumnDelta(column=cd.column)
+        delta.rows += 1
+
+        if cd.expected is None or cd.actual is None:
+            # A value appearing or disappearing is not a movement, and folding
+            # it into the numeric profile would invent a delta from nothing.
+            if cd.actual is None:
+                delta.became_null += 1
+            else:
+                delta.was_null += 1
+            continue
+
+        ev, av = _as_number(cd.expected), _as_number(cd.actual)
+        if ev is not None and av is not None:
+            diff = av - ev
+            # Quantise to the tolerance grid first. Without this no float
+            # column would ever report a constant delta -- the last bits would
+            # differ on every row and the most useful signal would never fire.
+            if cfg.float_tolerance > 0:
+                diff = round(diff / cfg.float_tolerance) * cfg.float_tolerance
+            delta.numeric += 1
+            if diff < 0:
+                delta.lower += 1
+            elif diff > 0:
+                delta.higher += 1
+            delta.min_delta = diff if delta.min_delta is None else min(delta.min_delta, diff)
+            delta.max_delta = diff if delta.max_delta is None else max(delta.max_delta, diff)
+            scale = abs(ev) or 1.0
+            worst = max(worst, abs(diff) / scale)
+        else:
+            # Strings and everything else: the dominant (expected -> actual)
+            # pair is the closest thing to a delta that they support.
+            pair = (cd.expected, cd.actual)
+            try:
+                if delta.top_pair == pair:
+                    delta.top_pair_count += 1
+                elif delta.top_pair is None:
+                    delta.top_pair, delta.top_pair_count = pair, 1
+            except Exception:  # unhashable / uncomparable values
+                delta.top_pair, delta.top_pair_count = None, 0
+            worst = max(worst, 1.0)
+    return worst
 
 
 def _column_diffs(e, a, exp_schema, act_schema, cols, cfg, canon_cfg,

@@ -45,7 +45,7 @@ _COMPARE_KEYS = {
     "keys", "select", "ignore_columns", "float_tolerance", "coerce_numeric_to_float",
     "trim_strings", "case_insensitive", "unordered_list_columns", "strict_columns",
     "max_examples", "vectorized", "null_equivalence", "allow_empty",
-    "allow_identical_sources",
+    "allow_identical_sources", "breakdown_by",
     "ignore_columns_file", "ignore_columns_table",
 }
 
@@ -82,6 +82,10 @@ class Case:
             raise ValueError(f"case '{self.name}': unknown compare option(s): {sorted(unknown)}")
 
         options = {k: v for k, v in self.compare.items() if k not in _EXCLUSION_KEYS}
+        # A single column name is the common case; normalise so everything
+        # downstream sees a list and never has to ask which it got.
+        if isinstance(options.get("breakdown_by"), str):
+            options["breakdown_by"] = [options["breakdown_by"]]
         exclusion_file = self.compare.get("ignore_columns_file")
         exclusion_table = self.compare.get("ignore_columns_table")
         if exclusion_file or exclusion_table:
@@ -111,6 +115,8 @@ class Case:
                 f"default engine; push-down engines fingerprint in-warehouse and "
                 f"never see individual values. Drop the engine: key for this case."
             )
+
+        self._check_breakdown(cfg)
 
         progress.emit(f"Case '{self.name}'")
 
@@ -161,6 +167,49 @@ class Case:
         if result_sink:
             result_sink.write(self.name, self.tags, result)
         return result
+
+    def _check_breakdown(self, cfg: CompareConfig) -> None:
+        """Reject a breakdown that cannot be computed, before anything is fetched.
+
+        Two restrictions, both structural rather than incidental:
+
+        *Keys only.* A key is the only thing guaranteed identical on both sides
+        of a paired row. Break down by a non-key column and a *changed* row has
+        two group values, one per side, so it belongs to no single group --
+        whichever side the code read would be an arbitrary choice presented as
+        a fact. Adding the column to `keys` fixes it and is usually what the
+        author meant anyway.
+
+        *Default engine only.* Push-down engines count in SQL and never see a
+        row, so they would accept the option and silently produce nothing. Same
+        reasoning as null_equivalence above: refuse rather than quietly differ.
+        """
+        if not cfg.breakdown_by:
+            return
+        if self.engine in ("duckdb", "snowflake", "trino"):
+            raise ValueError(
+                f"case '{self.name}': breakdown_by is not supported with engine: "
+                f"{self.engine}. It is attributed per row by the default engine; "
+                f"push-down engines aggregate in-warehouse and never see one. "
+                f"Drop the engine: key for this case."
+            )
+        if not cfg.keys:
+            raise ValueError(
+                f"case '{self.name}': breakdown_by needs compare.keys. Without a "
+                f"key nothing pairs the two sides, so every difference is a "
+                f"missing row plus an added row and there is no per-row "
+                f"attribution to break down."
+            )
+        unknown = [c for c in cfg.breakdown_by if c not in cfg.keys]
+        if unknown:
+            raise ValueError(
+                f"case '{self.name}': breakdown_by names {unknown}, which "
+                f"{'are' if len(unknown) > 1 else 'is'} not in compare.keys. A "
+                f"breakdown column has to be part of the key: only a key is "
+                f"guaranteed the same on both sides of a changed row, so a "
+                f"non-key column would put that row in two groups at once. "
+                f"Add it to keys, or break down by a column already there."
+            )
 
     def _guard_identical_sides(self, base_dir: str, cfg: CompareConfig) -> None:
         """Refuse to run one shared query file that resolves the same both sides.

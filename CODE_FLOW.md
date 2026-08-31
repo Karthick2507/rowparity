@@ -199,9 +199,9 @@ support exclusion files.
 ### 4.2 `Case.run()`
 
 ```python
+self._check_breakdown(cfg)                   # ← before a single row is fetched
 progress.emit(f"Case '{self.name}'")
-
-self._guard_identical_sides(base_dir, cfg)   # ← before a single row is fetched
+self._guard_identical_sides(base_dir, cfg)   # ← likewise
 
 if self.engine in ("duckdb", "snowflake", "trino"):
     ...push-down: fingerprinting happens inside the warehouse...
@@ -218,7 +218,15 @@ else:
 With no `engine:` set, this takes the **default engine** branch: fetch both
 sides into memory, compare in Python.
 
-`_guard_identical_sides()` runs **first**, before any connection is opened. It
+`_check_breakdown()` and `_guard_identical_sides()` both run **before any
+connection is opened**, so a misconfigured case fails in the first second
+rather than after the warehouse has spent an hour producing an answer that
+proves nothing. The first rejects a `breakdown_by` that names a non-key column
+(a key is the only thing guaranteed identical on both sides of a paired row, so
+a non-key column would put a changed row in two groups at once) or one set on a
+push-down engine, which aggregates in-warehouse and never sees a row.
+
+`_guard_identical_sides()` is the second. It
 fires only when both sides name the same `query_file` *and* resolve it to the
 same text — which means a per-side `vars:` block was copy-pasted and one value
 never changed. Left alone that runs the full aggregate twice against one
@@ -516,6 +524,7 @@ shell
      └─ for case in cases:  try:
          └─ Case.run
              ├─ Case.config              ──► CompareConfig
+             ├─ Case._check_breakdown         ──► breakdown_by must be a key
              ├─ Case._guard_identical_sides   ──► refuse a self-comparison
              ├─ progress.step "expected"
              │   └─ sources.load_source → sources._trino
@@ -530,7 +539,9 @@ shell
              │       └─ compare._compare_keyed    (or _compare_keyless)
              │           ├─ compare._key_of       ──► key tuple, not hashed
              │           ├─ hashing.canon_row → hashing.row_digest  ──► blake2b 16B
-             │           └─ compare._column_diffs ──► change_signatures
+             │           ├─ compare._column_diffs ──► which columns differ
+             │           └─ compare._accumulate_deltas ──► direction, min/max,
+             │                                            constant?
              └─ Case._guard_empty
          └─ report.render_console → report.write_csv_reports → exit 0/1/2
 ```

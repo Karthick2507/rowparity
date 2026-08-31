@@ -208,4 +208,20 @@ cases:
 
       max_examples: 50
 
+      # Split every difference by which UNION ALL branch produced it.
+      #
+      # The query is a 3-way union, and slot_user_drop_off is a hardcoded
+      # literal in each branch -- 'Included' from ${facts}.ad, 'Removed' from
+      # the ads_in_slot__* array inside ${facts}.ack, 'Not Applicable' from
+      # ad-level acks and error events. So it partitions the output exactly,
+      # and because it is also a key its value is available for missing, added
+      # and changed rows alike at no cost.
+      #
+      # Without it, 149 missing + 208 added rows are one undifferentiated pile
+      # and the first question -- which branch is wrong? -- has no answer. With
+      # it, differences concentrated in 'Removed' point at the nested-array
+      # unnest (the structurally fragile one), and an even spread points at the
+      # shared predicates or the outer aggregate instead.
+      breakdown_by: slot_user_drop_off
+
     tags: [insight_plus, hoover]
