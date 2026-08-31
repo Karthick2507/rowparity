@@ -29,32 +29,11 @@
     --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --canvas: #0D1117;
-      --canvas-subtle: #161B22;
-      --canvas-inset: #010409;
-      --border: #30363D;
-      --border-muted: #21262D;
-      --fg: #E6EDF3;
-      --fg-muted: #848D97;
-      --fg-subtle: #6E7681;
-      --accent-fg: #4493F8;
-      --accent-subtle: #0C2D6B;
-      --success-fg: #3FB950;
-      --success-emphasis: #238636;
-      --success-subtle: #033A16;
-      --danger-fg: #F85149;
-      --danger-emphasis: #DA3633;
-      --danger-subtle: #67060C;
-      --attention-fg: #D29922;
-      --attention-emphasis: #9E6A03;
-      --attention-subtle: #341A00;
-      --done-fg: #AB7DF8;
-      --done-subtle: #271052;
-      --shadow: 0 1px 0 rgba(1, 4, 9, 0.5);
-    }
-  }
+  /* Light only, deliberately. A report that follows the reader's OS theme
+     looks different to every person it is forwarded to, and the dark rendering
+     was the thing people asked about rather than the data. color-scheme is
+     pinned so form controls and scrollbars stay light too. */
+  html { color-scheme: light; }
 
   * { box-sizing: border-box; }
   body {
@@ -215,11 +194,31 @@
            font-family: var(--font-mono); }
   table.deltas { margin-top: 10px; }
   table.deltas th, table.deltas td { font-size: 12px; padding: 4px 10px; }
-  .constant { display: inline-block; margin-left: 8px; padding: 0 6px;
-              border-radius: 10px; font-family: var(--font-sans); font-size: 11px;
-              font-weight: 600; color: var(--attention-fg);
-              background: var(--attention-subtle);
-              border: 1px solid var(--attention-emphasis); }
+  .constantnote { margin-top: 10px; font-size: 12px; color: var(--attention-fg);
+                  background: var(--attention-subtle); border-radius: 4px;
+                  padding: 6px 10px; }
+
+  /* --- row examples --- */
+  .txn { font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+         color: var(--accent-fg); background: var(--accent-subtle);
+         border: 1px solid #9EC7F3; border-radius: 4px; padding: 1px 6px;
+         display: inline-block; margin-bottom: 6px; }
+  dl.summary { display: grid; grid-template-columns: max-content 1fr;
+               gap: 1px 14px; font-size: 12px; margin: 0; }
+  dl.summary dt { color: var(--fg-muted); font-weight: 600; }
+  dl.summary dd { margin: 0; font-family: var(--font-mono); }
+  table.changed { width: auto; margin-top: 8px; }
+  table.changed th, table.changed td { font-size: 12px; padding: 3px 10px; }
+  td.old { color: var(--danger-fg); }
+  td.new { color: var(--success-fg); }
+  details.more { margin-top: 6px; }
+  details.more > summary { font-size: 11px; color: var(--accent-fg); font-weight: 400; }
+  .sqlbox { font-family: var(--font-mono); font-size: 11px; background: var(--canvas-inset);
+            border: 1px solid var(--border-muted); border-radius: 4px; padding: 10px;
+            max-height: 400px; overflow: auto; white-space: pre; margin-top: 6px; }
+  .allcols { font-family: var(--font-mono); font-size: 11px; color: var(--fg-muted);
+             margin-top: 6px; max-height: 320px; overflow-y: auto;
+             columns: 2; column-gap: 24px; }
   details { margin-top: 16px; }
   summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--fg-muted); }
   summary:hover { color: var(--accent-fg); }
@@ -355,11 +354,17 @@
       body.appendChild(el("h3", null, "Columns"));
       body.appendChild(renderColumns(c, idx, c.columns, true));
     }
+    if (c.near_miss && c.near_miss.columns.length) {
+      body.appendChild(renderNearMiss(c));
+    }
     if (c.change_signatures && c.change_signatures.length) {
       body.appendChild(renderSignatures(c));
     }
     if (c.examples && c.examples.length) {
       body.appendChild(renderExamples(c));
+    }
+    if (c.drilldowns && c.drilldowns.length) {
+      body.appendChild(renderDrilldowns(c));
     }
     card.appendChild(body);
     return card;
@@ -630,7 +635,11 @@
       var scroll = el("div", "scroll");
       var table = el("table", "deltas");
       var hr = el("tr");
-      ["Column", "Direction", "Rows", "Delta"].forEach(function (h) {
+      // No Delta column. It only ever rendered a range ("-3 to -1"), which read
+      // as noise rather than a finding. The one case where the number was
+      // genuinely diagnostic -- every row moving by an identical amount -- is
+      // surfaced as a sentence below instead, and only when it actually holds.
+      ["Column", "Direction", "Rows"].forEach(function (h) {
         hr.appendChild(el("th", null, h));
       });
       var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
@@ -652,20 +661,22 @@
         tr.appendChild(el("td", "num mono",
           num(dd.moved || dd.became_null || dd.was_null) + " / " + num(dd.rows)));
 
-        var td = el("td", "num mono");
-        td.appendChild(document.createTextNode((dd.approx ? "~" : "") + dd.amount));
-        if (dd.constant) {
-          // The word this whole section exists for. Several metrics all
-          // constant in the same direction is not "N rows changed", it is a
-          // systematic, reproducible loss.
-          td.appendChild(el("span", "constant", "constant"));
-        }
-        tr.appendChild(td);
         tb.appendChild(tr);
       });
       table.appendChild(tb);
       scroll.appendChild(table);
       box.appendChild(scroll);
+
+      // Stated only when true. Several metrics all moving by an identical
+      // amount is a systematic loss rather than scattered drift, and that is
+      // worth a sentence; a range is not.
+      var fixed = sig.deltas.filter(function (d) { return d.constant; });
+      if (fixed.length) {
+        box.appendChild(el("div", "constantnote",
+          "Every row moved by the same amount: " + fixed.map(function (d) {
+            return d.column + " " + d.amount;
+          }).join(", ") + " - a systematic shift, not scattered drift."));
+      }
     }
 
     if (sig.example && sig.example.length) {
@@ -676,29 +687,147 @@
     return box;
   }
 
+  function renderNearMiss(c) {
+    var nm = c.near_miss;
+    var wrap = el("div");
+    wrap.appendChild(el("h3", null, "Near misses - one key column apart"));
+    wrap.appendChild(el("p", "sub",
+      "A key column that drifts destroys the pairing, so one logical row is " +
+      "reported as a missing row AND an added row. Dropping each key column " +
+      "in turn shows which one is responsible. No query was run for this."));
+
+    var top = nm.columns[0];
+    if (top && top.pairs) {
+      wrap.appendChild(note("bad", "Likely cause:",
+        "dropping " + top.column + " pairs " + num(top.pairs) + " of " +
+        num(nm.missing_rows) + " missing rows with added rows (" +
+        pct(top.share) + "). Those rows were not lost - they moved."));
+    }
+
+    var scroll = el("div", "scroll");
+    var table = el("table");
+    var hr = el("tr");
+    ["Drop from key", "Pairs formed", "Explains", "Ambiguous", "Example"]
+      .forEach(function (h) { hr.appendChild(el("th", null, h)); });
+    var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
+    var tb = el("tbody");
+    nm.columns.forEach(function (col) {
+      var tr = el("tr");
+      tr.appendChild(el("td", "mono", col.column));
+      tr.appendChild(el("td", "num mono", num(col.pairs)));
+      tr.appendChild(el("td", "num mono", col.pairs ? pct(col.share) : "-"));
+      // Ambiguous groups are reported, never counted as pairs: several added
+      // rows matching on the other columns means no single pairing is known.
+      tr.appendChild(el("td", "num mono", col.ambiguous ? num(col.ambiguous) : "-"));
+      var ex = "";
+      if (col.examples.length) {
+        ex = col.examples[0].expected + "  ->  " + col.examples[0].actual;
+      }
+      tr.appendChild(el("td", "mono", ex));
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb);
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+    if (nm.truncated) {
+      wrap.appendChild(el("div", "empty",
+        "Analysis was capped, so these counts describe a subset of the " +
+        "unpaired rows rather than all of them."));
+    }
+    return wrap;
+  }
+
+  function renderDrilldowns(c) {
+    var d = el("details");
+    d.appendChild(el("summary", null,
+      "Drill-down SQL - " + c.drilldowns.length + " row(s), ready to run"));
+    var intro = el("p", "sub",
+      "Generated, not executed. Each pair runs the same investigation query " +
+      "against both sides with this row's values already substituted; the " +
+      "transaction ids each returns are what the two sides actually disagree " +
+      "about. Copy, run, compare the two id lists.");
+    d.appendChild(intro);
+    c.drilldowns.forEach(function (dd) {
+      var box = el("div", "sig");
+      var head = el("div", "sighead");
+      head.appendChild(el("span", "kind " + dd.kind, dd.kind_label));
+      head.appendChild(el("span", "mono", dd.filter.replace(/\n\s+/g, "  ")));
+      box.appendChild(head);
+      dd.queries.forEach(function (q) {
+        var sub = el("details", "more");
+        sub.appendChild(el("summary", null, q.side));
+        sub.appendChild(el("pre", "sqlbox", q.sql));
+        box.appendChild(sub);
+      });
+      d.appendChild(box);
+    });
+    return d;
+  }
+
   function renderExamples(c) {
     var d = el("details");
     d.appendChild(el("summary", null, "Row examples - " + c.examples.length + " shown"));
     var scroll = el("div", "scroll");
     var table = el("table");
     var hr = el("tr");
-    ["Kind", "Key", "Detail"].forEach(function (h) { hr.appendChild(el("th", null, h)); });
+    ["Kind", "Detail"].forEach(function (h) { hr.appendChild(el("th", null, h)); });
     var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
     var tb = el("tbody");
     c.examples.forEach(function (ex) {
       var tr = el("tr");
-      tr.appendChild(el("td", "kind " + ex.kind, ex.kind));
-      tr.appendChild(el("td", "mono", ex.key || ""));
-      var detail = "";
-      if (ex.kind === "changed" && ex.columns) {
-        detail = ex.columns.map(function (col) {
-          return col.column + ": " + col.expected + " -> " + col.actual +
-                 (col.equivalent ? " (equivalent)" : "");
-        }).join("  |  ");
-      } else {
-        detail = ex.row || "";
+      // Names the side rather than the direction: "missing" only reads
+      // correctly if you already know which side is the source of truth.
+      var kc = el("td");
+      kc.appendChild(el("span", "kind " + ex.kind, ex.kind_label || ex.kind));
+      tr.appendChild(kc);
+
+      var td = el("td");
+      if (ex.transaction_id) {
+        td.appendChild(el("div", "txn", "request__transaction_id  " + ex.transaction_id));
       }
-      tr.appendChild(el("td", "mono", detail));
+      if (ex.summary && ex.summary.length) {
+        var dl = el("dl", "summary");
+        ex.summary.forEach(function (g) {
+          dl.appendChild(el("dt", null, g.label));
+          dl.appendChild(el("dd", null, g.text));
+        });
+        td.appendChild(dl);
+      } else if (ex.key) {
+        // No row_summary configured: the key is still the row's identity.
+        td.appendChild(el("div", "mono", ex.key));
+      }
+
+      if (ex.kind === "changed" && ex.columns) {
+        var ct = el("table", "changed");
+        var chr = el("tr");
+        ["Column", c.expected_label || "expected", c.actual_label || "actual"]
+          .forEach(function (h) { chr.appendChild(el("th", null, h)); });
+        var cth = el("thead"); cth.appendChild(chr); ct.appendChild(cth);
+        var ctb = el("tbody");
+        ex.columns.forEach(function (col) {
+          var r = el("tr");
+          r.appendChild(el("td", "mono", col.column));
+          r.appendChild(el("td", "mono old", col.expected));
+          r.appendChild(el("td", "mono new", col.actual +
+            (col.equivalent ? " (equivalent)" : "")));
+          ctb.appendChild(r);
+        });
+        ct.appendChild(ctb);
+        td.appendChild(ct);
+      }
+
+      if (ex.all_columns && ex.all_columns.length) {
+        var more = el("details", "more");
+        more.appendChild(el("summary", null,
+          "all " + ex.all_columns.length + " columns"));
+        var box = el("div", "allcols");
+        ex.all_columns.forEach(function (col) {
+          box.appendChild(el("div", null, col.column + " = " + col.value));
+        });
+        more.appendChild(box);
+        td.appendChild(more);
+      }
+      tr.appendChild(td);
       tb.appendChild(tr);
     });
     table.appendChild(tb);

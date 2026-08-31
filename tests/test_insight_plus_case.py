@@ -84,8 +84,25 @@ class TestWiring:
 
     def test_the_sides_differ_only_in_the_fact_catalog(self, sql_files_present):
         case = _case()
-        assert case.expected["vars"] == {"facts": "mrm_log_flat.default"}
-        assert case.actual["vars"] == {"facts": "etl.public_test1"}
+        assert case.expected["vars"]["facts"] == "mrm_log_flat.default"
+        assert case.actual["vars"]["facts"] == "etl.public_test1"
+
+    def test_the_drilldown_windows_are_asymmetric(self, sql_files_present):
+        # Deliberate. Hoover++ is pinned to the hour the parity row claims;
+        # Hoover is searched wider, because "the event_date shifted between the
+        # layouts" is the hypothesis. Pinning both would assume the answer.
+        case = _case()
+        assert case.expected["vars"]["time_filter"] != case.actual["vars"]["time_filter"]
+        assert ">=" in case.expected["vars"]["time_filter"], "Hoover side should be a range"
+
+    def test_no_drilldown_window_carries_a_parameter(self, sql_files_present):
+        # A spec value is substituted when the case LOADS, so a ${...} here
+        # would make `rowparity list` fail without --param. Listing cases must
+        # never require a batch id.
+        case = _case()
+        for spec in (case.expected, case.actual):
+            for name, value in spec["vars"].items():
+                assert "${" not in value, f"{name} still carries a placeholder"
 
     def test_each_side_reads_its_own_catalog(self, sql_files_present):
         case = _case()

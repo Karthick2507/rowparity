@@ -45,7 +45,7 @@ _COMPARE_KEYS = {
     "keys", "select", "ignore_columns", "float_tolerance", "coerce_numeric_to_float",
     "trim_strings", "case_insensitive", "unordered_list_columns", "strict_columns",
     "max_examples", "vectorized", "null_equivalence", "allow_empty",
-    "allow_identical_sources", "breakdown_by",
+    "allow_identical_sources", "breakdown_by", "near_miss",
     "ignore_columns_file", "ignore_columns_table",
 }
 
@@ -75,6 +75,10 @@ class Case:
     # Human names for the two sides, used by reports only.
     expected_label: str = "expected"
     actual_label: str = "actual"
+    # Labelled groups of columns used to digest a diff row in the report.
+    row_summary: List[Dict[str, Any]] = field(default_factory=list)
+    # Optional drilldown: block -- generates per-row investigation SQL.
+    drilldown: Optional[Dict[str, Any]] = None
 
     def config(self, base_dir: Optional[str] = None) -> CompareConfig:
         unknown = set(self.compare) - _COMPARE_KEYS
@@ -161,12 +165,40 @@ class Case:
 
         result.expected_label = self.expected_label
         result.actual_label = self.actual_label
+        result.row_summary = self.row_summary
+        self._generate_drilldowns(result, base_dir)
 
         self._guard_empty(result, cfg)
 
         if result_sink:
             result_sink.write(self.name, self.tags, result)
         return result
+
+    def _generate_drilldowns(self, result: ComparisonResult, base_dir: str) -> None:
+        """Render per-row investigation SQL, if the case asks for it.
+
+        Failures here are reported and swallowed. A drill-down is an aid to
+        reading the result, not part of it -- losing a whole parity run because
+        a helper query template has a typo would be the wrong trade entirely.
+        """
+        if not self.drilldown or not result.examples:
+            return
+        from . import drilldown as dd
+
+        try:
+            cfg = dd.DrilldownConfig.from_yaml(self.drilldown)
+            result.drilldowns = dd.generate(
+                cfg,
+                result,
+                [
+                    {"label": self.expected_label, "spec": self.expected},
+                    {"label": self.actual_label, "spec": self.actual},
+                ],
+                base_dir,
+                self.variables,
+            )
+        except Exception as exc:
+            progress.emit(f"  drilldown SQL not generated: {type(exc).__name__}: {exc}")
 
     def _check_breakdown(self, cfg: CompareConfig) -> None:
         """Reject a breakdown that cannot be computed, before anything is fetched.
@@ -394,6 +426,8 @@ def _build_case(
         variables=variables,
         expected_label=raw.get("expected_label", "expected"),
         actual_label=raw.get("actual_label", "actual"),
+        row_summary=raw.get("row_summary", []) or [],
+        drilldown=raw.get("drilldown"),
     )
 
 
