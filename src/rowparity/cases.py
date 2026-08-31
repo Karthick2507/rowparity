@@ -398,6 +398,12 @@ def _build_case(
     raw = dict(raw)
     case_vars = raw.pop("vars", None) or {}
     raw.pop("param_queries", None)  # resolved once per file, see load_cases_from_file
+    # The drilldown block is substituted by drilldown.py, not here. Its time
+    # window is DERIVED from the batch parameter (20260827010000 -> the hour
+    # 2026-08-27 01:00:00), and that derivation has not happened yet. Leaving
+    # it in would also mean `rowparity list` could not enumerate a case without
+    # being handed a batch id, which listing has no business needing.
+    drilldown_raw = raw.pop("drilldown", None)
     variables = params.resolve_variables(file_vars, case_vars, cli_params)
     # Query-resolved values sit below --param/env (which short-circuit the
     # query entirely) but above a vars: default.
@@ -437,7 +443,7 @@ def _build_case(
         expected_label=raw.get("expected_label", "expected"),
         actual_label=raw.get("actual_label", "actual"),
         row_summary=raw.get("row_summary", []) or [],
-        drilldown=raw.get("drilldown"),
+        drilldown=drilldown_raw,
     )
 
 

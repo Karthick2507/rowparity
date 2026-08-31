@@ -28,6 +28,7 @@ from rowparity.drilldown import (
     DrilldownError,
     build_in_filter,
     collect_values,
+    derive_time_vars,
     generate,
     sql_literal,
 )
@@ -145,6 +146,57 @@ class TestCollectingValues:
         assert len(values) == 5 and not complete
 
 
+class TestDerivingTheTimeWindow:
+    """The window follows the run's --param, never a date typed into the case.
+
+    A hardcoded date goes stale the moment someone drills a different batch,
+    and nothing in the output says the window was wrong -- the query returns
+    rows from some other hour and they look exactly like an answer.
+    """
+
+    def test_the_batch_id_becomes_its_hour(self):
+        assert derive_time_vars("20260827010000")["batch_hour"] == "2026-08-27 01:00:00"
+
+    def test_the_window_brackets_that_hour(self):
+        v = derive_time_vars("20260827010000")
+        assert v["batch_hour_start"] == "2026-08-27 00:00:00"   # 1 hour before
+        assert v["batch_hour_end"] == "2026-08-27 04:00:00"     # 3 hours after
+
+    def test_the_window_is_configurable(self):
+        v = derive_time_vars("20260827010000", hours_before=2, hours_after=2)
+        assert v["batch_hour_start"] == "2026-08-26 23:00:00"
+        assert v["batch_hour_end"] == "2026-08-27 03:00:00"
+
+    def test_midnight_rolls_the_date_back(self):
+        # Clamping to 00:00 on the same day would silently narrow the window
+        # exactly where a shifted event_date is most likely to have landed.
+        assert derive_time_vars("20260101000000")["batch_hour_start"] == "2025-12-31 23:00:00"
+
+    def test_minutes_and_seconds_are_truncated_to_the_hour(self):
+        assert derive_time_vars("20260827013745")["batch_hour"] == "2026-08-27 01:00:00"
+
+    def test_the_date_is_available_on_its_own(self):
+        assert derive_time_vars("20260827010000")["batch_date"] == "2026-08-27"
+
+    def test_an_unparseable_batch_id_is_refused(self):
+        # Not defaulted to "now" or skipped: a drill-down over the wrong window
+        # returns rows that look like an answer.
+        with pytest.raises(DrilldownError, match="cannot derive"):
+            derive_time_vars("not-a-batch")
+
+    def test_a_missing_param_is_refused_by_name(self):
+        cfg = DrilldownConfig.from_yaml({
+            "query_file": "q.sql", "bind": ["c"],
+            "time": {"param": "arena.presto.var.process_batch_id"},
+        })
+        with pytest.raises(DrilldownError, match="process_batch_id"):
+            cfg.time_vars({})
+
+    def test_no_time_block_derives_nothing(self):
+        cfg = DrilldownConfig.from_yaml({"query_file": "q.sql", "bind": ["c"]})
+        assert cfg.time_vars({"anything": "1"}) == {}
+
+
 class TestConfig:
     def test_a_mapping_keeps_the_expression(self):
         cfg = DrilldownConfig.from_yaml({"query_file": "q.sql", "bind": {"creative_id": EXPR}})
@@ -232,6 +284,50 @@ class TestGeneration:
         _, dd = _generate(sql_dir, [101])
         for side in dd.sides:
             assert "${" not in side.sql
+
+
+class TestPerSideVarsAndDerivedTime:
+    def test_the_sides_get_different_windows_from_one_param(self, tmp_path):
+        (tmp_path / "drill.sql").write_text(
+            "select request__transaction_id from t where ${time_filter} and ${row_filter}")
+        cfg = DrilldownConfig.from_yaml({
+            "query_file": "drill.sql",
+            "bind": {"creative_id": "creative_id"},
+            "time": {"param": "batch"},
+            "vars": {
+                "expected": {"time_filter": "ts >= timestamp '${batch_hour_start}'"},
+                "actual": {"time_filter": "ts = timestamp '${batch_hour}'"},
+            },
+        })
+        sides = [{"label": "Hoover", "spec": {"type": "duckdb"}},
+                 {"label": "Hoover++", "spec": {"type": "duckdb"}}]
+        dd = generate(cfg, _result(missing=[1]), sides, str(tmp_path),
+                      {"batch": "20260827010000"}, keys=KEYS)
+        # Asymmetric on purpose: pinning both sides to the same hour would
+        # assume the answer to "did the event_date shift?".
+        assert "ts >= timestamp '2026-08-27 00:00:00'" in dd.sides[0].sql
+        assert "ts = timestamp '2026-08-27 01:00:00'" in dd.sides[1].sql
+
+    def test_nothing_is_hardcoded_in_the_generated_sql(self, tmp_path):
+        # Change the param, the window must move with it.
+        (tmp_path / "drill.sql").write_text(
+            "select request__transaction_id from t where ${time_filter} and ${row_filter}")
+        cfg = DrilldownConfig.from_yaml({
+            "query_file": "drill.sql", "bind": {"creative_id": "creative_id"},
+            "time": {"param": "batch"},
+            "vars": {
+                "expected": {"time_filter": "ts >= timestamp '${batch_hour_start}'"},
+                "actual": {"time_filter": "ts = timestamp '${batch_hour}'"},
+            },
+        })
+        sides = [{"label": "A", "spec": {"type": "duckdb"}},
+                 {"label": "B", "spec": {"type": "duckdb"}}]
+        first = generate(cfg, _result(missing=[1]), sides, str(tmp_path),
+                         {"batch": "20260827010000"}, keys=KEYS).sides[1].sql
+        second = generate(cfg, _result(missing=[1]), sides, str(tmp_path),
+                          {"batch": "20260812130000"}, keys=KEYS).sides[1].sql
+        assert "2026-08-27 01:00:00" in first
+        assert "2026-08-12 13:00:00" in second
 
 
 class TestExecution:
@@ -382,6 +478,28 @@ class TestTheRealCaseIsWired:
         # If it were not a key, values would come from the bounded example
         # list, which fills with `missing` rows and never reaches the others.
         assert "creative_id" in self._case().config().keys
+
+    def test_the_time_window_is_derived_from_the_run_parameter(self):
+        cfg = DrilldownConfig.from_yaml(self._case().drilldown)
+        assert cfg.time and cfg.time["param"] == "arena.presto.var.process_batch_id"
+        derived = cfg.time_vars({"arena.presto.var.process_batch_id": "20260827010000"})
+        assert derived["batch_hour"] == "2026-08-27 01:00:00"
+
+    def test_no_date_is_hardcoded_anywhere_in_the_case(self):
+        # The whole point. A literal date here would silently drill whatever
+        # hour was last typed in, regardless of the batch under test.
+        import re
+
+        import yaml as _yaml
+
+        with open(self._case().source_file, encoding="utf-8") as fh:
+            doc = _yaml.safe_load(fh)
+        block = _yaml.safe_dump(doc["cases"][0]["drilldown"])
+        assert not re.search(r"20\d\d-\d\d-\d\d \d\d:", block), \
+            "a literal timestamp in the drilldown block"
+        for side in ("expected", "actual"):
+            for value in (doc["cases"][0][side].get("vars") or {}).values():
+                assert "timestamp '" not in str(value)
 
     def test_it_fetches_request_transaction_id(self):
         assert DrilldownConfig.from_yaml(self._case().drilldown).id_column \

@@ -459,9 +459,36 @@ Three details worth knowing:
   realistic proportions the example list fills entirely with `missing` rows
   before an `added` or `changed` row is reached, so drawing from it would
   silently cover a third of the problem.
-* **The per-side time windows are deliberately asymmetric.** Pin the migrated
-  side to the hour under test, search the source side wider. If "the event_date
-  shifted" is the hypothesis, pinning both assumes the answer.
+* **The time window is derived from the run's `--param`, never typed in.**
+  `20260827010000` is `YYYYMMDDHHMMSS`, so the drill-down gets `${batch_hour}`
+  = `2026-08-27 01:00:00`, plus `${batch_hour_start}` / `${batch_hour_end}` /
+  `${batch_date}`. A hardcoded date goes stale the moment you drill a different
+  batch, and nothing in the output says the window was wrong — the query just
+  returns rows from another hour that look exactly like an answer.
+
+  ```yaml
+  drilldown:
+    time:
+      param: arena.presto.var.process_batch_id
+      format: "%Y%m%d%H%M%S"
+      hours_before: 1        # how far back the source side searches
+      hours_after: 3
+    vars:                    # per side, and deliberately ASYMMETRIC
+      expected:
+        time_filter: "event_date >= timestamp '${batch_hour_start}' and event_date < timestamp '${batch_hour_end}'"
+      actual:
+        time_filter: "event_date = timestamp '${batch_hour}'"
+  ```
+
+  Pin the migrated side to the hour the batch names, search the source side
+  wider. If "the event_date shifted" is the hypothesis, pinning both assumes
+  the answer.
+
+  These live in the `drilldown:` block rather than the sides' own `vars:` for a
+  concrete reason: a spec value is substituted when the case **loads**, but
+  `${batch_hour}` does not exist until the drill-down is generated — and a
+  parameter in a spec value would make `rowparity list` fail without `--param`,
+  which listing has no business needing.
 
 Set `execute: false` to generate the SQL without running it. One side failing
 does not lose the other, and the id diff is suppressed when either side failed —

@@ -34,7 +34,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
-from .params import merge_side_vars
+from .params import merge_side_vars, substitute
 from .sources import resolve_query
 
 # Placeholder the drill-down SQL uses where the generated predicate belongs.
@@ -91,6 +91,14 @@ class DrilldownConfig:
     id_column: str = "request__transaction_id"
     max_values: int = MAX_VALUES
     max_ids: int = MAX_IDS
+    # {param, format, hours_before, hours_after} -- how to turn the run's batch
+    # parameter into ${batch_hour} and friends.
+    time: Optional[Dict[str, Any]] = None
+    # {expected: {...}, actual: {...}} -- per-side values for the drill-down
+    # SQL's placeholders. Kept here rather than in the sides' own vars: because
+    # these may reference the derived time variables, which do not exist until
+    # generation time.
+    vars: Dict[str, Dict[str, str]] = field(default_factory=dict)
     # Running two extra queries is cheap next to the parity run itself, and the
     # ids are the actual deliverable, so this defaults on. Set false to review
     # the generated SQL without touching the warehouse.
@@ -100,7 +108,8 @@ class DrilldownConfig:
     def from_yaml(cls, raw: Optional[dict]) -> "Optional[DrilldownConfig]":
         if not raw:
             return None
-        known = {"query_file", "bind", "id_column", "max_values", "max_ids", "execute"}
+        known = {"query_file", "bind", "id_column", "max_values", "max_ids",
+                 "execute", "time", "vars"}
         unknown = set(raw) - known
         if unknown:
             raise DrilldownError(f"unknown drilldown option(s): {sorted(unknown)}")
@@ -133,7 +142,78 @@ class DrilldownConfig:
             max_values=int(raw.get("max_values", MAX_VALUES)),
             max_ids=int(raw.get("max_ids", MAX_IDS)),
             execute=bool(raw.get("execute", True)),
+            time=raw.get("time"),
+            vars=raw.get("vars") or {},
         )
+
+    def time_vars(self, variables: Optional[Dict[str, str]]) -> Dict[str, str]:
+        """Derived ${batch_hour} and friends, or nothing if not configured."""
+        if not self.time:
+            return {}
+        param = self.time.get("param")
+        if not param:
+            raise DrilldownError("drilldown.time needs a 'param' naming the batch parameter")
+        value = (variables or {}).get(str(param).lower())
+        if value is None:
+            raise DrilldownError(
+                f"drilldown.time reads '{param}', which this run has no value for. "
+                f"Pass --param {param}=<value>."
+            )
+        return derive_time_vars(
+            value,
+            fmt=self.time.get("format", BATCH_FORMAT),
+            hours_before=int(self.time.get("hours_before", HOURS_BEFORE)),
+            hours_after=int(self.time.get("hours_after", HOURS_AFTER)),
+        )
+
+
+# Batch ids in this pipeline are YYYYMMDDHHMMSS: 20260827010000 is the hour
+# 2026-08-27 01:00:00. Deriving the window from the run's --param rather than
+# hardcoding it is the difference between a drill-down that follows the batch
+# under test and one that silently investigates whatever hour someone last
+# typed into the case file.
+BATCH_FORMAT = "%Y%m%d%H%M%S"
+
+# Matching the window the engineers search by hand: the batch hour itself on
+# the migrated side, and one hour before to three after on the source side --
+# wide enough to catch a row whose event_date shifted, which is the whole
+# question.
+HOURS_BEFORE = 1
+HOURS_AFTER = 3
+
+
+def derive_time_vars(
+    batch_value: Any,
+    fmt: str = BATCH_FORMAT,
+    hours_before: int = HOURS_BEFORE,
+    hours_after: int = HOURS_AFTER,
+) -> Dict[str, str]:
+    """Turn a batch id into the timestamps a drill-down window is built from.
+
+    Raises rather than guessing when the id does not parse. A drill-down over
+    the wrong window returns rows that look like an answer, and there is
+    nothing in the output to say the window was wrong.
+    """
+    from datetime import datetime, timedelta
+
+    text = str(batch_value).strip()
+    try:
+        moment = datetime.strptime(text, fmt)
+    except ValueError as exc:
+        raise DrilldownError(
+            f"cannot derive a drill-down time window from batch id {text!r} "
+            f"using format {fmt!r}: {exc}. Set drilldown.time.format to match, "
+            f"or supply the window explicitly."
+        ) from exc
+
+    hour = moment.replace(minute=0, second=0, microsecond=0)
+    return {
+        "batch_id": text,
+        "batch_hour": hour.strftime("%Y-%m-%d %H:%M:%S"),
+        "batch_date": hour.strftime("%Y-%m-%d"),
+        "batch_hour_start": (hour - timedelta(hours=hours_before)).strftime("%Y-%m-%d %H:%M:%S"),
+        "batch_hour_end": (hour + timedelta(hours=hours_after)).strftime("%Y-%m-%d %H:%M:%S"),
+    }
 
 
 def sql_literal(value: Any) -> str:
@@ -257,9 +337,23 @@ def generate(
         complete=complete, rows_covered=rows,
     )
     row_filter = build_in_filter(expression, values)
-    for side in sides:
+    # ${batch_hour} and friends, derived from the run's batch parameter rather
+    # than typed into the case. This is why the drilldown block is excluded
+    # from load-time substitution: these names do not exist until now.
+    derived = cfg.time_vars(variables)
+
+    for name, side in zip(("expected", "actual"), sides):
         side_vars = merge_side_vars(side["spec"].get("vars"), variables)
+        side_vars.update(derived)
+        # The drilldown's own per-side vars, resolved against everything above.
+        # Substituted rather than merged raw, so a value may say
+        # "... = timestamp '${batch_hour}'" and get the derived hour.
+        for key, value in (cfg.vars.get(name) or {}).items():
+            side_vars[str(key).lower()] = substitute(
+                str(value), side_vars, where=f"drilldown.vars.{name}.{key}"
+            )
         side_vars[ROW_FILTER] = row_filter
+
         spec = dict(side["spec"])
         spec["query_file"] = cfg.query_file
         spec.pop("query", None)
