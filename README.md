@@ -231,6 +231,7 @@ actual:
 | `allow_empty` | `false` | permit a run where both sides fetched zero rows |
 | `allow_identical_sources` | `false` | permit both sides resolving one `query_file` identically |
 | `breakdown_by` | — | key column(s) to split row differences by (see below) |
+| `near_miss` | `false` | find the key column whose drift unpaired rows (see below) |
 | `vectorized` | `false` | ~1.2× speed-up on default engine |
 
 ---
@@ -342,6 +343,41 @@ has two group values, one per side, so it belongs to no single group. Keyed
 cases and the default engine only — push-down engines aggregate in-warehouse
 and never see a row, so they refuse rather than silently producing nothing.
 
+### Which key column broke? — `near_miss`
+
+A keyed comparison pairs rows on the **whole** key, so one drifting key column
+destroys the pairing: the row is reported as **missing *and* added**, and
+nothing connects the two halves. A run showing 149 missing against 208 added
+looks like catastrophic loss and is often one column that moved — the balance
+is the tell, since genuine loss is lopsided.
+
+```yaml
+compare:
+  keys: [...]
+  near_miss: true
+```
+
+Each key column is dropped in turn and the leftovers re-paired:
+
+```
+NEAR MISSES - ONE KEY COLUMN APART
+
+  Likely cause: dropping event_date pairs 137 of 149 missing rows with added
+  rows (91.9%). Those rows were not lost - they moved.
+
+  Drop from key   Pairs formed   Explains   Ambiguous   Example
+  event_date               137      91.9%           -   2026-08-27T01:00 -> 2026-08-27T00:00
+```
+
+**No query is run** — it re-pairs key tuples already in memory, so it costs a
+few hundred set operations and can answer in seconds what would otherwise take
+a round of manual drill-down queries.
+
+Two things it will not claim: it drops only **one** column at a time, so two
+columns drifting together are not found; and when several added rows match on
+the remaining columns it reports an *ambiguous group* rather than guessing
+which one the missing row was.
+
 ### Which columns, and how far? — change signatures
 
 Changed rows are grouped by *which columns differ together*, and each group
@@ -370,6 +406,35 @@ different failure from "got smaller".
 
 The example kept for each signature is the **most extreme** row, not the first
 one encountered.
+
+### Which transactions? — `drilldown`
+
+Row parity names the aggregate rows that disagree. It cannot name the
+underlying transactions: the compared query is a `GROUP BY`, so per-request
+identifiers are collapsed. That takes a second query against the raw table.
+
+```yaml
+drilldown:
+  query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_drilldown.sql
+  bind:
+    creative_id: "if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1)"
+  max_rows: 10
+```
+
+The report renders that query **once per side**, with the row's values already
+substituted — the tedious, error-prone half of the manual flow. `bind` maps a
+diff-row column to the *expression* that means it in the raw table, because an
+output alias rarely exists there.
+
+The per-side `vars:` supply each side's catalog and time window, and those
+windows are deliberately **asymmetric**: pin the migrated side to the hour under
+test, search the source side wider. If "the event_date shifted" is the
+hypothesis, pinning both sides to the same hour assumes the answer.
+
+**Generated, not executed.** No warehouse cost, no new way for a run to fail,
+and the SQL is reviewable before anything runs. A failure to generate is
+reported and swallowed — losing a 14-minute parity run to a typo in a helper
+template would be the wrong trade.
 
 ### Which kind of column? — dimensions vs metrics
 

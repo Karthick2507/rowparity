@@ -86,6 +86,33 @@ def _render_signature(sig: ChangeSignature, changed_count: int = 0) -> List[str]
     return lines
 
 
+def _render_near_miss(result: ComparisonResult) -> List[str]:
+    """The column that broke the pairing, if one did.
+
+    Printed above everything else about the differences, because it reframes
+    them: rows that pair once a column is dropped were not lost, they moved,
+    and chasing them as losses wastes the whole investigation.
+    """
+    nm = result.near_miss
+    lines = ["  near misses (one key column apart, no query run):"]
+    for col in nm.columns:
+        share = f" ({col.pairs / nm.missing_rows:.0%} of missing)" if nm.missing_rows else ""
+        detail = f"  ambiguous={col.ambiguous_groups}" if col.ambiguous_groups else ""
+        lines.append(f"    drop {col.column}: pairs {col.pairs}{share}{detail}")
+        if col.examples:
+            ex = col.examples[0]
+            lines.append(f"        e.g. {ex.expected_value} -> {ex.actual_value}")
+    top = nm.best
+    if top is not None and top.pairs:
+        lines.append(
+            f"    => {top.pairs} of {nm.missing_rows} missing rows are not missing: "
+            f"they pair with an added row once '{top.column}' is dropped from the key."
+        )
+    if nm.truncated:
+        lines.append("    (analysis capped; counts describe a subset of unpaired rows)")
+    return lines
+
+
 def _render_breakdown(result: ComparisonResult) -> List[str]:
     """Which group the differences are in, before anything about which column.
 
@@ -167,6 +194,9 @@ def render_console(result: ComparisonResult, case_name: str = "") -> str:
             f"(null / 0 / [] / false). Reported, not excused -- these still count."
         )
         lines.append(_render_column_list("    columns", cols))
+
+    if getattr(result, "near_miss", None) and result.near_miss.columns:
+        lines.extend(_render_near_miss(result))
 
     if result.breakdown:
         lines.extend(_render_breakdown(result))

@@ -68,12 +68,27 @@ cases:
       query_file: ../../sql/insight_plus/f_demand_portfolio_hourly.sql
       vars:
         facts: mrm_log_flat.default
+        # Drill-down only. Deliberately WIDER than the Hoover++ window below:
+        # "the event_date shifted between the two layouts" is the hypothesis,
+        # so pinning both sides to the same hour would assume the answer.
+        time_filter: >-
+          date_trunc('HOUR', cast(ack__timestamp as timestamp)) >= timestamp '2026-08-27 00:00:00'
+          and date_trunc('HOUR', cast(ack__timestamp as timestamp)) < timestamp '2026-08-27 04:00:00'
 
     actual:
       type: trino
       query_file: ../../sql/insight_plus/f_demand_portfolio_hourly.sql
       vars:
         facts: etl.public_test1
+        # Drill-down only. Pinned to the one hour the parity row claims.
+        #
+        # A literal, NOT ${arena.presto.var.process_batch_id}. A spec value is
+        # substituted when the case LOADS, so a parameter here would make
+        # `rowparity list` fail without --param -- listing cases must never
+        # need a batch id. These two windows are investigation-time knobs
+        # anyway: edit them when you drill a different hour.
+        time_filter: >-
+          date_trunc('HOUR', cast(ack__timestamp as timestamp)) = timestamp '2026-08-27 01:00:00'
 
     compare:
       # The 83 GROUP BY dimensions. Not a business key -- nobody would call it
@@ -223,5 +238,40 @@ cases:
       # unnest (the structurally fragile one), and an even spread points at the
       # shared predicates or the outer aggregate instead.
       breakdown_by: slot_user_drop_off
+
+      # Find the single key column whose drift turned one logical row into a
+      # missing + added pair. 149 missing against 208 added is suspiciously
+      # balanced for real data loss -- balance is the signature of a key that
+      # stopped matching. event_date is key #16 and is known to shift between
+      # the two layouts for some batches, which would do exactly this.
+      #
+      # Costs no warehouse time: it re-pairs key tuples already in memory.
+      near_miss: true
+
+    # How a differing row is digested in the report, instead of dumping a
+    # 262-column dict truncated after the first four.
+    row_summary:
+      - {label: Branch,        columns: [slot_user_drop_off]}
+      - {label: Batch,         columns: [process_batch_id, event_date]}
+      - {label: Network,       columns: [network_id, content_owner_id, distributor_id]}
+      - {label: Reseller,      columns: [reseller_id, reseller_visibility]}
+      - {label: "Ad identity", columns: [ad_id, creative_id, placement_id, deal_id, dsp_id]}
+      - {label: Fill,          columns: [request_fill_status, slot_fill_status]}
+      - {label: Placement,     columns: [time_position_classes, supply_source_detail,
+                                         sales_strategy, priority_tier]}
+
+    # Per-row investigation SQL, generated but NOT executed -- see
+    # drilldown.py for why running it is a separate step.
+    #
+    # Only creative_id is bound, by decision. Binding more dimensions narrows
+    # the result but risks excluding the very rows whose dimensions drifted,
+    # which is exactly what is being looked for. The expression is the source
+    # expression, not the output alias: creative_id in the parity output is
+    # really the if(...) below.
+    drilldown:
+      query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_drilldown.sql
+      bind:
+        creative_id: "if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1)"
+      max_rows: 10
 
     tags: [insight_plus, hoover]

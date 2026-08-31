@@ -83,6 +83,10 @@ class CompareConfig:
     # code happened to read would be an arbitrary choice presented as a fact.
     # Keyed comparisons only.
     breakdown_by: Optional[List[str]] = None
+    # Look for a single key column whose drift turned one logical row into a
+    # missing + added pair. Off by default: the analysis is O(columns x rows)
+    # and only means anything for a keyed case that has both.
+    near_miss: bool = False
     # Canonicalize whole columns at once (numpy / Arrow compute) instead of
     # dispatching per cell, falling back to the row-wise path for nulls and
     # types that don't vectorize (decimal, date, time, binary, nested). Same
@@ -260,6 +264,11 @@ class ComparisonResult:
     # Presentation, not comparison -- nothing here reads them.
     expected_label: str = "expected"
     actual_label: str = "actual"
+    # How to digest one row for a human: [{label, columns}]. Presentation only,
+    # like the two labels above -- nothing in the comparison reads it.
+    row_summary: List[Dict[str, Any]] = field(default_factory=list)
+    # Generated (not executed) drill-down SQL, one pair per differing row.
+    drilldowns: List[Any] = field(default_factory=list)   # drilldown.RowDrilldown
     # Keyless only: columns whose value multiset differs between the two sides.
     # Keyed comparisons attribute differences per row via change_signatures and
     # do not need this. See _compare_keyless for how it is computed.
@@ -270,6 +279,12 @@ class ComparisonResult:
     # picture. Empty when no breakdown column is set.
     breakdown_columns: List[str] = field(default_factory=list)
     breakdown: Dict[Any, "BreakdownGroup"] = field(default_factory=dict)
+    # Key tuples of every unpaired row, kept so near_miss.analyse() can look
+    # for the column that broke the pairing. These are references to tuples the
+    # index already holds, so the cost is one pointer each, not a copy.
+    missing_keys: List[Tuple] = field(default_factory=list)
+    added_keys: List[Tuple] = field(default_factory=list)
+    near_miss: Optional[Any] = None      # near_miss.NearMissResult
 
     # Wall-clock seconds, filled in by Case.run(). Kept as three numbers rather
     # than one total because "the query was slow" and "the comparison was slow"
@@ -379,6 +394,13 @@ def compare_tables(expected: pa.Table, actual: pa.Table, cfg: CompareConfig) -> 
             exp_canon, act_canon,
         )
 
+    if cfg.near_miss and cfg.keys and result.missing_keys and result.added_keys:
+        from . import near_miss as _near_miss
+
+        result.near_miss = _near_miss.analyse(
+            result.missing_keys, result.added_keys, cfg.keys
+        )
+
     if result.total_differences > 0:
         result.equivalent = False
     return result
@@ -467,7 +489,12 @@ def _compare_keyed(exp_rows, act_rows, exp_schema, act_schema, cols, cfg, canon_
         if group is not None:
             group.actual_rows += len(idxs)
 
-    for key in exp_keys - act_keys:
+    missing = exp_keys - act_keys
+    added = act_keys - exp_keys
+    result.missing_keys = list(missing)
+    result.added_keys = list(added)
+
+    for key in missing:
         idxs = exp_index[key]
         result.missing_count += len(idxs)
         group = _group(key, exp_rows[idxs[0]])
@@ -475,7 +502,7 @@ def _compare_keyed(exp_rows, act_rows, exp_schema, act_schema, cols, cfg, canon_
             group.missing += len(idxs)
         _maybe_example(result, cfg, RowDiff(kind="missing", key=key, expected_row=exp_rows[idxs[0]]))
 
-    for key in act_keys - exp_keys:
+    for key in added:
         idxs = act_index[key]
         result.added_count += len(idxs)
         group = _group(key, act_rows[idxs[0]])

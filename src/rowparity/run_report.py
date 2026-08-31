@@ -48,8 +48,63 @@ def _short(value: Any) -> str:
     return text if len(text) <= MAX_VALUE_CHARS else text[: MAX_VALUE_CHARS - 3] + "..."
 
 
-def _example_to_dict(diff) -> Dict[str, Any]:
-    out: Dict[str, Any] = {"kind": diff.kind, "key": _fmt_key(diff.key)}
+def _kind_label(kind: str, expected_label: str, actual_label: str) -> str:
+    """Name the side, not the direction.
+
+    "missing" is only unambiguous if you already know which side is the source
+    of truth. "Missing in Hoover++" is the same fact with the ambiguity removed,
+    and it matches the metric tiles at the top of the page.
+    """
+    return {
+        "missing": f"Missing in {actual_label}",
+        "added": f"Added in {actual_label}",
+        "changed": "Changed",
+    }.get(kind, kind)
+
+
+def _row_summary(row: Optional[dict], groups: Sequence[dict]) -> List[Dict[str, Any]]:
+    """A labelled digest of one row, driven by the case's row_summary config.
+
+    Replaces dumping repr(row) truncated to 120 characters, which on a
+    262-column row cut off after four columns -- all of them key columns the
+    reader already had in the Key field. It managed to be both too long to read
+    and too short to contain anything new.
+    """
+    if not row:
+        return []
+    out = []
+    for group in groups:
+        parts = []
+        for column in group.get("columns", []):
+            if column in row:
+                parts.append(f"{column} {_short(row[column])}")
+        if parts:
+            out.append({"label": group.get("label", ""), "text": ", ".join(parts)})
+    return out
+
+
+def _all_columns(row: Optional[dict]) -> List[Dict[str, str]]:
+    """Every column of the row, name = value, for the expander."""
+    if not row:
+        return []
+    return [{"column": k, "value": _short(v)} for k, v in sorted(row.items())]
+
+
+def _example_to_dict(diff, result, summary_groups: Sequence[dict]) -> Dict[str, Any]:
+    row = diff.expected_row if diff.kind != "added" else diff.actual_row
+    out: Dict[str, Any] = {
+        "kind": diff.kind,
+        "kind_label": _kind_label(diff.kind, result.expected_label, result.actual_label),
+        "key": _fmt_key(diff.key),
+        "summary": _row_summary(row, summary_groups),
+        "all_columns": _all_columns(row),
+    }
+    # The engineers' drill-down starts from creative_id, so it is pulled out
+    # rather than left somewhere in a list of 262.
+    for name in ("sample_transaction_id", "request__transaction_id"):
+        if row and name in row:
+            out["transaction_id"] = _short(row[name])
+            break
     if diff.kind == "changed":
         out["columns"] = [
             {
@@ -60,9 +115,6 @@ def _example_to_dict(diff) -> Dict[str, Any]:
             }
             for c in diff.columns
         ]
-    else:
-        row = diff.expected_row if diff.kind == "missing" else diff.actual_row
-        out["row"] = _short(row)
     return out
 
 
@@ -156,9 +208,31 @@ def _breakdown_to_dict(result) -> Dict[str, Any]:
     }
 
 
+def _near_miss_to_dict(nm) -> Dict[str, Any]:
+    return {
+        "missing_rows": nm.missing_rows,
+        "added_rows": nm.added_rows,
+        "truncated": nm.truncated,
+        "columns": [
+            {
+                "column": c.column,
+                "pairs": c.pairs,
+                "ambiguous": c.ambiguous_groups,
+                "share": c.share_of(nm.missing_rows),
+                "examples": [
+                    {"expected": _short(e.expected_value), "actual": _short(e.actual_value)}
+                    for e in c.examples
+                ],
+            }
+            for c in nm.columns
+        ],
+    }
+
+
 def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
     columns = to_column_rows(result, name)
     key_set = set(result.keys or ())
+    summary_groups = getattr(result, "row_summary", None) or []
     counts: Dict[str, int] = {}
     for row in columns:
         counts[row["status"]] = counts.get(row["status"], 0) + 1
@@ -209,7 +283,22 @@ def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
             _signature_to_dict(s, result.changed_count) for s in result.signatures_by_count()
         ],
         "breakdown": _breakdown_to_dict(result) if result.breakdown else None,
-        "examples": [_example_to_dict(d) for d in result.examples],
+        "near_miss": _near_miss_to_dict(result.near_miss)
+        if getattr(result, "near_miss", None) and result.near_miss.columns
+        else None,
+        "examples": [
+            _example_to_dict(d, result, summary_groups) for d in result.examples
+        ],
+        "drilldowns": [
+            {
+                "kind": d.kind,
+                "kind_label": _kind_label(d.kind, result.expected_label, result.actual_label),
+                "key": d.key,
+                "filter": d.filter_sql,
+                "queries": [{"side": q.side, "sql": q.sql} for q in d.queries],
+            }
+            for d in getattr(result, "drilldowns", [])
+        ],
     }
 
 
