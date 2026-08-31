@@ -230,6 +230,7 @@ actual:
 | `max_examples` | `20` | example diffs to show |
 | `allow_empty` | `false` | permit a run where both sides fetched zero rows |
 | `allow_identical_sources` | `false` | permit both sides resolving one `query_file` identically |
+| `breakdown_by` | — | key column(s) to split row differences by (see below) |
 | `vectorized` | `false` | ~1.2× speed-up on default engine |
 
 ---
@@ -303,6 +304,80 @@ populations, or give the case a key.
   calculation.
 * **Keyless** — do not try to triage from the column table. Fix the population
   or add a key first.
+
+---
+
+## Localising a difference
+
+Three things narrow "N rows differ" down to something you can act on. All are
+computed over **every** row, not over the bounded `examples` list — a
+breakdown of 50 out of 366 differing rows would describe a sample while looking
+like the whole picture.
+
+### Which group? — `breakdown_by`
+
+When the compared query is a UNION of several branches, or the rows carry any
+other natural partition, name that column and every missing, added and changed
+row is attributed to it:
+
+```yaml
+compare:
+  keys: [slot_user_drop_off, network_id, ad_id]
+  breakdown_by: slot_user_drop_off
+```
+
+| slot_user_drop_off | Rows in Hoover | Rows in Hoover++ | Missing | Added | Changed | Differing |
+|---|---:|---:|---:|---:|---:|---:|
+| Removed | 892 | 899 | 58 | 65 | 5 | 14.2% |
+| Included | 1,204 | 1,204 | 0 | 0 | 3 | 0.2% |
+| Not Applicable | 623 | 623 | 0 | 0 | 0 | — |
+
+Sorted by the **share** of each group that differs, not the absolute count: 58
+differences out of 892 rows is a worse signal than a larger number out of
+1,204, and only the ratio says so.
+
+**It must be a key column.** A key is the only thing guaranteed identical on
+both sides of a paired row; break down by a non-key column and a *changed* row
+has two group values, one per side, so it belongs to no single group. Keyed
+cases and the default engine only — push-down engines aggregate in-warehouse
+and never see a row, so they refuse rather than silently producing nothing.
+
+### Which columns, and how far? — change signatures
+
+Changed rows are grouped by *which columns differ together*, and each group
+reports how those columns actually moved:
+
+```
+5x  {filled_ads, filled_ads_duration, placed_ads}     62% of changed rows
+    by group:  Removed 5
+
+    filled_ads             Hoover++ lower   5/5    -1   constant
+    filled_ads_duration    Hoover++ lower   5/5   -30   constant
+    placed_ads             Hoover++ lower   5/5    -1   constant
+```
+
+**`constant` is the word to look for.** Several metrics all moving by the same
+amount in the same direction is not "5 rows changed" — it is a systematic,
+reproducible loss. Here the deltas also say what was lost: 330/11 = 300/10 = 30,
+so the duration per ad is unchanged and exactly one whole ad went missing.
+
+A delta shown as `~+0.07` is near-constant — the min and max differ below
+display precision, which is normal for floats without a `float_tolerance` set.
+It deliberately does not claim `constant`. Columns that have no magnitude
+(strings, booleans) report their dominant `old -> new` pair instead, and
+null transitions are counted apart from value moves — "became null" is a
+different failure from "got smaller".
+
+The example kept for each signature is the **most extreme** row, not the first
+one encountered.
+
+### Which kind of column? — dimensions vs metrics
+
+In a keyed case the report splits the column table in two. **Dimensions** are
+the key: they decide which rows pair up, so a difference there surfaces as a
+missing or added row and never as a changed value — that table carries no "Diff
+rows" column, because it would be all zeroes and read as "verified" when it
+means "not applicable". **Metrics** are everything else, sorted worst first.
 
 ---
 

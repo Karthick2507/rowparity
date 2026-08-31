@@ -524,9 +524,12 @@ class TestConsoleOutputIsAscii:
             [{"id": i, "v": i + 1} for i in range(10)],
             keys=["id"],
         )
+        # Returns one line per fact about the signature -- the header, the
+        # group split, one row per column delta -- so every one has to be
+        # checked, not just the first.
         for sig in result.signatures_by_count():
-            line = _render_signature(sig)
-            assert all(ord(c) < 128 for c in line), line
+            for line in _render_signature(sig, result.changed_count):
+                assert all(ord(c) < 128 for c in line), line
 
     def test_truncation_marker_is_ascii(self):
         from rowparity.report import _short

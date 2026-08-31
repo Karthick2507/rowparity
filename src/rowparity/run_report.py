@@ -66,18 +66,99 @@ def _example_to_dict(diff) -> Dict[str, Any]:
     return out
 
 
-def _signature_to_dict(sig) -> Dict[str, Any]:
+def _fmt_delta(value: float) -> str:
+    """A delta as a human reads it: signed, and without float noise."""
+    if value == int(value):
+        return f"{int(value):+d}"
+    return f"{value:+g}"
+
+
+def _delta_to_dict(delta) -> Dict[str, Any]:
+    constant = delta.constant_delta
+    out: Dict[str, Any] = {
+        "column": delta.column,
+        "rows": delta.rows,
+        "direction": delta.direction,
+        "moved": max(delta.lower, delta.higher),
+        "became_null": delta.became_null,
+        "was_null": delta.was_null,
+        "constant": constant is not None,
+        # Pre-rendered so the template never has to decide how a number looks.
+        "amount": "",
+    }
+    if constant is not None:
+        out["amount"] = _fmt_delta(constant)
+    elif delta.numeric:
+        lo, hi = _fmt_delta(delta.min_delta), _fmt_delta(delta.max_delta)
+        # "+0.07 to +0.07" is a range whose ends differ only below display
+        # precision -- true of almost any float delta without a tolerance set.
+        # Printing it as a range reads as a bug in the report; "~+0.07" says
+        # what is actually known without claiming the exactness of "constant".
+        out["amount"] = lo if lo == hi else f"{lo} to {hi}"
+        out["approx"] = lo == hi
+    elif delta.top_pair is not None:
+        exp, act = delta.top_pair
+        out["amount"] = f"{_short(exp)} -> {_short(act)}"
+        out["pair_count"] = delta.top_pair_count
+    return out
+
+
+def _signature_to_dict(sig, changed_count: int) -> Dict[str, Any]:
     example = None
     if sig.example is not None:
         example = [
             {"column": c.column, "expected": _short(c.expected), "actual": _short(c.actual)}
             for c in sig.example.columns
         ]
-    return {"columns": list(sig.columns), "count": sig.count, "example": example}
+    return {
+        "columns": list(sig.columns),
+        "count": sig.count,
+        "example": example,
+        # A signature covering 6 of 9 changed rows is the pattern to chase; the
+        # same 6 out of 6,000 is noise, and the count alone cannot tell them
+        # apart without the reader doing the arithmetic.
+        "share": sig.share_of(changed_count),
+        "deltas": [_delta_to_dict(d) for d in sig.deltas.values()],
+        "breakdown": [{"value": _short(k), "count": v} for k, v in sig.breakdown.items()],
+    }
+
+
+# A high-cardinality breakdown column would render thousands of rows nobody
+# reads. Show the worst, then say how much was left out rather than silently
+# truncating.
+MAX_BREAKDOWN_GROUPS = 20
+
+
+def _breakdown_to_dict(result) -> Dict[str, Any]:
+    groups = sorted(
+        result.breakdown.values(),
+        key=lambda g: (-g.differing_share, -g.differences),
+    )
+    shown = groups[:MAX_BREAKDOWN_GROUPS]
+    hidden = groups[MAX_BREAKDOWN_GROUPS:]
+    return {
+        "columns": list(result.breakdown_columns),
+        "groups": [
+            {
+                "value": _short(g.value),
+                "expected_rows": g.expected_rows,
+                "actual_rows": g.actual_rows,
+                "missing": g.missing,
+                "added": g.added,
+                "changed": g.changed,
+                "differences": g.differences,
+                "share": g.differing_share,
+            }
+            for g in shown
+        ],
+        "hidden_groups": len(hidden),
+        "hidden_differences": sum(g.differences for g in hidden),
+    }
 
 
 def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
     columns = to_column_rows(result, name)
+    key_set = set(result.keys or ())
     counts: Dict[str, int] = {}
     for row in columns:
         counts[row["status"]] = counts.get(row["status"], 0) + 1
@@ -114,10 +195,20 @@ def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
                 "expected_type": row["expected_type"],
                 "actual_type": row["actual_type"],
                 "diff_rows": row["diff_rows"],
+                # Dimensions are the key, metrics are everything else. They
+                # answer different questions -- "is the key sound?" versus "do
+                # the numbers agree?" -- and merging them under one shared
+                # "diff rows" column is what made 262 flagged columns
+                # unreadable. Keyless cases have no key, so everything is a
+                # metric and the split collapses to today's single table.
+                "kind": "dimension" if row["column"] in key_set else "metric",
             }
             for row in columns
         ],
-        "change_signatures": [_signature_to_dict(s) for s in result.signatures_by_count()],
+        "change_signatures": [
+            _signature_to_dict(s, result.changed_count) for s in result.signatures_by_count()
+        ],
+        "breakdown": _breakdown_to_dict(result) if result.breakdown else None,
         "examples": [_example_to_dict(d) for d in result.examples],
     }
 

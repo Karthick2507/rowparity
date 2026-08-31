@@ -45,15 +45,67 @@ def _render_example(diff: RowDiff) -> str:
     return f"  ? {diff.kind}"
 
 
-def _render_signature(sig: ChangeSignature) -> str:
+def _fmt_delta(value: float) -> str:
+    return f"{int(value):+d}" if value == int(value) else f"{value:+g}"
+
+
+def _render_signature(sig: ChangeSignature, changed_count: int = 0) -> List[str]:
     cols = ", ".join(sig.columns) if sig.columns else "(none)"
-    detail = ""
+    share = f"  [{sig.share_of(changed_count):.0%} of changed]" if changed_count else ""
+    lines = [f"    {sig.count}x  {{{cols}}}{share}"]
+
+    if sig.breakdown:
+        parts = ", ".join(f"{k} {v}" for k, v in sig.breakdown.items())
+        lines.append(f"        by group: {parts}")
+
+    # Direction and magnitude, not just "these columns differ". A constant
+    # delta across every row is a systematic loss and says so; a range is a
+    # starting point. One example could never distinguish the two.
+    for d in sig.deltas.values():
+        constant = d.constant_delta
+        if constant is not None:
+            amount = f"{_fmt_delta(constant)} (constant)"
+        elif d.numeric:
+            lo, hi = _fmt_delta(d.min_delta), _fmt_delta(d.max_delta)
+            # Ends that differ only below display precision -- true of most
+            # float deltas with no tolerance set. Shown as a range it reads as
+            # a broken report; "~" states what is known without overclaiming.
+            amount = f"~{lo}" if lo == hi else f"{lo} to {hi}"
+        elif d.top_pair is not None:
+            amount = f"{_short(d.top_pair[0])} -> {_short(d.top_pair[1])} in {d.top_pair_count}"
+        else:
+            amount = ""
+        moved = max(d.lower, d.higher) or d.became_null or d.was_null
+        lines.append(f"        {d.column}: {d.direction} {moved}/{d.rows}  {amount}".rstrip())
+
     if sig.example is not None:
         pairs = ", ".join(
             f"{c.column}: {_short(c.expected)} -> {_short(c.actual)}" for c in sig.example.columns
         )
-        detail = f" - e.g. key={_fmt_key(sig.example.key)}: {pairs}"
-    return f"    {sig.count}x  {{{cols}}}{detail}"
+        lines.append(f"        most extreme: key={_fmt_key(sig.example.key)}: {pairs}")
+    return lines
+
+
+def _render_breakdown(result: ComparisonResult) -> List[str]:
+    """Which group the differences are in, before anything about which column.
+
+    Over a UNION of several branches this is the first useful question and the
+    one nothing else answers: 149 missing rows spread evenly is a different
+    problem from 149 concentrated in one branch.
+    """
+    name = ", ".join(result.breakdown_columns)
+    lines = [f"  row differences by {name}:"]
+    groups = sorted(
+        result.breakdown.values(), key=lambda g: (-g.differing_share, -g.differences)
+    )
+    width = max((len(str(g.value)) for g in groups), default=1)
+    for g in groups:
+        lines.append(
+            f"    {str(g.value):<{width}}  rows {g.expected_rows}/{g.actual_rows}  "
+            f"missing={g.missing} added={g.added} changed={g.changed}  "
+            f"differing={g.differing_share:.1%}"
+        )
+    return lines
 
 
 # Schema drift on a wide table can run to hundreds of columns. Dumping the raw
@@ -116,13 +168,16 @@ def render_console(result: ComparisonResult, case_name: str = "") -> str:
         )
         lines.append(_render_column_list("    columns", cols))
 
+    if result.breakdown:
+        lines.extend(_render_breakdown(result))
+
     if result.change_signatures:
         lines.append(
             f"  change signatures ({len(result.change_signatures)} distinct, "
             f"{result.changed_count} changed row(s) total):"
         )
         for sig in result.signatures_by_count():
-            lines.append(_render_signature(sig))
+            lines.extend(_render_signature(sig, result.changed_count))
 
     if result.examples:
         shown = len(result.examples)
@@ -144,7 +199,27 @@ def _signature_to_dict(sig: ChangeSignature) -> Dict[str, Any]:
                 for c in sig.example.columns
             ],
         }
-    return {"columns": list(sig.columns), "count": sig.count, "example": example}
+    return {
+        "columns": list(sig.columns),
+        "count": sig.count,
+        "example": example,
+        "deltas": [
+            {
+                "column": d.column,
+                "rows": d.rows,
+                "direction": d.direction,
+                "lower": d.lower,
+                "higher": d.higher,
+                "became_null": d.became_null,
+                "was_null": d.was_null,
+                "constant_delta": d.constant_delta,
+                "min_delta": d.min_delta,
+                "max_delta": d.max_delta,
+            }
+            for d in sig.deltas.values()
+        ],
+        "breakdown": {str(k): v for k, v in sig.breakdown.items()},
+    }
 
 
 def to_dict(result: ComparisonResult, case_name: str = "") -> Dict[str, Any]:
@@ -166,6 +241,22 @@ def to_dict(result: ComparisonResult, case_name: str = "") -> Dict[str, Any]:
         "duplicate_keys_actual": result.duplicate_keys_actual,
         "compared_columns": result.compared_columns,
         "change_signatures": [_signature_to_dict(s) for s in result.signatures_by_count()],
+        "breakdown_columns": list(result.breakdown_columns),
+        "breakdown": [
+            {
+                "value": str(g.value),
+                "expected_rows": g.expected_rows,
+                "actual_rows": g.actual_rows,
+                "missing": g.missing,
+                "added": g.added,
+                "changed": g.changed,
+                "differing_share": g.differing_share,
+            }
+            for g in sorted(
+                result.breakdown.values(),
+                key=lambda g: (-g.differing_share, -g.differences),
+            )
+        ],
         # Kept split rather than totalled: a slow warehouse query and a slow
         # comparison need different fixes. Accumulated across runs by the
         # result sink, these answer how many cases fit in a window.

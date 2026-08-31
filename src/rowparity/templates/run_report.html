@@ -192,6 +192,34 @@
   }
 
   .empty { color: var(--fg-subtle); font-size: 13px; padding: 12px; }
+
+  /* --- row differences by group --- */
+  .bar { display: inline-block; width: 70px; height: 6px; margin-left: 8px;
+         background: var(--canvas-inset); border-radius: 3px; overflow: hidden;
+         vertical-align: middle; }
+  .barfill { display: block; height: 100%; background: var(--danger-emphasis); }
+  td .ok { color: var(--success-fg); }
+  tfoot td { font-weight: 600; border-top: 2px solid var(--border);
+             background: var(--canvas-subtle); }
+
+  /* --- change signatures --- */
+  .sig { border: 1px solid var(--border-muted); border-radius: var(--radius);
+         padding: 12px 14px; margin-top: 12px; background: var(--canvas-subtle); }
+  .sighead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .sigcount { font-weight: 600; font-size: 15px; color: var(--danger-fg);
+              font-family: var(--font-mono); }
+  .share { font-size: 12px; color: var(--fg-muted); }
+  .sigbd { font-size: 12px; color: var(--fg-muted); margin-top: 4px;
+           font-family: var(--font-mono); }
+  .sigex { font-size: 12px; color: var(--fg-subtle); margin-top: 8px;
+           font-family: var(--font-mono); }
+  table.deltas { margin-top: 10px; }
+  table.deltas th, table.deltas td { font-size: 12px; padding: 4px 10px; }
+  .constant { display: inline-block; margin-left: 8px; padding: 0 6px;
+              border-radius: 10px; font-family: var(--font-sans); font-size: 11px;
+              font-weight: 600; color: var(--attention-fg);
+              background: var(--attention-subtle);
+              border: 1px solid var(--attention-emphasis); }
   details { margin-top: 16px; }
   summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--fg-muted); }
   summary:hover { color: var(--accent-fg); }
@@ -299,8 +327,34 @@
 
     body.appendChild(renderMetrics(c));
     renderNotes(c).forEach(function (n) { body.appendChild(n); });
-    body.appendChild(el("h3", null, "Columns"));
-    body.appendChild(renderColumns(c, idx));
+
+    // Triage first: which branch of the union disagrees. Everything below
+    // narrows within that answer, so it goes above them.
+    if (c.breakdown && c.breakdown.groups.length) {
+      body.appendChild(renderBreakdown(c));
+    }
+
+    var dims = c.columns.filter(function (x) { return x.kind === "dimension"; });
+    var mets = c.columns.filter(function (x) { return x.kind === "metric"; });
+    if (dims.length) {
+      body.appendChild(el("h3", null, "Dimensions - " + dims.length));
+      // A key column cannot differ in value: if it did the rows would not
+      // pair, and the difference shows up as missing + added instead. So this
+      // table answers presence and type only, and carries no "Diff rows"
+      // column - 83 zeroes would read as "all verified" when it means "not
+      // applicable".
+      body.appendChild(el("p", "sub",
+        "The key. These decide which rows pair up, so a difference here is " +
+        "reported as a missing or added row, never as a changed value."));
+      body.appendChild(renderColumns(c, idx, dims, false));
+      body.appendChild(el("h3", null, "Metrics - " + mets.length));
+      body.appendChild(el("p", "sub",
+        "Everything not in the key. Sorted worst first."));
+      body.appendChild(renderColumns(c, idx + "m", mets, true));
+    } else {
+      body.appendChild(el("h3", null, "Columns"));
+      body.appendChild(renderColumns(c, idx, c.columns, true));
+    }
     if (c.change_signatures && c.change_signatures.length) {
       body.appendChild(renderSignatures(c));
     }
@@ -376,9 +430,12 @@
     return out;
   }
 
-  function renderColumns(c, idx) {
+  function renderColumns(c, idx, rows, showDiffRows) {
     var wrap = el("div");
-    var counts = c.column_counts || {};
+    // Counts come from the rows actually being shown, not the whole case --
+    // a chip reading "MATCHED (262)" above a table of 83 is a lie.
+    var counts = {};
+    rows.forEach(function (r) { counts[r.status] = (counts[r.status] || 0) + 1; });
     var order = ["DIFF", "MATCHED - TYPE DIFF", "MATCHED - VALUE DIFF",
                  "MATCHED - EQUIVALENT", "MATCHED"];
     var present = order.filter(function (k) { return counts[k]; });
@@ -413,9 +470,9 @@
     var table = el("table");
     var thead = el("thead");
     var hr = el("tr");
-    ["Column", "Status", "Expected type", "Actual type", "Diff rows"].forEach(function (h) {
-      hr.appendChild(el("th", null, h));
-    });
+    var headers = ["Column", "Status", "Expected type", "Actual type"];
+    if (showDiffRows) { headers.push("Diff rows"); }
+    headers.forEach(function (h) { hr.appendChild(el("th", null, h)); });
     thead.appendChild(hr);
     table.appendChild(thead);
     var tbody = el("tbody");
@@ -430,7 +487,15 @@
       var q = search.value.trim().toLowerCase();
       tbody.textContent = "";
       var shown = 0;
-      c.columns.forEach(function (col) {
+      var ordered = rows;
+      if (showDiffRows) {
+        // Worst first. The four columns that matter are otherwise lost among
+        // the ones that do not, in alphabetical order, for no reason.
+        ordered = rows.slice().sort(function (a, b) {
+          return (Number(b.diff_rows) || 0) - (Number(a.diff_rows) || 0);
+        });
+      }
+      ordered.forEach(function (col) {
         if (!active[col.status]) return;
         if (q && col.column.toLowerCase().indexOf(q) === -1) return;
         shown++;
@@ -441,18 +506,92 @@
         tr.appendChild(td);
         tr.appendChild(el("td", "mono", col.expected_type));
         tr.appendChild(el("td", "mono", col.actual_type));
-        tr.appendChild(el("td", "num mono", col.diff_rows === "" ? "" : num(col.diff_rows)));
+        if (showDiffRows) {
+          tr.appendChild(el("td", "num mono", col.diff_rows === "" ? "" : num(col.diff_rows)));
+        }
         tbody.appendChild(tr);
       });
       // Only mention hidden MATCHED columns when some are actually hidden --
       // saying "MATCHED hidden" on a case with none is a claim about data the
       // reader cannot see and does not have.
       var hiddenMatched = (counts["MATCHED"] && !active["MATCHED"]) ? counts["MATCHED"] : 0;
-      footer.textContent = shown + " of " + c.columns.length + " column(s) shown" +
+      footer.textContent = shown + " of " + rows.length + " column(s) shown" +
         (hiddenMatched ? " | " + hiddenMatched + " MATCHED hidden" : "");
     }
     search.addEventListener("input", draw);
     draw();
+    return wrap;
+  }
+
+  function pct(x) { return (x * 100).toFixed(1) + "%"; }
+
+  function renderBreakdown(c) {
+    var b = c.breakdown;
+    var wrap = el("div");
+    wrap.appendChild(el("h3", null, "Row differences by " + b.columns.join(", ")));
+    wrap.appendChild(el("p", "sub",
+      "Counted over every row, not only the examples below. Sorted by the " +
+      "share of each group that differs - a small group that is badly wrong " +
+      "outranks a large one that is slightly off."));
+
+    var A = c.expected_label || "expected";
+    var B = c.actual_label || "actual";
+    var scroll = el("div", "scroll tablewrap");
+    var table = el("table");
+    var hr = el("tr");
+    [b.columns.join(" / "), "Rows in " + A, "Rows in " + B,
+     "Missing in " + B, "Added in " + B, "Changed", "Differing"]
+      .forEach(function (h) { hr.appendChild(el("th", null, h)); });
+    var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
+
+    var tb = el("tbody");
+    var worst = b.groups.length ? b.groups[0].share : 0;
+    b.groups.forEach(function (g) {
+      var tr = el("tr");
+      tr.appendChild(el("td", "mono", g.value));
+      tr.appendChild(el("td", "num mono", num(g.expected_rows)));
+      tr.appendChild(el("td", "num mono", num(g.actual_rows)));
+      tr.appendChild(el("td", "num mono", num(g.missing)));
+      tr.appendChild(el("td", "num mono", num(g.added)));
+      tr.appendChild(el("td", "num mono", num(g.changed)));
+
+      var td = el("td", "num");
+      if (g.differences) {
+        td.appendChild(el("span", "mono", pct(g.share)));
+        // Bar scaled to the worst group, so the comparison between rows is
+        // the point rather than the absolute number.
+        var bar = el("span", "bar");
+        var fill = el("span", "barfill");
+        fill.style.width = (worst ? (g.share / worst) * 100 : 0) + "%";
+        bar.appendChild(fill);
+        td.appendChild(bar);
+      } else {
+        td.appendChild(el("span", "mono ok", "-"));
+      }
+      tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+
+    var tfoot = el("tfoot");
+    var fr = el("tr");
+    fr.appendChild(el("td", null, "TOTAL"));
+    fr.appendChild(el("td", "num mono", num(c.expected_rows)));
+    fr.appendChild(el("td", "num mono", num(c.actual_rows)));
+    fr.appendChild(el("td", "num mono", num(c.missing)));
+    fr.appendChild(el("td", "num mono", num(c.added)));
+    fr.appendChild(el("td", "num mono", num(c.changed)));
+    fr.appendChild(el("td", null, ""));
+    tfoot.appendChild(fr);
+    table.appendChild(tb);
+    table.appendChild(tfoot);
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+
+    if (b.hidden_groups) {
+      wrap.appendChild(el("div", "empty",
+        b.hidden_groups + " more group(s) not shown, holding " +
+        num(b.hidden_differences) + " difference(s)."));
+    }
     return wrap;
   }
 
@@ -461,29 +600,80 @@
     d.open = true;
     d.appendChild(el("summary", null,
       "Change signatures - " + c.change_signatures.length + " distinct pattern(s)"));
-    var scroll = el("div", "scroll");
-    var table = el("table");
-    var hr = el("tr");
-    ["Rows", "Columns that differ", "Example"].forEach(function (h) { hr.appendChild(el("th", null, h)); });
-    var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
-    var tb = el("tbody");
-    c.change_signatures.forEach(function (sig) {
-      var tr = el("tr");
-      tr.appendChild(el("td", "num mono", num(sig.count)));
-      tr.appendChild(el("td", "mono", sig.columns.length ? sig.columns.join(", ") : "(none)"));
-      var ex = "";
-      if (sig.example && sig.example.length) {
-        ex = sig.example.map(function (e) {
-          return e.column + ": " + e.expected + " -> " + e.actual;
-        }).join("  |  ");
-      }
-      tr.appendChild(el("td", "mono", ex));
-      tb.appendChild(tr);
-    });
-    table.appendChild(tb);
-    scroll.appendChild(table);
-    d.appendChild(scroll);
+    var body = el("div");
+    c.change_signatures.forEach(function (sig) { body.appendChild(renderSignature(c, sig)); });
+    d.appendChild(body);
     return d;
+  }
+
+  function renderSignature(c, sig) {
+    var box = el("div", "sig");
+
+    var head = el("div", "sighead");
+    head.appendChild(el("span", "sigcount", num(sig.count) + "x"));
+    head.appendChild(el("span", "mono", sig.columns.length ? sig.columns.join(", ") : "(none)"));
+    head.appendChild(el("div", "spacer"));
+    head.appendChild(el("span", "share", pct(sig.share) + " of changed rows"));
+    box.appendChild(head);
+
+    if (sig.breakdown && sig.breakdown.length) {
+      box.appendChild(el("div", "sigbd", "by group:  " + sig.breakdown.map(function (x) {
+        return x.value + " " + num(x.count);
+      }).join("  -  ")));
+    }
+
+    // The delta profile. A signature used to say which columns move together
+    // and how often, never in which direction or by how much - and a single
+    // example cannot tell "every row loses exactly one" from "the deltas are
+    // all over the place". Those are different bugs.
+    if (sig.deltas && sig.deltas.length) {
+      var scroll = el("div", "scroll");
+      var table = el("table", "deltas");
+      var hr = el("tr");
+      ["Column", "Direction", "Rows", "Delta"].forEach(function (h) {
+        hr.appendChild(el("th", null, h));
+      });
+      var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
+      var tb = el("tbody");
+      var B = c.actual_label || "actual";
+      sig.deltas.forEach(function (dd) {
+        var tr = el("tr");
+        tr.appendChild(el("td", "mono", dd.column));
+
+        var dir = "";
+        if (dd.direction === "lower" || dd.direction === "higher") {
+          dir = B + " " + dd.direction;
+        } else if (dd.direction === "mixed") {
+          dir = "mixed";
+        } else if (dd.became_null || dd.was_null) {
+          dir = dd.became_null ? "became null" : "was null";
+        }
+        tr.appendChild(el("td", null, dir));
+        tr.appendChild(el("td", "num mono",
+          num(dd.moved || dd.became_null || dd.was_null) + " / " + num(dd.rows)));
+
+        var td = el("td", "num mono");
+        td.appendChild(document.createTextNode((dd.approx ? "~" : "") + dd.amount));
+        if (dd.constant) {
+          // The word this whole section exists for. Several metrics all
+          // constant in the same direction is not "N rows changed", it is a
+          // systematic, reproducible loss.
+          td.appendChild(el("span", "constant", "constant"));
+        }
+        tr.appendChild(td);
+        tb.appendChild(tr);
+      });
+      table.appendChild(tb);
+      scroll.appendChild(table);
+      box.appendChild(scroll);
+    }
+
+    if (sig.example && sig.example.length) {
+      box.appendChild(el("div", "sigex", "most extreme row:  " + sig.example.map(function (e) {
+        return e.column + " " + e.expected + " -> " + e.actual;
+      }).join("   |   ")));
+    }
+    return box;
   }
 
   function renderExamples(c) {
