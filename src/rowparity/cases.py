@@ -181,24 +181,34 @@ class Case:
         reading the result, not part of it -- losing a whole parity run because
         a helper query template has a typo would be the wrong trade entirely.
         """
-        if not self.drilldown or not result.examples:
+        if not self.drilldown or result.equivalent:
             return
         from . import drilldown as dd
 
+        sides = [
+            {"label": self.expected_label, "spec": self.expected},
+            {"label": self.actual_label, "spec": self.actual},
+        ]
         try:
             cfg = dd.DrilldownConfig.from_yaml(self.drilldown)
-            result.drilldowns = dd.generate(
-                cfg,
-                result,
-                [
-                    {"label": self.expected_label, "spec": self.expected},
-                    {"label": self.actual_label, "spec": self.actual},
-                ],
-                base_dir,
-                self.variables,
+            generated = dd.generate(
+                cfg, result, sides, base_dir, self.variables, keys=result.keys
             )
         except Exception as exc:
-            progress.emit(f"  drilldown SQL not generated: {type(exc).__name__}: {exc}")
+            progress.emit(f"  drill-down SQL not generated: {type(exc).__name__}: {exc}")
+            return
+
+        result.drilldown = generated
+        if cfg.execute:
+            # Executing cannot raise past here: each side records its own
+            # failure. A drill-down is an aid to reading the parity result, so
+            # losing the whole run to it would be entirely the wrong trade.
+            with progress.step("drill-down") as st:
+                dd.execute(generated, cfg, sides, base_dir)
+            st.result(
+                f"{len(generated.only_expected)} / {len(generated.only_actual)} "
+                f"{cfg.id_column} on one side only"
+            )
 
     def _check_breakdown(self, cfg: CompareConfig) -> None:
         """Reject a breakdown that cannot be computed, before anything is fetched.

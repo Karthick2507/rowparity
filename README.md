@@ -409,32 +409,64 @@ one encountered.
 
 ### Which transactions? — `drilldown`
 
-Row parity names the aggregate rows that disagree. It cannot name the
-underlying transactions: the compared query is a `GROUP BY`, so per-request
-identifiers are collapsed. That takes a second query against the raw table.
+Row parity names the aggregate rows that disagree. It cannot name the underlying
+transactions: the compared query is a `GROUP BY`, so per-request identifiers are
+collapsed. That takes a second query against the raw table.
 
 ```yaml
 drilldown:
   query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_drilldown.sql
   bind:
     creative_id: "if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1)"
-  max_rows: 10
+  id_column: request__transaction_id
+  execute: true
 ```
 
-The report renders that query **once per side**, with the row's values already
-substituted — the tedious, error-prone half of the manual flow. `bind` maps a
-diff-row column to the *expression* that means it in the raw table, because an
-output alias rarely exists there.
+**Two queries in total, not two per row.** Every differing row's `creative_id`
+goes into one `IN (...)` list, so a single scan per side covers the whole run:
 
-The per-side `vars:` supply each side's catalog and time window, and those
-windows are deliberately **asymmetric**: pin the migrated side to the hour under
-test, search the source side wider. If "the event_date shifted" is the
-hypothesis, pinning both sides to the same hour assumes the answer.
+```sql
+where date_trunc('HOUR', ack__timestamp) >= timestamp '2026-08-27 00:00:00'
+  and if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1) in (
+        214174352,
+        330895668,
+        349617594,
+        ...
+    )
+```
 
-**Generated, not executed.** No warehouse cost, no new way for a run to fail,
-and the SQL is reviewable before anything runs. A failure to generate is
-reported and swallowed — losing a 14-minute parity run to a typo in a helper
-template would be the wrong trade.
+Both are executed and their id sets diffed:
+
+```
+DRILL-DOWN - REQUEST__TRANSACTION_ID
+
+  1  in Hoover only      1787749209118834402
+  1  in Hoover++ only    1787749210553219006
+  2  in both
+```
+
+Ids on one side only are the specific transactions that went missing — what an
+engineer needs to open a request and look at it. The SQL is shown beside the
+ids, so it can be re-run for the full set or adapted.
+
+Three details worth knowing:
+
+* **`bind` maps a diff-row column to the *expression* that means it in the raw
+  table.** An output alias rarely exists there. Exactly one column: the
+  predicate is an IN-list over its values.
+* **Values come from every differing row**, not the bounded example list —
+  possible because the bound column is part of the key. That matters: at
+  realistic proportions the example list fills entirely with `missing` rows
+  before an `added` or `changed` row is reached, so drawing from it would
+  silently cover a third of the problem.
+* **The per-side time windows are deliberately asymmetric.** Pin the migrated
+  side to the hour under test, search the source side wider. If "the event_date
+  shifted" is the hypothesis, pinning both assumes the answer.
+
+Set `execute: false` to generate the SQL without running it. One side failing
+does not lose the other, and the id diff is suppressed when either side failed —
+with nothing to subtract, calling the survivor's ids "only in X" would be a
+fabrication.
 
 ### Which kind of column? — dimensions vs metrics
 
