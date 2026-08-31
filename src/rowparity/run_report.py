@@ -229,6 +229,44 @@ def _near_miss_to_dict(nm) -> Dict[str, Any]:
     }
 
 
+# A report is for reading. Past a few dozen ids the list stops informing and
+# starts padding; the full set is in the warehouse, one copy-paste away.
+MAX_SHOWN_IDS = 50
+
+
+def _drilldown_to_dict(dd) -> Optional[Dict[str, Any]]:
+    if dd is None:
+        return None
+    return {
+        "column": dd.column,
+        "id_column": dd.id_column,
+        "values": [_short(v) for v in dd.values[:MAX_SHOWN_IDS]],
+        "value_count": len(dd.values),
+        "complete": dd.complete,
+        "rows_covered": dd.rows_covered,
+        "executed": dd.executed,
+        "sides": [
+            {
+                "label": s.label,
+                "sql": s.sql,
+                "executed": s.executed,
+                "error": s.error,
+                "count": len(s.transaction_ids),
+                "truncated": s.truncated,
+                "ids": [_short(i) for i in s.transaction_ids[:MAX_SHOWN_IDS]],
+                "seconds": s.seconds,
+                "seconds_text": format_duration(s.seconds),
+            }
+            for s in dd.sides
+        ],
+        "only_expected": [_short(i) for i in dd.only_expected[:MAX_SHOWN_IDS]],
+        "only_expected_count": len(dd.only_expected),
+        "only_actual": [_short(i) for i in dd.only_actual[:MAX_SHOWN_IDS]],
+        "only_actual_count": len(dd.only_actual),
+        "in_both": dd.in_both,
+    }
+
+
 def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
     columns = to_column_rows(result, name)
     key_set = set(result.keys or ())
@@ -289,16 +327,7 @@ def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
         "examples": [
             _example_to_dict(d, result, summary_groups) for d in result.examples
         ],
-        "drilldowns": [
-            {
-                "kind": d.kind,
-                "kind_label": _kind_label(d.kind, result.expected_label, result.actual_label),
-                "key": d.key,
-                "filter": d.filter_sql,
-                "queries": [{"side": q.side, "sql": q.sql} for q in d.queries],
-            }
-            for d in getattr(result, "drilldowns", [])
-        ],
+        "drilldown": _drilldown_to_dict(getattr(result, "drilldown", None)),
     }
 
 

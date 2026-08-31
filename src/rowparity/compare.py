@@ -267,8 +267,9 @@ class ComparisonResult:
     # How to digest one row for a human: [{label, columns}]. Presentation only,
     # like the two labels above -- nothing in the comparison reads it.
     row_summary: List[Dict[str, Any]] = field(default_factory=list)
-    # Generated (not executed) drill-down SQL, one pair per differing row.
-    drilldowns: List[Any] = field(default_factory=list)   # drilldown.RowDrilldown
+    # One drill-down per run: a single query per side covering every differing
+    # row, plus the transaction ids each returned. See drilldown.py.
+    drilldown: Optional[Any] = None      # drilldown.DrilldownResult
     # Keyless only: columns whose value multiset differs between the two sides.
     # Keyed comparisons attribute differences per row via change_signatures and
     # do not need this. See _compare_keyless for how it is computed.
@@ -284,6 +285,7 @@ class ComparisonResult:
     # index already holds, so the cost is one pointer each, not a copy.
     missing_keys: List[Tuple] = field(default_factory=list)
     added_keys: List[Tuple] = field(default_factory=list)
+    changed_keys: List[Tuple] = field(default_factory=list)
     near_miss: Optional[Any] = None      # near_miss.NearMissResult
 
     # Wall-clock seconds, filled in by Case.run(). Kept as three numbers rather
@@ -532,6 +534,7 @@ def _compare_keyed(exp_rows, act_rows, exp_schema, act_schema, cols, cfg, canon_
                         result.equivalent_diff_columns.get(cd.column, 0) + 1
                     )
 
+            result.changed_keys.append(key)
             group = _group(key, e)
             if group is not None:
                 group.changed += 1

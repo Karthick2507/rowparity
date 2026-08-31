@@ -272,6 +272,9 @@ cases:
       query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_drilldown.sql
       bind:
         creative_id: "if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1)"
-      max_rows: 10
+      id_column: request__transaction_id
+      # Both queries are run and their id sets diffed. Two narrow scans next to
+      # a 14-minute parity run; set false to review the SQL without executing.
+      execute: true
 
     tags: [insight_plus, hoover]
