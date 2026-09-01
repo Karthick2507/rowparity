@@ -744,72 +744,24 @@
   function renderDrilldown(c) {
     var dd = c.drilldown;
     var wrap = el("div");
-    wrap.appendChild(el("h3", null, "Drill-down - " + dd.id_column));
+    wrap.appendChild(el("h3", null, "Drill-down SQL - " + dd.id_column));
     wrap.appendChild(el("p", "sub",
       "ONE query per side, not one per row: every differing row's " + dd.column +
       " goes into a single IN-list, so one scan per side covers all " +
       num(dd.rows_covered) + " of them. " +
       (dd.complete
-        ? "Values are taken from every differing row."
-        : "Values are taken from the bounded example list, so this covers a subset.")));
-
-    // The answer, when both sides ran: which transactions exist on one side only.
-    if (dd.executed && dd.sides.length === 2 && dd.sides.every(function (s) { return s.executed; })) {
-      var A = c.expected_label || "expected", B = c.actual_label || "actual";
-      var m = el("div", "metrics");
-      [["In " + A + " only", dd.only_expected_count, dd.only_expected_count > 0],
-       ["In " + B + " only", dd.only_actual_count, dd.only_actual_count > 0],
-       ["In both", dd.in_both, false]].forEach(function (x) {
-        var box = el("div", "metric" + (x[2] ? " warn" : ""));
-        box.appendChild(el("div", "n", num(x[1])));
-        box.appendChild(el("div", "l", x[0]));
-        m.appendChild(box);
-      });
-      wrap.appendChild(m);
-
-      [[A, dd.only_expected, dd.only_expected_count],
-       [B, dd.only_actual, dd.only_actual_count]].forEach(function (x) {
-        if (!x[2]) return;
-        var d = el("details", "more");
-        d.open = true;
-        d.appendChild(el("summary", null,
-          num(x[2]) + " " + dd.id_column + " in " + x[0] + " only"));
-        d.appendChild(el("div", "idlist", x[1].join("\n")));
-        if (x[1].length < x[2]) {
-          d.appendChild(el("div", "empty",
-            "showing " + x[1].length + " of " + num(x[2]) + "; run the SQL below for the rest"));
-        }
-        wrap.appendChild(d);
-      });
-    }
+        ? "Values are taken from every differing row. "
+        : "Values are taken from the bounded example list, so this covers a subset. ") +
+      "Run both, then compare the two lists of " + dd.id_column +
+      " - the ids on one side only are the transactions that differ."));
 
     dd.sides.forEach(function (s) {
       var box = el("div", "sig");
       var head = el("div", "sighead");
       head.appendChild(el("span", "sigcount", s.label));
-      if (s.error) {
-        head.appendChild(el("span", "st bad", "query failed"));
-      } else if (s.executed) {
-        head.appendChild(el("span", "share",
-          num(s.count) + " " + dd.id_column + " in " + s.seconds_text));
-      } else {
-        head.appendChild(el("span", "share", "not executed"));
-      }
+      head.appendChild(el("div", "spacer"));
+      head.appendChild(el("span", "share", num(dd.value_count) + " " + dd.column + " value(s)"));
       box.appendChild(head);
-      if (s.error) {
-        // Shown next to its own SQL, and only against the side that failed --
-        // the other side's result is still good and still worth reading.
-        box.appendChild(el("pre", "err", s.error));
-      }
-      if (s.ids && s.ids.length) {
-        var ids = el("details", "more");
-        ids.appendChild(el("summary", null, dd.id_column + " returned"));
-        ids.appendChild(el("div", "idlist", s.ids.join("\n")));
-        if (s.truncated) {
-          ids.appendChild(el("div", "empty", "truncated; re-run the SQL for the full set"));
-        }
-        box.appendChild(ids);
-      }
       var sql = el("details", "more");
       sql.appendChild(el("summary", null, "SQL"));
       sql.appendChild(el("pre", "sqlbox", s.sql));

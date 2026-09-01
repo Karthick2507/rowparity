@@ -258,9 +258,11 @@ cases:
       bind:
         creative_id: "if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1)"
       id_column: request__transaction_id
-      # Both queries are run and their id sets diffed. Two narrow scans next to
-      # a 14-minute parity run; set false to review the SQL without executing.
-      execute: true
+      # Generated, never executed. Running both sides was tried and taken back
+      # out: against the real cluster the two scans took long enough to
+      # dominate the parity run they were meant to annotate. Run them yourself
+      # when you want the ids -- the tedious part, pasting values into a
+      # 40-line WHERE, is what was worth automating.
 
       # The time window is DERIVED from the run's batch parameter, never typed
       # in. 20260827010000 is YYYYMMDDHHMMSS, so it yields:

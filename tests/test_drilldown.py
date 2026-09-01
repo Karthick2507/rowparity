@@ -2,9 +2,13 @@
 
 Row parity says which aggregate rows disagree; it cannot say which underlying
 transactions caused it, because the compared query is a GROUP BY that collapses
-per-request identifiers. This runs the query that recovers them -- **once per
-side**, with every differing row's creative_id in a single IN-list -- and diffs
-the two id sets.
+per-request identifiers. This generates the query that recovers them -- **once
+per side**, with every differing row's creative_id in a single IN-list.
+
+It does not run them. Executing both sides was built and then taken back out:
+against the real cluster the two scans took long enough to dominate the parity
+run they were meant to annotate. The tedious part -- pasting values into a
+40-line WHERE by hand -- is what was worth automating.
 
 The per-row shape was the obvious first design and the wrong one: twenty
 near-identical queries are twenty results to reconcile by hand and twenty scans
@@ -202,14 +206,11 @@ class TestConfig:
         cfg = DrilldownConfig.from_yaml({"query_file": "q.sql", "bind": {"creative_id": EXPR}})
         assert cfg.bind == [{"column": "creative_id", "expression": EXPR}]
 
-    def test_it_executes_by_default(self):
-        # Two narrow queries are cheap next to the parity run, and the ids are
-        # the actual deliverable.
-        assert DrilldownConfig.from_yaml({"query_file": "q.sql", "bind": ["c"]}).execute
-
-    def test_execution_can_be_turned_off(self):
-        cfg = DrilldownConfig.from_yaml({"query_file": "q.sql", "bind": ["c"], "execute": False})
-        assert not cfg.execute
+    def test_a_removed_option_is_refused_rather_than_ignored(self):
+        # `execute` existed briefly and was removed. Silently accepting it
+        # would leave a case file claiming behaviour it no longer gets.
+        with pytest.raises(DrilldownError, match="unknown"):
+            DrilldownConfig.from_yaml({"query_file": "q.sql", "bind": ["c"], "execute": True})
 
     def test_two_bind_columns_are_refused(self):
         # The predicate is an IN-list over one column's values; two would need
@@ -330,91 +331,86 @@ class TestPerSideVarsAndDerivedTime:
         assert "2026-08-12 13:00:00" in second
 
 
-class TestExecution:
-    def test_it_fetches_the_transaction_ids(self, sql_dir):
-        from rowparity.drilldown import execute
+class TestNothingIsExecuted:
+    def test_the_module_exposes_no_executor(self):
+        # Removed deliberately, not merely unused: dead code that opens
+        # warehouse connections is worse than none.
+        import rowparity.drilldown as module
 
-        sides = _sides()
-        cfg, dd = _generate(sql_dir, [101, 202, 303], sides)
-        execute(dd, cfg, sides, str(sql_dir))
-        assert [s.executed for s in dd.sides] == [True, True]
-        assert dd.sides[0].transaction_ids == [101, 202]      # side <> 'c'
-        assert dd.sides[1].transaction_ids == [202, 303]      # side <> 'a'
+        assert not hasattr(module, "execute")
+        assert not hasattr(module, "_diff_ids")
 
-    def test_the_id_sets_are_diffed(self, sql_dir):
-        from rowparity.drilldown import execute
+    def test_a_generated_side_carries_sql_and_nothing_else(self, sql_dir):
+        _, dd = _generate(sql_dir, [101])
+        side = dd.sides[0]
+        assert side.sql
+        for gone in ("transaction_ids", "executed", "error", "seconds"):
+            assert not hasattr(side, gone), f"{gone} is execution state"
 
-        sides = _sides()
-        cfg, dd = _generate(sql_dir, [101, 202, 303], sides)
-        execute(dd, cfg, sides, str(sql_dir))
-        # This is the answer the whole feature exists to produce.
-        assert dd.only_expected == [101]
-        assert dd.only_actual == [303]
-        assert dd.in_both == 1
+    def test_running_a_case_opens_no_drilldown_connection(self, tmp_path):
+        # The real guarantee: a parity run must not pay for a drill-down.
+        (tmp_path / "q.sql").write_text("SELECT ${facts} AS n")
+        (tmp_path / "drill.sql").write_text("SELECT 1 AS request__transaction_id WHERE ${row_filter}")
+        (tmp_path / "case.yaml").write_text(
+            textwrap.dedent(
+                """
+                cases:
+                  - name: c
+                    expected: {type: duckdb, database: ":memory:", query_file: q.sql,
+                               vars: {facts: 1}}
+                    actual:   {type: duckdb, database: ":memory:", query_file: q.sql,
+                               vars: {facts: 2}}
+                    compare: {keys: [n]}
+                    drilldown: {query_file: drill.sql, bind: [n]}
+                """
+            )
+        )
+        opened = []
+        import rowparity.cases as cases_module
 
-    def test_one_side_failing_does_not_lose_the_other(self, sql_dir):
-        from rowparity.drilldown import execute
+        real = cases_module.load_source
 
-        sides = _sides()
-        cfg, dd = _generate(sql_dir, [101], sides)
-        dd.sides[0].sql = "SELECT * FROM no_such_table"
-        execute(dd, cfg, sides, str(sql_dir))
-        assert dd.sides[0].error and not dd.sides[0].executed
-        assert dd.sides[1].executed, "the good side must survive"
+        def spy(spec, **kw):
+            opened.append(spec)
+            return real(spec, **kw)
 
-    def test_a_failed_side_suppresses_the_diff(self, sql_dir):
-        from rowparity.drilldown import execute
-
-        # With one side missing there is nothing to subtract. Rendering the
-        # other side's ids as "only in X" would be a fabrication -- they might
-        # be on both.
-        sides = _sides()
-        cfg, dd = _generate(sql_dir, [101], sides)
-        dd.sides[0].sql = "SELECT * FROM no_such_table"
-        execute(dd, cfg, sides, str(sql_dir))
-        assert dd.only_expected == [] and dd.only_actual == [] and dd.in_both == 0
-
-    def test_a_missing_id_column_is_an_error_not_an_empty_list(self, sql_dir):
-        from rowparity.drilldown import execute
-
-        sides = _sides()
-        cfg, dd = _generate(sql_dir, [101], sides)
-        for s in dd.sides:
-            s.sql = "SELECT 1 AS something_else"
-        execute(dd, cfg, sides, str(sql_dir))
-        # Reporting zero ids here would say "no transactions found" about a
-        # query that never looked for any.
-        assert all("request__transaction_id" in s.error for s in dd.sides)
+        cases_module.load_source = spy
+        try:
+            result = discover_cases(str(tmp_path))[0].run()
+        finally:
+            cases_module.load_source = real
+        # Exactly two loads: the two compared sides. No third for a drill-down.
+        assert len(opened) == 2
+        assert result.drilldown is not None and result.drilldown.sides[0].sql
 
 
 class TestItReachesTheReport:
     def _payload(self, sql_dir):
-        from rowparity.drilldown import execute
-
-        sides = _sides()
-        cfg, dd = _generate(sql_dir, [101, 202, 303], sides)
-        execute(dd, cfg, sides, str(sql_dir))
+        _, dd = _generate(sql_dir, [101, 202, 303])
         result = _result(missing=[101, 202, 303])
         result.drilldown = dd
         result.expected_label, result.actual_label = "Hoover", "Hoover++"
         return build_payload([("c", result)], [])["cases"][0]["drilldown"]
 
-    def test_the_sql_and_the_ids_are_both_carried(self, sql_dir):
+    def test_both_sides_sql_is_carried(self, sql_dir):
         dd = self._payload(sql_dir)
         assert len(dd["sides"]) == 2
-        for side in dd["sides"]:
-            assert side["sql"] and side["ids"]
+        assert all(side["sql"] for side in dd["sides"])
 
-    def test_the_diff_is_carried(self, sql_dir):
+    def test_the_bound_values_are_carried(self, sql_dir):
         dd = self._payload(sql_dir)
-        assert dd["only_expected"] == ["101"]
-        assert dd["only_actual"] == ["303"]
-        assert dd["in_both"] == 1
+        assert dd["value_count"] == 3
+        assert dd["column"] == "creative_id"
 
     def test_completeness_is_reported(self, sql_dir):
         dd = self._payload(sql_dir)
         assert dd["complete"] is True
         assert dd["rows_covered"] == 3
+
+    def test_no_execution_state_reaches_the_report(self, sql_dir):
+        dd = self._payload(sql_dir)
+        for gone in ("executed", "only_expected", "only_actual", "in_both"):
+            assert gone not in dd
 
     def test_a_case_without_a_drilldown_carries_none(self):
         payload = build_payload([("c", _result(missing=[1]))], [])
@@ -501,9 +497,12 @@ class TestTheRealCaseIsWired:
             for value in (doc["cases"][0][side].get("vars") or {}).values():
                 assert "timestamp '" not in str(value)
 
-    def test_it_fetches_request_transaction_id(self):
+    def test_it_names_request_transaction_id_as_the_id_column(self):
         assert DrilldownConfig.from_yaml(self._case().drilldown).id_column \
             == "request__transaction_id"
+
+    def test_the_case_does_not_ask_for_execution(self):
+        assert "execute" not in self._case().drilldown
 
     def test_the_sql_has_the_three_placeholders(self):
         import re
