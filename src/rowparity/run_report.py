@@ -229,9 +229,9 @@ def _near_miss_to_dict(nm) -> Dict[str, Any]:
     }
 
 
-# A report is for reading. Past a few dozen ids the list stops informing and
-# starts padding; the full set is in the warehouse, one copy-paste away.
-MAX_SHOWN_IDS = 50
+# A report is for reading. Past a few dozen values the IN-list stops informing
+# and starts padding; the full list is in the SQL below it either way.
+MAX_SHOWN_VALUES = 50
 
 
 def _drilldown_to_dict(dd) -> Optional[Dict[str, Any]]:
@@ -240,30 +240,11 @@ def _drilldown_to_dict(dd) -> Optional[Dict[str, Any]]:
     return {
         "column": dd.column,
         "id_column": dd.id_column,
-        "values": [_short(v) for v in dd.values[:MAX_SHOWN_IDS]],
+        "values": [_short(v) for v in dd.values[:MAX_SHOWN_VALUES]],
         "value_count": len(dd.values),
         "complete": dd.complete,
         "rows_covered": dd.rows_covered,
-        "executed": dd.executed,
-        "sides": [
-            {
-                "label": s.label,
-                "sql": s.sql,
-                "executed": s.executed,
-                "error": s.error,
-                "count": len(s.transaction_ids),
-                "truncated": s.truncated,
-                "ids": [_short(i) for i in s.transaction_ids[:MAX_SHOWN_IDS]],
-                "seconds": s.seconds,
-                "seconds_text": format_duration(s.seconds),
-            }
-            for s in dd.sides
-        ],
-        "only_expected": [_short(i) for i in dd.only_expected[:MAX_SHOWN_IDS]],
-        "only_expected_count": len(dd.only_expected),
-        "only_actual": [_short(i) for i in dd.only_actual[:MAX_SHOWN_IDS]],
-        "only_actual_count": len(dd.only_actual),
-        "in_both": dd.in_both,
+        "sides": [{"label": s.label, "sql": s.sql} for s in dd.sides],
     }
 
 

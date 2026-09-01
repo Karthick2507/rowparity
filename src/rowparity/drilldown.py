@@ -18,9 +18,16 @@ identical 40-line queries are twenty things to copy, twenty results to reconcile
 by hand, and twenty scans of the same partition -- when one scan answers all of
 them and Presto is far better at a large IN-list than at twenty round trips.
 
-Both queries are then run, and the two sets of ``request__transaction_id`` are
-diffed. Ids on one side only are the specific transactions that went missing,
-which is what an engineer needs to open a request and look at it.
+The queries are **generated, not executed**. Running them was tried and taken
+back out: against the real cluster the two scans took long enough to dominate
+the parity run they were supposed to annotate, and a drill-down is an aid to
+reading a result rather than part of producing one. Paying minutes on every run
+for something an engineer reads occasionally is the wrong trade.
+
+So the report hands over two ready-to-run queries with every value already
+substituted, and whoever is investigating runs them when they want the answer.
+The tedious, error-prone part -- pasting values into a 40-line WHERE by hand --
+is what was actually worth automating.
 
 The values come from **every** differing row, not from the bounded ``examples``
 list -- possible because the bound column is part of the key, so its value sits
@@ -44,25 +51,15 @@ ROW_FILTER = "row_filter"
 # parser. Well past anything a readable report would show, but bounded.
 MAX_VALUES = 1000
 
-# Ids fetched per side. The point is to see which side is missing which
-# transactions, not to page a million rows into a report.
-MAX_IDS = 500
-
-
 class DrilldownError(RuntimeError):
     pass
 
 
 @dataclass
 class SideDrilldown:
-    """One side's query, and what it returned."""
+    """One side's ready-to-run query."""
     label: str
     sql: str
-    transaction_ids: List[Any] = field(default_factory=list)
-    executed: bool = False
-    error: Optional[str] = None
-    truncated: bool = False
-    seconds: float = 0.0
 
 
 @dataclass
@@ -75,13 +72,6 @@ class DrilldownResult:
     # examples list. False means the report is describing a subset.
     complete: bool = True
     rows_covered: int = 0
-    only_expected: List[Any] = field(default_factory=list)
-    only_actual: List[Any] = field(default_factory=list)
-    in_both: int = 0
-
-    @property
-    def executed(self) -> bool:
-        return any(s.executed for s in self.sides)
 
 
 @dataclass
@@ -90,7 +80,6 @@ class DrilldownConfig:
     bind: List[Dict[str, str]]
     id_column: str = "request__transaction_id"
     max_values: int = MAX_VALUES
-    max_ids: int = MAX_IDS
     # {param, format, hours_before, hours_after} -- how to turn the run's batch
     # parameter into ${batch_hour} and friends.
     time: Optional[Dict[str, Any]] = None
@@ -99,17 +88,12 @@ class DrilldownConfig:
     # these may reference the derived time variables, which do not exist until
     # generation time.
     vars: Dict[str, Dict[str, str]] = field(default_factory=dict)
-    # Running two extra queries is cheap next to the parity run itself, and the
-    # ids are the actual deliverable, so this defaults on. Set false to review
-    # the generated SQL without touching the warehouse.
-    execute: bool = True
 
     @classmethod
     def from_yaml(cls, raw: Optional[dict]) -> "Optional[DrilldownConfig]":
         if not raw:
             return None
-        known = {"query_file", "bind", "id_column", "max_values", "max_ids",
-                 "execute", "time", "vars"}
+        known = {"query_file", "bind", "id_column", "max_values", "time", "vars"}
         unknown = set(raw) - known
         if unknown:
             raise DrilldownError(f"unknown drilldown option(s): {sorted(unknown)}")
@@ -140,8 +124,6 @@ class DrilldownConfig:
             bind=bind,
             id_column=raw.get("id_column", "request__transaction_id"),
             max_values=int(raw.get("max_values", MAX_VALUES)),
-            max_ids=int(raw.get("max_ids", MAX_IDS)),
-            execute=bool(raw.get("execute", True)),
             time=raw.get("time"),
             vars=raw.get("vars") or {},
         )
@@ -361,63 +343,3 @@ def generate(
             SideDrilldown(label=side["label"], sql=resolve_query(spec, base_dir, side_vars))
         )
     return out
-
-
-def execute(
-    dd: DrilldownResult,
-    cfg: DrilldownConfig,
-    sides: Sequence[dict],
-    base_dir: str,
-) -> None:
-    """Run each side's query and collect its transaction ids, then diff them.
-
-    One side failing does not stop the other: a drill-down is an aid to reading
-    the result, and half an answer beats none. The failure is recorded against
-    that side and shown next to its SQL, rather than raised.
-    """
-    import time
-
-    from . import progress
-    from .sources import load_source
-
-    for side, spec_holder in zip(dd.sides, sides):
-        spec = dict(spec_holder["spec"])
-        spec.pop("query_file", None)
-        spec.pop("vars", None)
-        spec["query"] = side.sql
-        started = time.time()
-        try:
-            progress.emit(f"  drill-down: {side.label}")
-            table = load_source(spec, base_dir=base_dir)
-            if cfg.id_column not in table.column_names:
-                raise DrilldownError(
-                    f"drill-down query returned no '{cfg.id_column}' column "
-                    f"(got: {table.column_names[:8]})"
-                )
-            ids = table.column(cfg.id_column).to_pylist()
-            side.truncated = len(ids) > cfg.max_ids
-            side.transaction_ids = ids[: cfg.max_ids]
-            side.executed = True
-            progress.emit(f"     {len(ids):,} {cfg.id_column} value(s)")
-        except Exception as exc:
-            side.error = f"{type(exc).__name__}: {exc}"
-            progress.emit(f"     failed: {side.error}")
-        side.seconds = time.time() - started
-
-    _diff_ids(dd)
-
-
-def _diff_ids(dd: DrilldownResult) -> None:
-    """Which transactions each side has that the other does not.
-
-    Only computed when BOTH sides ran. With one side missing there is nothing
-    to subtract, and rendering the other side's ids as "only in X" would be a
-    fabrication -- they might be on both.
-    """
-    if len(dd.sides) != 2 or not all(s.executed for s in dd.sides):
-        return
-    expected_ids = set(dd.sides[0].transaction_ids)
-    actual_ids = set(dd.sides[1].transaction_ids)
-    dd.only_expected = sorted(expected_ids - actual_ids, key=repr)
-    dd.only_actual = sorted(actual_ids - expected_ids, key=repr)
-    dd.in_both = len(expected_ids & actual_ids)

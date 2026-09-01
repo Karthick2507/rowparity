@@ -175,11 +175,15 @@ class Case:
         return result
 
     def _generate_drilldowns(self, result: ComparisonResult, base_dir: str) -> None:
-        """Render per-row investigation SQL, if the case asks for it.
+        """Render the investigation SQL, if the case asks for it.
 
-        Failures here are reported and swallowed. A drill-down is an aid to
-        reading the result, not part of it -- losing a whole parity run because
-        a helper query template has a typo would be the wrong trade entirely.
+        Generated, never executed: the two scans took long enough against the
+        real cluster to dominate the parity run they annotate, and a drill-down
+        is an aid to reading a result rather than part of producing one.
+
+        Failures here are reported and swallowed for the same reason -- losing
+        a whole parity run because a helper template has a typo would be
+        entirely the wrong trade.
         """
         if not self.drilldown or result.equivalent:
             return
@@ -199,16 +203,6 @@ class Case:
             return
 
         result.drilldown = generated
-        if cfg.execute:
-            # Executing cannot raise past here: each side records its own
-            # failure. A drill-down is an aid to reading the parity result, so
-            # losing the whole run to it would be entirely the wrong trade.
-            with progress.step("drill-down") as st:
-                dd.execute(generated, cfg, sides, base_dir)
-            st.result(
-                f"{len(generated.only_expected)} / {len(generated.only_actual)} "
-                f"{cfg.id_column} on one side only"
-            )
 
     def _check_breakdown(self, cfg: CompareConfig) -> None:
         """Reject a breakdown that cannot be computed, before anything is fetched.

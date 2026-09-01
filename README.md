@@ -435,19 +435,17 @@ where date_trunc('HOUR', ack__timestamp) >= timestamp '2026-08-27 00:00:00'
     )
 ```
 
-Both are executed and their id sets diffed:
+**Generated, not executed.** Running both sides was built and then removed:
+against a real cluster the two scans took long enough to dominate the parity
+run they were meant to annotate, and a drill-down is an aid to reading a result
+rather than part of producing one. Generation costs about a millisecond and
+opens no connection.
 
-```
-DRILL-DOWN - REQUEST__TRANSACTION_ID
-
-  1  in Hoover only      1787749209118834402
-  1  in Hoover++ only    1787749210553219006
-  2  in both
-```
-
-Ids on one side only are the specific transactions that went missing — what an
-engineer needs to open a request and look at it. The SQL is shown beside the
-ids, so it can be re-run for the full set or adapted.
+Run the two queries yourself and compare the resulting lists of
+`request__transaction_id` — the ids on one side only are the specific
+transactions that differ, which is what an engineer needs to open a request and
+look at it. The tedious, error-prone half — pasting values into a 40-line
+`WHERE` by hand — is what was worth automating.
 
 Three details worth knowing:
 
@@ -490,10 +488,8 @@ Three details worth knowing:
   parameter in a spec value would make `rowparity list` fail without `--param`,
   which listing has no business needing.
 
-Set `execute: false` to generate the SQL without running it. One side failing
-does not lose the other, and the id diff is suppressed when either side failed —
-with nothing to subtract, calling the survivor's ids "only in X" would be a
-fabrication.
+A failure to generate is reported and swallowed: losing a 14-minute parity run
+to a typo in a helper template would be the wrong trade.
 
 ### Which kind of column? — dimensions vs metrics
 
