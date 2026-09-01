@@ -32,6 +32,7 @@ claim below is from the code as it stands, not from an earlier document.
     · [12.7 Reporting and exit](#127-reporting-and-exit)
     · [12.8 The whole path](#128-the-whole-path)
     · [12.9 Three seams worth knowing](#129-three-seams-worth-knowing)
+13. [Worked example — adding `f_supply_portfolio_hourly`](#13-worked-example--adding-f_supply_portfolio_hourly)
 
 ---
 
@@ -2111,6 +2112,497 @@ producing results.
 The corollary is the reason `errors` exists as a separate list: a case that never
 produced a `ComparisonResult` is invisible to every reporter that walks
 `results`, so it has to be carried alongside and rendered explicitly.
+
+---
+
+## 13. Worked example — adding `f_supply_portfolio_hourly`
+
+§9 states the rules. This section does the work: every file, in order, with the
+reason for each and the traps between them. It assumes you are adding a second
+parity case alongside `f_demand_portfolio_hourly`.
+
+### 13.0 What already exists, and what a second case adds
+
+`f_demand_portfolio_hourly` is six files. Five belong to it; one is shared.
+
+```
+sql/insight_plus/
+    f_demand_portfolio_hourly.sql              ← the parity query  (185 KB)
+    f_demand_portfolio_hourly_drilldown.sql    ← the investigation query
+scripts/cases_insight_plus/
+    f_demand_portfolio_hourly.yaml             ← the case definition
+scripts/
+    trino_connectivity_check.py                ← SHARED, no change needed
+tests/
+    test_insight_plus_case.py                  ← wiring assertions
+    test_insight_plus_sql_sync.py              ← SQL template assertions
+```
+
+**The headline: you edit nothing. All five files are new.**
+
+That is not an accident. `cases.discover_cases()` globs `**/*.yaml` recursively
+and sorts, so dropping a YAML into `scripts/cases_insight_plus/` registers it —
+there is no manifest, no registry, no import to update. Verified:
+
+```
+$ rowparity list scripts/cases_insight_plus
+f_supply_portfolio_hourly [insight_plus]  (scripts/cases_insight_plus/f_supply_portfolio_hourly.yaml)
+f_demand_portfolio_hourly [insight_plus, hoover]  (scripts/cases_insight_plus/f_demand_portfolio_hourly.yaml)
+```
+
+The two test files are **copied, not edited**. Both are pinned to the demand case
+by module-level constants (`CASE_FILE`, `HOOVER_SQL`, `SQL`, `CASE`) and by
+`_case()` matching on the case name, plus hard counts (262 columns, 83
+dimensions, 179 metrics) that are specific to that query. Adding supply
+assertions to them would fight those constants; a sibling pair is cleaner and
+lets the two cases evolve apart.
+
+### 13.1 The build order, and why it is this order
+
+| # | File | New / edit | Cost of getting it wrong |
+|---|---|---|---|
+| 1 | `sql/insight_plus/f_supply_portfolio_hourly.sql` | **new** | everything downstream is built on it |
+| 2 | `scripts/cases_insight_plus/f_supply_portfolio_hourly.yaml` | **new** | the case cannot load |
+| 3 | `tests/test_supply_sql_sync.py` | **new** | a bad placeholder is found by a live run, not a test |
+| 4 | `tests/test_supply_case.py` | **new** | keys drift from the query silently |
+| 5 | `sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql` | **new** | no transaction ids; the parity result still works |
+| 6 | *(nothing)* | — | — |
+
+Order matters for one reason: **steps 3 and 4 are the only offline checks that a
+run is worth starting.** Writing them after the first live run means paying
+warehouse time to learn what a millisecond of pytest would have told you.
+
+Step 5 is deliberately last. The drill-down is an aid to *reading* a result. You
+cannot design it until you have seen which dimensions differ, and the case runs
+fine without a `drilldown:` block.
+
+---
+
+### Step 1 — the parity SQL
+
+`sql/insight_plus/f_supply_portfolio_hourly.sql`
+
+**One file serves both sides.** Take your existing supply query and replace, in
+this order:
+
+**1a. Every fact-table reference → `${facts}`.**
+
+```sql
+from mrm_log_flat.default.ack      →      from ${facts}.ack
+```
+
+Do this for **every** occurrence, in every `UNION ALL` branch, in every subquery.
+One missed reference means that branch reads the same catalog on both sides and
+silently agrees — the single most dangerous mistake available here, and the
+reason step 3 exists.
+
+**1b. Dimension tables stay literal.**
+
+```sql
+left join db.default.d_network nw on ...       -- unchanged, on purpose
+```
+
+`d_network`, `d_ad_unit` and friends are shared reference data. Template them and
+a dimension difference masquerades as a migration defect.
+
+**1c. The sampling predicate → `${sampling_filter}`, on every branch.**
+
+```sql
+and ${sampling_filter} --sampling filter
+```
+
+Keep the trailing marker comment: step 3 counts it to prove no branch was
+missed. This predicate goes in the **case-level** `vars:` (step 2), never a
+per-side one — that is what makes "one side sampled, one not" structurally
+impossible. The demand case learned this the expensive way: a 77-minute run
+returning 2,719 rows against 1,113,423, a ratio of 409, which measured the
+sampling and nothing else.
+
+**1d. The batch predicate.**
+
+```sql
+and process_batch_id = '${arena.presto.var.process_batch_id}'
+```
+
+Dotted name, quoted in SQL, no default anywhere.
+
+**1e. Do not write `${...}` in a comment.**
+
+`params.substitute()` operates on text and does not know what a comment is. A
+placeholder in a header comment is a real substitution site. Write the names
+bare:
+
+```sql
+-- Placeholders: facts, sampling_filter, arena.presto.var.process_batch_id
+```
+
+> **Checkpoint.** Every fact table templated, dimension tables literal, one
+> sampling marker per branch, no `${}` in comments.
+
+---
+
+### Step 2 — the case YAML
+
+`scripts/cases_insight_plus/f_supply_portfolio_hourly.yaml`
+
+```yaml
+cases:
+  - name: f_supply_portfolio_hourly
+    expected_label: Hoover
+    actual_label: Hoover++
+    description: >-
+      The f_supply_portfolio_hourly aggregate must produce identical rows
+      whether built from the Hoover layout or the Hoover++ layout. Both sides
+      are queries; neither is materialised.
+
+    # Shared by BOTH sides. The one thing that must never differ.
+    vars:
+      sampling_filter: "bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0"
+
+    expected:
+      type: trino
+      query_file: ../../sql/insight_plus/f_supply_portfolio_hourly.sql
+      vars: {facts: mrm_log_flat.default}
+
+    actual:
+      type: trino
+      query_file: ../../sql/insight_plus/f_supply_portfolio_hourly.sql
+      vars: {facts: etl.public_test1}
+
+    compare:
+      keys:
+        - event_date
+        - network_id
+        # ... every GROUP BY dimension, one per line, alphabetical
+      unordered_list_columns: []      # any array whose order the engine may vary
+      max_examples: 50
+      breakdown_by: <a key column that partitions the UNION>
+      near_miss: true
+
+    row_summary:
+      - {label: Batch,   columns: [process_batch_id, event_date]}
+      - {label: Network, columns: [network_id, content_owner_id]}
+
+    tags: [insight_plus]
+```
+
+Five things to get right:
+
+1. **`query_file` is relative to the YAML's directory.** From
+   `scripts/cases_insight_plus/` up two levels is the repo root, hence
+   `../../sql/...`.
+2. **`keys` must be exactly the GROUP BY dimensions** — no `sum()` columns. See
+   §4.4. If they turn out not to be unique, rowparity reports `duplicate_keys_*`
+   rather than guessing.
+3. **`breakdown_by` must be one of `keys`.** If your supply query is not a union,
+   omit it — a breakdown over a single group is a table with one row.
+4. **`unordered_list_columns` for arrays the engine may reorder.** A
+   single-element `array[...]` construction cannot vary and does not need
+   listing; an `array_agg` does.
+5. **No `engine:` key.** The default Python engine is what supports
+   `breakdown_by` and `near_miss`; push-down rejects them (§5.3).
+
+Now the first checkpoint that costs nothing:
+
+```bash
+rowparity list scripts/cases_insight_plus
+```
+
+Both cases must appear, **without `--param`**. If this needs a batch id, a
+run-time value has leaked into a load-time slot (§6.4).
+
+> **Trap, verified.** `rowparity list` does **not** catch an unresolved
+> placeholder inside your `.sql` file — query files are read at run time, not
+> load time. A `${oops_undefined}` in the SQL lists perfectly cleanly and then
+> fails on the run:
+>
+> ```
+> FAILED expected (trino) 0.0s ParamError: unresolved parameter(s)
+> ['oops_undefined'] in .../f_supply_portfolio_hourly.sql. Define them in the
+> case's vars: block, set ROWPARITY_VAR_OOPS_UNDEFINED, or pass
+> --param oops_undefined=<value>.
+> Known: ['arena.presto.var.process_batch_id', 'facts', 'sampling_filter']
+> ```
+>
+> It fails in 0.0s, before the query is sent, so it is cheap — but you only find
+> out when you run. **Step 3 is what turns this into a pytest failure instead.**
+
+---
+
+### Step 3 — the SQL template test
+
+`tests/test_supply_sql_sync.py` — copy `tests/test_insight_plus_sql_sync.py` and
+change the constants at the top:
+
+```python
+SQL  = os.path.join(ROOT, "sql", "insight_plus", "f_supply_portfolio_hourly.sql")
+CASE = os.path.join(ROOT, "scripts", "cases_insight_plus", "f_supply_portfolio_hourly.yaml")
+
+HOOVER      = "mrm_log_flat.default"
+HOOVER_PLUS = "etl.public_test1"
+
+SAMPLING_MARKER       = "--sampling filter"
+EXPECTED_SAMPLING_LINES = <how many UNION ALL branches your query has>
+EXPECTED_FACT_REFS      = <how many ${facts}. references it should have>
+```
+
+The assertions you inherit, and what each one catches:
+
+| Test | Catches |
+|---|---|
+| `test_it_has_exactly_the_placeholders_we_expect` | **Trap A above** — a placeholder nothing supplies, offline |
+| `test_every_fact_table_goes_through_the_placeholder` | **step 1a missed one** — the highest-value test in the file |
+| `test_no_catalog_is_hardcoded_any_more` | a literal `mrm_log_flat.default` left in the template |
+| `test_the_dimension_catalog_stays_literal` | step 1b templated by accident |
+| `test_each_side_reads_only_its_own_catalog` | cross-contamination between the two renders |
+| `test_the_two_renders_differ_only_in_the_catalog` | any other difference between the sides |
+| `test_a_render_leaves_no_placeholder_behind` | an unrecognised `${...}` surviving substitution |
+| `test_the_filter_is_case_level_not_per_side` | someone moving the sampling filter into a side's `vars:` |
+| `test_every_union_branch_is_sampled` | **step 1c missed a branch** |
+| `test_the_filter_reaches_every_branch_when_rendered` | the same, after substitution |
+
+Only two numbers need changing: the branch count and the fact-reference count.
+
+```bash
+pytest tests/test_supply_sql_sync.py -q      # no warehouse, milliseconds
+```
+
+---
+
+### Step 4 — the wiring test
+
+`tests/test_supply_case.py` — copy `tests/test_insight_plus_case.py`:
+
+```python
+CASE_FILE = os.path.join(CASES_DIR, "f_supply_portfolio_hourly.yaml")
+
+def _case(params=PARAMS) -> Case:
+    for case in discover_cases(CASES_DIR, params):
+        if case.name == "f_supply_portfolio_hourly":      # ← the name
+            return case
+    raise AssertionError(f"case not found in {CASES_DIR}")
+
+HOOVER_SQL = os.path.join(REPO, "sql", "insight_plus", "f_supply_portfolio_hourly.sql")
+```
+
+Then update the three hard counts in `test_the_parser_accounts_for_every_output_column`
+to your query's numbers:
+
+```python
+assert len(dims) + len(metrics) == <your total output columns>
+assert len(dims)                == <your dimension count>
+assert len(metrics)             == <your metric count>
+```
+
+That test is a guard on the guard: it asserts the SELECT-list parser accounted
+for every column. If it fails, every assertion below it is measuring the wrong
+thing.
+
+The rest carries over unchanged and gives you, offline:
+
+| Test | Catches |
+|---|---|
+| `test_case_loads` | a YAML typo |
+| `test_it_is_a_row_case_not_a_schema_check` | the wrong case shape |
+| `test_default_engine_not_pushdown` | an `engine:` key that would disable breakdown/near-miss |
+| `test_the_two_sides_share_one_query_file` | the two-copies-drift problem returning |
+| `test_the_sides_differ_only_in_the_fact_catalog` | a half-edited copy-paste |
+| `test_side_vars_carry_no_placeholder` | a side var that could never resolve |
+| `test_listing_works_without_the_batch_parameter` | a run-time value in a load-time slot |
+| `test_each_side_reads_its_own_catalog` | both sides on one catalog |
+| `test_both_sides_carry_the_sampling_filter` | the 409× bug |
+| `test_it_substitutes_on_both_sides` | a half-templated query |
+| `test_omitting_it_raises_rather_than_running` | **a green run over zero rows** |
+| `test_the_yaml_ships_no_default_batch` | the same, from the other direction |
+| `test_keys_are_exactly_the_dimensions` | a column added to the SELECT without updating `keys` |
+| `test_no_metric_is_used_as_a_key` | a `sum()` in the key |
+| `test_keys_are_unique_names` | a duplicated dimension |
+| `test_the_case_is_keyed_not_keyless` | someone deleting `keys:` |
+
+```bash
+pytest tests/test_supply_case.py tests/test_supply_sql_sync.py -q
+```
+
+> **Trap, verified.** Both test files call
+> `discover_cases(CASES_DIR, PARAMS)`, which loads **every** YAML in that
+> directory. A malformed `f_supply_portfolio_hourly.yaml` therefore fails the
+> *demand* case's tests too:
+>
+> ```
+> FAILED tests/test_insight_plus_case.py::...::test_keys_are_unique_names
+> FAILED tests/test_insight_plus_case.py::...::test_the_case_is_keyed_not_keyless
+> ```
+>
+> Nothing in that output names your new file. **If tests you did not touch start
+> failing, suspect the YAML you just added.** Run `rowparity list` — it fails
+> with the real error, naming the file.
+>
+> The corollary: your new case must be loadable with only the batch parameter,
+> the same as the demand case.
+
+---
+
+### Step 5 — the drill-down SQL (optional, and last)
+
+`sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql`
+
+Only worth writing once a real run has shown you which dimension the differences
+cluster on. The structure:
+
+```sql
+-- Placeholders filled in by rowparity: facts, row_filter, time_filter
+-- (written without the dollar-brace on purpose -- see Step 1e)
+
+select
+    request__transaction_id,
+    <the dimensions you want to see>,
+    date_trunc('HOUR', cast(ack__timestamp as timestamp)) as event_date,
+    process_batch_id,
+    count(*) as n
+from ${facts}.ack
+<the same unnest / joins the parity query uses>
+where
+    ${time_filter}
+    and ${row_filter}
+    -- the branch predicates, copied VERBATIM from the parity query
+    and ...
+group by 1,2,3,...
+order by 1
+```
+
+Three rules, all learned from the demand version:
+
+1. **The branch predicates must be copied verbatim** from the parity query. If
+   they drift, this looks at a different population than the row it is supposed
+   to explain, and the mismatch is invisible.
+2. **The sampling filter is NOT applied here.** This query hunts specific
+   transactions behind one already-identified row; excluding 511/512 of them
+   would usually return nothing and read as "the row does not exist".
+3. **The time window is asymmetric, on purpose.** Hoover++ pinned to the batch
+   hour; Hoover searched wider — because "the `event_date` shifted between the
+   layouts" is the hypothesis under test. Pinning both sides assumes the answer.
+
+Then add the block to the YAML from step 2:
+
+```yaml
+    drilldown:
+      query_file: ../../sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql
+      bind:
+        creative_id: "if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1)"
+      id_column: request__transaction_id
+      kinds: [missing]
+      time:
+        param: arena.presto.var.process_batch_id
+        format: "%Y%m%d%H%M%S"
+        hours_before: 1
+        hours_after: 3
+      vars:
+        expected:
+          time_filter: >-
+            date_trunc('HOUR', cast(ack__timestamp as timestamp)) >= timestamp '${batch_hour_start}'
+            and date_trunc('HOUR', cast(ack__timestamp as timestamp)) < timestamp '${batch_hour_end}'
+        actual:
+          time_filter: >-
+            date_trunc('HOUR', cast(ack__timestamp as timestamp)) = timestamp '${batch_hour}'
+```
+
+Note `bind` maps an **output alias to its source expression**. `creative_id` in
+the parity output is really the `if(...)`; that expression, not the alias, is
+what must appear in a predicate against the raw table. Exactly one column may be
+bound — the generated predicate is an IN-list over its values.
+
+The `time:` block derives `${batch_hour}`, `${batch_hour_start}`,
+`${batch_hour_end}`, `${batch_date}` and `${batch_id}` from the run's batch
+parameter. `20260827010000` yields the hour `2026-08-27 01:00:00`, a start of
+`00:00:00` and an end of `04:00:00`.
+
+The drill-down is **generated, never executed** (§8.8). Failures generating it
+are reported and swallowed — a helper template typo must not cost you a parity
+run.
+
+---
+
+### 13.2 Running it
+
+```bash
+# 0. credentials — once per shell
+export TRINO_HOST=presto-gateway.presto.stg.aws.fwmrm.net
+export TRINO_PORT=8080 TRINO_HTTP_SCHEME=https
+export TRINO_USER=your.user
+read -rs TRINO_JWT_TOKEN && export TRINO_JWT_TOKEN     # no echo, no history
+
+# 1. does it parse?                       no warehouse, instant
+rowparity list scripts/cases_insight_plus
+
+# 2. is it wired right?                   no warehouse, milliseconds
+pytest tests/test_supply_case.py tests/test_supply_sql_sync.py -q
+
+# 3. can we connect?                      one trivial query
+python scripts/trino_connectivity_check.py
+
+# 4. run just the new case
+rowparity run scripts/cases_insight_plus \
+    --select f_supply_portfolio_hourly \
+    --param arena.presto.var.process_batch_id=20260827010000 \
+    --csv reports/insight_plus \
+    --html reports/insight_plus/supply.html 2>&1 | tee supply.log
+```
+
+**`--select` is not optional once there are two cases.** Without it,
+`rowparity run scripts/cases_insight_plus` runs **both**, and the demand query is
+the expensive one.
+
+Then read `reports/insight_plus/supply.html` in the order §8.9 gives:
+
+> which branch (§8.3) → is a key drifting (§8.5) → what pattern (§8.6) →
+> show me one (§8.7) → give me the transaction ids (§8.8)
+
+Once it is stable, drop `--select` to run the pair in CI.
+
+### 13.3 If something goes wrong
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `missing required field 'expected'` | wrong case shape, or `expected:` mis-indented | check the YAML nesting under `cases:` |
+| `unknown compare option(s): [...]` | typo in `compare:` | §9.2 for the valid set |
+| `breakdown_by names [...] not in compare.keys` | breakdown column is not a key | add it to `keys`, or drop the breakdown |
+| `ParamError: unresolved parameter(s)` on the run, 0.0s | placeholder in the `.sql` nothing supplies | add it to `vars:`; step 3 catches this offline |
+| `IdenticalSourcesError` | both sides resolved to the same catalog | a copy-pasted side `vars:` where one value was never changed |
+| `EmptyComparisonError` | both sides returned zero rows | the batch does not exist on both sides, or a predicate matched nothing |
+| Tests fail in files you did not touch | your new YAML is malformed | **Trap in step 4** — run `rowparity list` for the real error |
+| Row counts differ by a large ratio | the two sides sample differently | the filter must be case-level, not per-side |
+| `duplicate_keys_expected > 0` | the keys are not unique | a `GROUP BY` dimension is missing from `keys` |
+| Every column flagged | the case is running keyless | `keys:` is missing or empty |
+
+### 13.4 The whole thing, at a glance
+
+```
+ 1. sql/insight_plus/f_supply_portfolio_hourly.sql            NEW
+       ${facts} everywhere · dimensions literal
+       ${sampling_filter} per branch · batch predicate
+                     │
+ 2. scripts/cases_insight_plus/f_supply_portfolio_hourly.yaml NEW
+       both sides → the same query_file, different facts:
+       keys = the GROUP BY dimensions
+                     │
+       ── rowparity list ──────────► both cases listed, no --param
+                     │
+ 3. tests/test_supply_sql_sync.py                             NEW  (copy)
+       placeholders · fact refs · one sampling marker per branch
+ 4. tests/test_supply_case.py                                 NEW  (copy)
+       wiring · batch cannot be skipped · keys == dimensions
+                     │
+       ── pytest ──────────────────► green, in milliseconds
+                     │
+       ── trino_connectivity_check ► connection proven
+                     │
+       ── rowparity run --select ──► reports/insight_plus/supply.html
+                     │
+ 5. sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql  NEW  (last)
+       + a drilldown: block in the YAML from step 2
+
+    NOTHING ELSE IS EDITED.
+```
 
 ---
 
