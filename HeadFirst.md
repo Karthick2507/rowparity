@@ -22,6 +22,16 @@ claim below is from the code as it stands, not from an earlier document.
 9. [Building a new case](#9-building-a-new-case)
 10. [Operating it](#10-operating-it)
 11. [Limitations register](#11-limitations-register)
+12. [Execution trace — one command, end to end](#12-execution-trace--one-command-end-to-end)
+    · [12.1 Process start](#121-process-start)
+    · [12.2 `_run` starts up](#122-_run-starts-up)
+    · [12.3 Loading the case](#123-loading-the-case)
+    · [12.4 Per-case execution](#124-per-case-execution)
+    · [12.5 Fetching each side](#125-fetching-each-side)
+    · [12.6 The comparison](#126-the-comparison)
+    · [12.7 Reporting and exit](#127-reporting-and-exit)
+    · [12.8 The whole path](#128-the-whole-path)
+    · [12.9 Three seams worth knowing](#129-three-seams-worth-knowing)
 
 ---
 
@@ -121,6 +131,9 @@ upstream.
 `concept_check.py` exploits this deliberately: it does a completely different
 kind of analysis (business-concept coverage across a table remodel) and emits a
 `ComparisonResult`, so every reporter works on it unchanged.
+
+> §12 is the concrete counterpart to this diagram: the same pipeline walked
+> statement by statement, with the output of a real run.
 
 ### 2.3 Module map
 
@@ -1162,6 +1175,942 @@ two surviving shapes are `expected:` + `actual:` and `concept_check:`.
 **Recommendation:** remove the three dead keys from `_COMPARE_KEYS` and the
 `schemaparity` entry point. It is a ten-line change and it converts four silent
 failures into clear errors.
+
+---
+
+## 12. Execution trace — one command, end to end
+
+Sections 1–11 are organised around decisions. This one is organised around
+control flow: what actually happens, statement by statement, between typing the
+command and getting an exit code.
+
+The worked example is a small case with one of each kind of difference, so every
+branch below is exercised and the output at the end is real, not illustrative:
+
+```bash
+rowparity run scripts/cases_insight_plus \
+    --param arena.presto.var.process_batch_id=20260827010000 \
+    --csv reports/insight_plus \
+    --html reports/insight_plus/run.html 2>&1 | tee run.log
+```
+
+Where a step behaves differently for another source type, engine or case shape,
+it is called out.
+
+---
+
+### 12.1 Process start
+
+`pyproject.toml` maps one console script:
+
+```toml
+[project.scripts]
+rowparity = "rowparity.cli:main"
+```
+
+The shell invokes **`cli.main()`**, which builds an argparse tree with three
+required-choice subcommands and dispatches through a `func` default:
+
+| Subcommand | Handler | Purpose |
+|---|---|---|
+| `run` | `cli._run` | run cases, exit non-zero on any difference |
+| `list` | `cli._list` | enumerate cases — **never touches a warehouse** |
+| `report` | `cli._report` | render pass-rate history from a result sink |
+
+```python
+args = parser.parse_args(argv)
+return args.func(args)          # → _run(args)
+```
+
+`sub.add_parser(..., required=True)` means `rowparity` with no subcommand is an
+argparse error, not a silent no-op.
+
+For our command the arguments land as:
+
+```python
+args.path   = "scripts/cases_insight_plus"
+args.param  = ["arena.presto.var.process_batch_id=20260827010000"]   # action="append"
+args.csv    = "reports/insight_plus"
+args.html   = "reports/insight_plus/run.html"
+args.select = None
+args.quiet  = False
+args.heartbeat = None          # → progress.DEFAULT_HEARTBEAT_SECONDS (30.0)
+args.result_sink = None
+args.result_sink_prefix = "rowparity"
+```
+
+`--param` is `action="append"`, so it is repeatable. `--select` is `nargs="*"`,
+so it takes a list of case names.
+
+---
+
+### 12.2 `_run` starts up
+
+#### Progress first, before anything can be slow
+
+```python
+progress.configure(
+    enabled=not getattr(args, "quiet", False),
+    heartbeat_seconds=getattr(args, "heartbeat", None),
+)
+```
+
+Deliberately the **first statement in the function**. The comment in the source
+says why: a case that runs two multi-minute warehouse queries prints nothing at
+all until both finish, and from a terminal that is indistinguishable from a
+hang — the only way to tell them apart was to open the cluster's web UI and look
+for a running query.
+
+Three properties of `progress` that matter operationally:
+
+- **Off by default** (`_enabled = False` at module scope). Importing rowparity
+  as a library or running it under pytest stays silent, and **no heartbeat
+  threads are created**. Only the CLI switches it on.
+- **Writes to `sys.stderr`, flushed on every line.** That is why
+  `2>&1 | tee run.log` shows heartbeats as they happen instead of in one burst
+  at the end, and why `rowparity run > results.txt` keeps stdout clean and
+  parseable.
+- **`emit()` swallows every exception.** A closed pager or a full disk is not a
+  comparison error; progress reporting must never be the reason a run fails.
+
+#### Parse parameters, then load cases — both inside one guard
+
+```python
+try:
+    cli_params = parse_cli_params(getattr(args, "param", None))
+    cases = discover_cases(args.path, cli_params)
+except ParamError as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    return 2
+if not cases:
+    print(f"No cases found at {args.path}", file=sys.stderr)
+    return 2
+```
+
+`params.parse_cli_params()` splits on the **first `=` only**:
+
+```python
+name, value = item.split("=", 1)
+```
+
+so a value containing `=` survives intact. An item with no `=`, or an empty
+name, raises `ParamError`. Our one argument becomes:
+
+```python
+{"arena.presto.var.process_batch_id": "20260827010000"}
+```
+
+**Why the whole block is wrapped.** Case loading happens *before* the per-case
+`try/except` in §12.4, so without this a bad `--param` or an unresolved
+`${name}` would surface as a raw traceback — the opposite of the clear message
+`ParamError` goes to the trouble of composing. And it returns **2**, not 1:
+"the tool could not run" stays distinct from "the data disagrees" all the way
+out to CI (§7.6).
+
+#### Run id and result sink
+
+```python
+run_id = str(uuid.uuid4())
+
+if args.result_sink:
+    try:
+        result_sink = make_result_sink(args.result_sink, run_id,
+                                       table_prefix=args.result_sink_prefix)
+        print(f"Result sink: {args.result_sink}  run_id={run_id}")
+    except Exception as exc:
+        print(f"WARNING: could not initialise result sink: {exc}", file=sys.stderr)
+```
+
+One `run_id` for the whole invocation, so every case in this run is one
+correlatable batch in the history tables. A sink that fails to initialise is a
+**warning, not a failure** — persistence is an artifact of the run, not the run.
+
+---
+
+### 12.3 Loading the case
+
+#### `cases.discover_cases()`
+
+```python
+if os.path.isdir(path):
+    files = []
+    for ext in ("*.yml", "*.yaml"):
+        files.extend(glob.glob(os.path.join(path, "**", ext), recursive=True))
+    for f in sorted(files):
+        cases.extend(load_cases_from_file(f, params_, resolve_queries))
+```
+
+Recursive glob over both extensions, **sorted** for a stable, reproducible case
+order. A single file path is loaded directly.
+
+`resolve_queries` defaults to `True` here; `rowparity list` passes `False`
+(§12.3, `param_queries`).
+
+#### `cases.load_cases_from_file()`
+
+```python
+doc = yaml.safe_load(fh) or {}
+if not isinstance(doc, dict):
+    raise ValueError(f"{path}: top level must be a mapping")
+defaults      = doc.get("defaults", {}) or {}
+multi         = "cases" in doc
+file_vars     = (doc.get("vars", {}) or {}) if multi else {}
+param_queries = doc.get("param_queries", {}) or {}
+raw_cases     = doc["cases"] if multi else [doc]
+```
+
+`yaml.safe_load`, never `load` — a case file must not be able to construct
+arbitrary Python objects.
+
+**One file, one or many cases.** With a `cases:` list, a sibling `vars:` block
+is *file-level* and applies to all of them. Without it, the document **is** the
+case, and its `vars:` belongs to that case — `_build_case` picks it up there
+instead. That is the whole meaning of the `multi` flag.
+
+**`param_queries:` resolves once per file, not per case:**
+
+```python
+if param_queries and resolve_queries:
+    seed = params.resolve_variables(file_vars, {}, params_)
+    query_vars = resolve_param_queries(param_queries, seed,
+                                       base_dir=os.path.dirname(path) or ".")
+elif param_queries:
+    query_vars = {str(n).lower(): "${" + str(n) + "}" for n in param_queries}
+    deferred   = frozenset(query_vars)
+```
+
+Two cases keying off "the latest batch" must see the **same** batch. Resolving
+per case would let a batch landing mid-run compare two different populations —
+exactly the kind of difference that looks like a data defect.
+
+The `elif` is the `rowparity list` path. Resolution is off, but these names are
+legitimately declared, so failing with "unresolved parameter" would be wrong and
+would stop listing cases at all. Each name is substituted to **its own literal
+placeholder** — a single pass, so the text is unchanged and *visibly* still
+unresolved rather than a fabricated value. Those stand-ins are then dropped again
+in `_build_case` (below), so a real run still gets the proper error.
+
+#### `_merge_defaults()`
+
+```python
+out = dict(defaults or {})
+for k, v in case.items():
+    if k == "compare" and isinstance(v, dict) and isinstance(out.get("compare"), dict):
+        merged = dict(out["compare"]); merged.update(v)
+        out["compare"] = merged
+    else:
+        out[k] = v
+```
+
+Shallow merge, **with one exception**: `compare:` merges one level deeper, so a
+`defaults:` block can set a shared comparison policy (`float_tolerance`,
+`max_examples`) and an individual case can add `keys:` without clobbering it.
+Everything else — `expected:`, `actual:`, `connection:` — replaces wholesale.
+
+#### `cases._build_case()` — where `${…}` disappears
+
+```python
+raw = dict(raw)
+case_vars     = raw.pop("vars", None) or {}
+raw.pop("param_queries", None)                 # resolved once per file, above
+drilldown_raw = raw.pop("drilldown", None)     # substituted later — see below
+variables = params.resolve_variables(file_vars, case_vars, cli_params)
+for name, value in (query_vars or {}).items():
+    variables.setdefault(name, value)          # query-resolved sits below --param/env
+raw = params.substitute_spec(raw, variables, where=f"case '{raw['name']}' ({source_file})")
+for name in deferred_names:
+    variables.pop(name, None)
+```
+
+`params.resolve_variables()` merges four sources, later winning:
+
+```
+file vars:   <   case vars:   <   ROWPARITY_VAR_*   <   --param
+```
+
+Every name is lower-cased (`_stringify`), so `${BATCH_ID}` and `${batch_id}` are
+one name — necessary because the env-var form has to be upper-cased and silently
+failing to match would be a nasty footgun. YAML ints, bools and `None` are
+stringified, since placeholders substitute as text.
+
+`query_vars` go in with `setdefault`, which is what places them **below**
+`--param` and the environment (those short-circuit the query entirely) and
+**above** a `vars:` default.
+
+`params.substitute_spec()` recurses through the **entire raw case dict** —
+strings, dicts and lists — before any shape dispatch. So every case type gets
+substitution for free and no spec can reach an engine still holding a
+placeholder. The placeholder pattern is:
+
+```python
+_PLACEHOLDER = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_.]*)\}")
+```
+
+Dots are inside the character class on purpose. Query files arrive pre-templated
+by another system with namespaced names like
+`${arena.presto.var.process_batch_id}`. Before dots were recognised the name did
+not match, so it was **neither substituted nor reported unresolved** — the
+literal text reached Presto inside quotes as a valid string matching no batch,
+both sides returned zero rows, and the run reported EQUIVALENT.
+
+**Two blocks are deliberately excluded from this pass:**
+
+- `param_queries:` — already resolved, once, per file.
+- `drilldown:` — its placeholders (`${batch_hour}`, `${batch_hour_start}`, …) are
+  *derived from* the batch parameter and do not exist yet. Leaving it in would
+  also mean `rowparity list` could not enumerate a case without being handed a
+  batch id, which listing has no business needing.
+
+The final `variables.pop(name)` loop removes the `list`-mode stand-ins. They
+stood in for themselves so listing worked; they must not survive onto the case,
+because `query_file` contents are substituted at **run** time and a literal
+`"${batch_id}"` reaching an engine is precisely the failure this design exists
+to prevent.
+
+#### Shape dispatch
+
+```python
+if "concept_check" in raw:
+    return build_concept_check_case(raw, source_file)
+
+for required in ("expected", "actual"):
+    if required not in raw:
+        raise ValueError(f"{source_file}: case is missing required field '{required}'")
+
+engine = raw.get("engine")
+if engine not in _ENGINES:          # {None, "python", "duckdb", "snowflake", "trino"}
+    raise ValueError(f"... unknown engine {engine!r} (known: ...)")
+```
+
+| Top-level block | Built as |
+|---|---|
+| `concept_check:` | `ConceptCheckCase` |
+| `expected:` + `actual:` | `Case` |
+
+An unknown `engine:` is rejected here, at load time, before anything connects.
+
+The `Case` carries `variables` forward for later. **No SQL file has been read
+yet** — `query_file` contents are resolved at run time, in §12.5.
+
+---
+
+### 12.4 Per-case execution
+
+```python
+for case in cases:
+    if only and case.name not in only:            # --select
+        continue
+    is_xfail = "xfail" in case.tags
+    try:
+        result = case.run(result_sink=result_sink)
+    except Exception as exc:
+        print(f"Case '{case.name}': ERROR - {type(exc).__name__}: {exc}\n")
+        errors.append((case.name, exc))
+        failures += 1
+        continue
+    results.append((case.name, result))
+    print(render_console(result, case.name))
+    if is_xfail:
+        if result.equivalent:
+            print("  [XFAIL-UNEXPECTED-PASS] ...")
+            xfail_unexpected_pass += 1; failures += 1
+        else:
+            print("  [XFAIL] expected failure confirmed")
+            xfail_confirmed += 1
+    elif not result.equivalent:
+        failures += 1
+```
+
+**That `try/except` is why one failing case does not kill the run.** It turns an
+`EmptyComparisonError`, an `IdenticalSourcesError`, a `ParamError` from a
+`query_file`, or a Trino `COLUMN_NOT_FOUND` into a reported line plus
+`failures += 1`. This is what makes a directory of cases a suite rather than a
+fragile chain.
+
+**Errored cases are collected separately** (`errors`), because they never produce
+a `ComparisonResult` and are therefore invisible to every reporter that walks
+`results`. `write_run_report` takes them as a second argument: a report that
+silently omits the case that blew up is worse than no report.
+
+**`xfail` inverts the expectation.** A tagged case that differs is confirmed; a
+tagged case that *passes* is `XFAIL-UNEXPECTED-PASS` and counts as a failure —
+usually meaning the defect it pinned has been fixed and the tag should go.
+
+#### `Case.config()` → `CompareConfig`
+
+```python
+unknown = set(self.compare) - _COMPARE_KEYS
+if unknown:
+    raise ValueError(f"case '{self.name}': unknown compare option(s): {sorted(unknown)}")
+
+options = {k: v for k, v in self.compare.items() if k not in _EXCLUSION_KEYS}
+if isinstance(options.get("breakdown_by"), str):
+    options["breakdown_by"] = [options["breakdown_by"]]
+return CompareConfig(**options)
+```
+
+**Unknown keys are rejected, not ignored.** A typo'd `ignore_colums:` would
+otherwise silently do nothing and the run would look clean.
+
+`breakdown_by` is normalised from a string to a list here, so everything
+downstream sees one shape and never has to ask which it got.
+
+#### `Case.run()` — note the ordering
+
+```python
+cfg = self.config(base_dir)
+
+if cfg.null_equivalence and self.engine in ("duckdb", "snowflake", "trino"):
+    raise ValueError(...)                     # refuse rather than quietly differ
+
+self._check_breakdown(cfg)                    # ← before a single row is fetched
+progress.emit(f"Case '{self.name}'")
+self._guard_identical_sides(base_dir, cfg)    # ← likewise
+
+if self.engine in ("duckdb", "snowflake", "trino"):
+    runner = {"duckdb": self._run_duckdb_pushdown,
+              "snowflake": self._run_snowflake_pushdown,
+              "trino": self._run_trino_pushdown}[self.engine]
+    with progress.step(f"{self.engine} push-down") as st:
+        result = runner(base_dir, cfg)
+    result.compare_seconds = st.elapsed
+else:
+    ... default engine, three timed steps ...
+
+result.expected_label = self.expected_label
+result.actual_label   = self.actual_label
+result.row_summary    = self.row_summary
+self._generate_drilldowns(result, base_dir)
+self._guard_empty(result, cfg)
+if result_sink:
+    result_sink.write(self.name, self.tags, result)
+```
+
+Both configuration guards run **before any connection is opened**, so a
+misconfigured case fails in the first second rather than after the warehouse has
+spent an hour producing an answer that proves nothing. See §7 for what each one
+prevents.
+
+Under push-down there is no per-side load to time separately — the whole
+operation is one step — which is why only `compare_seconds` is set.
+
+`_generate_drilldowns` runs **after** the comparison (it needs the diff) and
+**before** `_guard_empty`. It is a no-op when the case has no `drilldown:` block
+or when the result is equivalent, and it swallows its own exceptions:
+
+```python
+except Exception as exc:
+    progress.emit(f"  drill-down SQL not generated: {type(exc).__name__}: {exc}")
+    return
+```
+
+Losing a whole parity run because a helper template has a typo would be entirely
+the wrong trade.
+
+#### The default-engine branch, timed in three parts
+
+```python
+with progress.step(f"expected  ({self.expected.get('type','?')})") as st:
+    expected_tbl = load_source(self.expected, base_dir=base_dir, variables=self.variables)
+    st.result(progress.describe_table(expected_tbl))
+expected_seconds = st.elapsed
+# …same for actual…
+with progress.step("comparing") as st:
+    result = compare_tables(expected_tbl, actual_tbl, cfg)
+    st.result(f"{len(result.compared_columns)} columns compared")
+result.expected_load_seconds = expected_seconds
+result.actual_load_seconds   = actual_seconds
+result.compare_seconds       = st.elapsed
+```
+
+Three numbers, not one total, and kept apart on purpose: *"the query was slow"*
+is a warehouse problem, *"the comparison was slow"* is ours.
+
+`progress.step()` is a context manager that emits `-> label ...`, starts a
+**daemon** heartbeat thread, times the body, and then emits either
+`OK label 71.4s 87,412 rows x 262 cols` or, on exception,
+`FAILED label 4m12s TrinoUserError: ...` **and re-raises untouched** — "it failed
+after four minutes" is still worth being told. The thread is a daemon that only
+ever writes to the stream, so it cannot keep the process alive and cannot fail
+the run; `stop()` joins it with a one-second bound so a wedged stream cannot
+block.
+
+---
+
+### 12.5 Fetching each side
+
+`sources.load_source()` validates the spec and dispatches on `type` through
+`_HANDLERS` (12 names, 10 distinct functions — `sql` aliases `duckdb`, `feather`
+aliases `arrow`):
+
+```python
+if not isinstance(spec, dict) or "type" not in spec:
+    raise SourceError(...)
+handler = _HANDLERS.get(spec["type"])
+if handler is None:
+    raise SourceError(f"unknown source type '{kind}'. Known: {sorted(_HANDLERS)}")
+
+if spec.get("vars"):
+    from .params import merge_side_vars
+    variables = merge_side_vars(spec["vars"], variables)
+return handler(spec, base_dir, variables)
+```
+
+Note the truthiness test on `spec.get("vars")` rather than a `is not None`
+check. The comment explains it: `resolve_query` reads `variables is not None` as
+"substitution is in play", so replacing `None` with an empty dict would start
+rejecting `${…}` in query files that previously passed through untouched.
+
+#### `params.merge_side_vars()` — the inverted precedence
+
+```python
+merged = dict(variables or {})
+merged.update(_stringify(side_vars))       # side var LAST → side var WINS
+```
+
+This is what lets both sides share one `query_file` and still run different
+queries: `from ${facts}.ad` becomes `from mrm_log_flat.default.ad` on one side
+and `from etl.public_test1.ad` on the other.
+
+**A side var outranks `--param` and the environment**, inverting the precedence
+everywhere else in `params.py`. A side var is not a knob; it is half of what
+makes the two sides different, and letting `--param facts=x` reach both sides
+would point them at the same catalog and produce a confident EQUIVALENT for
+comparing a table with itself. A case that *wants* a side overridable says so by
+templating the value: `vars: {facts: "${old_catalog}"}`.
+
+#### `sources.resolve_query()` — where the SQL file is finally read
+
+```python
+if spec.get("query"):
+    return spec["query"]                       # inline query wins
+qf = spec.get("query_file")
+if qf:
+    path = _resolve_path(qf, base_dir)         # relative to the YAML's directory
+    sql = open(path, encoding="utf-8").read().strip()
+    if variables is not None:
+        sql = substitute(sql, variables, where=path)
+    return sql
+```
+
+This is where `${arena.presto.var.process_batch_id}` becomes `20260827010000`
+and `${facts}` becomes this side's catalog. An unresolved name raises
+`ParamError` **here**, naming the file, and is caught by the per-case handler in
+§12.4.
+
+#### `sources._trino()` — the batched fetch
+
+```python
+con = _trino_connect(spec)
+try:
+    cur = con.cursor()
+    cur.execute(query)
+    col_names  = [d[0] for d in (cur.description or [])]
+    batch_rows = int(spec.get("fetch_batch_rows") or _trino_batch_rows(len(col_names)))
+
+    tables, fetched = [], 0
+    while True:
+        rows = cur.fetchmany(batch_rows)
+        if not rows:
+            break
+        tables.append(pa.Table.from_pylist([dict(zip(col_names, r)) for r in rows]))
+        fetched += len(rows)
+        progress.emit(f"     ... fetched {fetched:,} rows")
+
+    if not tables:
+        return pa.table({col: [] for col in col_names})   # keep the schema
+    if len(tables) == 1:
+        return tables[0]
+    return pa.concat_tables(tables, promote_options="permissive")
+finally:
+    con.close()
+```
+
+Five things here earn their place:
+
+1. **`fetchmany`, not `fetchall`.** See §5.2 for the measured numbers — peak
+   Python memory goes from 1.92 GB to a flat 0.15 GB at 100k × 262.
+2. **Batch size follows a cell budget**, not a row count:
+   `_TRINO_TARGET_CELLS = 2_000_000`, clamped to `[1_000, 100_000]` rows. A
+   262-column row is two orders of magnitude heavier than a 1-column one, so a
+   fixed row count is either wasteful on narrow results or enormous on wide ones.
+   `fetch_batch_rows:` in the spec overrides it.
+3. **`promote_options="permissive"` is a correctness requirement.** Types are
+   inferred per batch, so a column all-NULL in one batch infers as Arrow `null`
+   and as `int64` in the next; without promotion those batches cannot be
+   concatenated at all. Batching would have converted a memory problem into a
+   correctness one.
+4. **The zero-row branch preserves columns** from `cursor.description`, which is
+   populated even for an empty result. A table with no columns loses the schema
+   entirely, and every downstream column report would be blank.
+5. **The row-count heartbeat.** A multi-minute fetch otherwise shows only "still
+   running"; a growing row count says whether it is progressing or stuck.
+
+#### `trino_auth.connect()`
+
+`resolve_connection_args()` merges the case's `connection:` block over the
+`TRINO_*` environment variables — **the YAML block wins** — for `host`, `port`,
+`user`, `catalog`, `schema` and `http_scheme`. A missing `host` raises with the
+two ways to set it named.
+
+Auth mode is then chosen by what is present in the **environment only**:
+
+| Mode | Trigger | Wire format |
+|---|---|---|
+| JWT | `TRINO_JWT_TOKEN` | `trino.auth.JWTAuthentication` → Bearer |
+| Basic | `TRINO_PASSWORD` | `trino.auth.BasicAuthentication` |
+| None | neither | no auth header (open dev/test clusters) |
+
+**Secrets are never read from a case file**, because case files are committed to
+git. The `connection:` block carries non-secret settings only.
+
+Both sides are now a `pyarrow.Table`. **Nothing downstream knows the data came
+from Trino.**
+
+---
+
+### 12.6 The comparison
+
+`compare.compare_tables()`.
+
+#### Column resolution
+
+```python
+only_exp  = [c for c in exp_cols if c not in act_set]
+only_act  = [c for c in act_cols if c not in exp_set]
+candidate = cfg.select if cfg.select else [c for c in exp_cols if c in act_set]
+compared  = [c for c in candidate if c not in set(cfg.ignore_columns)]
+compared  = [c for c in compared if c in exp_set and c in act_set]
+type_mismatches = [(c, str(et), str(at)) for c in compared if not et.equals(at)]
+```
+
+One function produces all three column states:
+
+| Result field | Reported as |
+|---|---|
+| `compared_columns` | `MATCHED` |
+| `columns_only_in_expected` / `columns_only_in_actual` | `DIFF` |
+| `type_mismatches` | `MATCHED - TYPE DIFF` |
+
+A separate zero-row schema pass is therefore unnecessary — column status falls
+out of the row comparison for free.
+
+Column-set and type problems only *fail* the run under `strict_columns: true`,
+but they are **always reported**:
+
+```python
+if cfg.strict_columns and (only_exp or only_act or type_mismatches):
+    result.equivalent = False
+```
+
+Both Arrow schemas are stored on the result, so a reporter can print a column's
+type on each side — including for a column present on one side only, where the
+type is the single most useful thing to know about it.
+
+#### Materialise, optionally pre-canonicalise, dispatch
+
+```python
+exp_rows = expected.to_pylist()
+act_rows = actual.to_pylist()
+
+if cfg.vectorized:
+    canon_columns = sorted(set(sorted_cols) | set(cfg.keys or []))
+    exp_canon = canon_columns_vectorized(expected.schema, expected, canon_columns, canon_cfg)
+    act_canon = canon_columns_vectorized(actual.schema, actual, canon_columns, canon_cfg)
+
+if cfg.keys: _compare_keyed(...)
+else:        _compare_keyless(...)
+```
+
+The vectorized cache is **positional** — `exp_canon[column][row_index]` — which
+is why the keyed index below stores row positions rather than the row dicts.
+Note the union with `cfg.keys`: key columns are canonicalised even if they are
+not in the compared set.
+
+#### Keyed
+
+```python
+for k in keys:
+    if k not in exp_schema.names or k not in act_schema.names:
+        raise ValueError(f"key column '{k}' is missing from expected or actual table")
+
+for i, r in enumerate(exp_rows):
+    exp_index[_key_of(r, exp_schema, keys, canon_cfg, exp_canon, i)].append(i)
+# …same for actual…
+
+result.duplicate_keys_expected = sum(len(v) - 1 for v in exp_index.values() if len(v) > 1)
+result.duplicate_keys_actual   = sum(len(v) - 1 for v in act_index.values() if len(v) > 1)
+```
+
+`_key_of()` canonicalises **only the key columns** and returns the tuple, which
+is used **raw as a dict key** — never hashed (§4.2 for the two reasons).
+Canonicalisation applies here too, so `unordered_list_columns` affects which rows
+*pair*: `[7, 12]` and `[12, 7]` land in the same bucket only if that column is
+declared unordered.
+
+Duplicate keys are counted as *excess* rows per key (`len(v) - 1`), not as
+duplicate groups.
+
+Then the breakdown positions are validated as a backstop for
+`compare_tables()` called directly, and the three set operations run:
+
+```python
+missing = exp_keys - act_keys
+added   = act_keys - exp_keys
+result.missing_keys = list(missing)
+result.added_keys   = list(added)
+
+for key in missing:            # counts rows, not keys: += len(idxs)
+for key in added:              # likewise
+for key in exp_keys & act_keys:
+    e_digest = row_digest(canon_row(exp_schema, e, cols, canon_cfg))
+    a_digest = row_digest(canon_row(act_schema, a, cols, canon_cfg))
+    if e_digest != a_digest:
+        result.changed_count += 1
+        coldiffs = _column_diffs(...)
+        result.changed_keys.append(key)
+        sig = tuple(sorted(c.column for c in coldiffs))
+        stats = result.change_signatures.setdefault(sig, ChangeSignature(columns=sig))
+        stats.count += 1
+        score = _accumulate_deltas(stats, coldiffs, cfg)
+        if stats.example is None or score > stats._example_score:
+            stats.example, stats._example_score = diff, score
+```
+
+Four things happen in that last loop that are easy to miss:
+
+- **The digest is the fast path.** One 16-byte comparison decides whether the row
+  changed; `_column_diffs()` — which canonicalises every column — only runs when
+  it did.
+- **The signature is the sorted tuple of differing column names.** That is the
+  entire grouping key behind §8.6.
+- **`_accumulate_deltas` folds the row into a per-column movement profile** and
+  returns how *extreme* it was, which is how the kept example ends up being the
+  most diagnostic row rather than whichever arrived first. Deltas are quantised
+  to the tolerance grid first — without that no float column would ever report a
+  constant delta, because the last bits would differ on every row.
+- **`became_null` / `was_null` are counted apart from `lower` / `higher`.** A
+  value appearing or disappearing is not a movement, and folding it into the
+  numeric profile would invent a delta from nothing.
+
+The breakdown is accumulated alongside, keyed on the **raw** column value
+(§8.3), and covers side totals as well as differences so the report can show a
+share rather than only a count.
+
+#### Keyless
+
+No key, so no pairing. Every row is fingerprinted and the two bags subtracted;
+`changed_count` stays 0 by construction. The per-column value fingerprint
+described in §4.1 is accumulated in the same pass.
+
+#### Near-miss and the final verdict
+
+```python
+if cfg.near_miss and cfg.keys and result.missing_keys and result.added_keys:
+    result.near_miss = near_miss.analyse(result.missing_keys, result.added_keys, cfg.keys)
+
+if result.total_differences > 0:
+    result.equivalent = False
+return result
+```
+
+Guarded on **both** lists being non-empty — with nothing on one side there is
+nothing to pair, and the analysis would be a wasted O(columns × rows) pass.
+
+---
+
+### 12.7 Reporting and exit
+
+```python
+if result_sink:
+    result_sink.close()
+
+if args.json or args.md:
+    write_reports(results, json_path=args.json, md_path=args.md)
+if getattr(args, "csv", None):
+    paths = write_csv_reports(results, args.csv)
+    print(f"Wrote {len(paths)} per-column CSV report(s) to {args.csv}/")
+if getattr(args, "html", None):
+    try:
+        write_run_report(args.html, results, errors, run_id=run_id)
+        print(f"Wrote HTML report to {args.html}")
+    except Exception as exc:
+        print(f"WARNING: could not write HTML report: {exc}", file=sys.stderr)
+```
+
+**Markdown is written before JSON**, deliberately: they are independent
+artifacts, and writing JSON first meant a failure there took the Markdown report
+down with it — losing both on precisely the runs that had something to report.
+
+**The HTML report is wrapped and warned, never fatal.** A report is an artifact
+of the run, not the run; losing it must not change the verdict the comparison
+already reached. Note it is the only reporter that receives `errors` as well as
+`results`.
+
+`write_csv_reports` → `to_column_rows` maps each column onto a status
+(§8.4) and writes one `<case>.csv` per case — the readable form when schema
+drift runs to hundreds of columns.
+
+#### The summary line and the exit code
+
+```python
+total   = len(results)
+n_xfail = xfail_confirmed + xfail_unexpected_pass
+passed  = sum(1 for _, r in results if r.equivalent) - xfail_unexpected_pass
+summary = f"Summary: {passed}/{total - n_xfail} equivalent"
+...
+return 1 if failures else 0
+```
+
+The denominator excludes `xfail` cases, so a suite with known-failing cases
+still reads as "N of M equivalent" over the cases that were expected to pass.
+
+| Code | Meaning | Raised where |
+|---|---|---|
+| 0 | every case equivalent | end of `_run` |
+| 1 | a case differed, or a case errored | end of `_run` |
+| 2 | cases could not be **loaded** — bad `--param`, unreadable YAML, none found | the guard in §12.2 |
+
+#### A real run
+
+The output below is from an actual run of a three-row case with one of each
+difference — a missing row, an added row (the same logical row with a drifted
+`day`), and a changed row:
+
+```
+Case 'demo_parity'
+  -> expected  (inline) ...
+  OK expected  (inline)  0.8s  3 rows x 4 cols
+  -> actual    (inline) ...
+  OK actual    (inline)  0.0s  3 rows x 4 cols
+  -> comparing ...
+  OK comparing  0.0s  4 columns compared
+Case 'demo_parity': [DIFFERENT] keyed on ['day', 'region'] | expected=3 actual=3 | missing=1 added=1 changed=1
+  timing: expected 0.8s | actual 0.0s | compare 0.0s | total 0.8s
+  near misses (one key column apart, no query run):
+    drop day: pairs 1 (100% of missing)
+        e.g. 2026-08-28 -> 2026-08-29
+    => 1 of 1 missing rows are not missing: they pair with an added row once 'day' is dropped from the key.
+  row differences by region:
+    north  rows 2/2  missing=1 added=1 changed=0  differing=100.0%
+    south  rows 1/1  missing=0 added=0 changed=1  differing=100.0%
+  change signatures (1 distinct, 1 changed row(s) total):
+    1x  {orders, revenue}  [100% of changed]
+        by group: south 1
+        orders: lower 1/1  -1 (constant)
+        revenue: lower 1/1  -10 (constant)
+        most extreme: key=(2026-08-27, south): orders: 7 -> 6, revenue: 200 -> 190
+  first 3 difference(s):
+  - MISSING (in expected, absent from actual): key=(2026-08-28, north)
+  + ADDED   (in actual, absent from expected): key=(2026-08-29, north)
+  ~ CHANGED key=(2026-08-27, south): orders: 7 -> 6, revenue: 200 -> 190
+
+Summary: 0/1 equivalent, 1 failing
+```
+
+Everything above the summary is one `render_console(result, case_name)` call
+except the four `->` / `OK` lines, which are `progress` writing to **stderr** as
+the steps happen. In a terminal they interleave; in
+`rowparity run > out.txt` only the stdout half lands in the file.
+
+Read the near-miss block first: it says the missing row and the added row are the
+**same logical row** whose `day` drifted, so the real count of lost rows is zero.
+Without it this reads as three separate problems.
+
+---
+
+### 12.8 The whole path
+
+```
+shell
+ └─ cli.main ──► argparse (run | list | report) ──► args.func = cli._run
+     ├─ progress.configure                      FIRST statement, stderr, flushed
+     ├─ params.parse_cli_params                 split on first '=' only
+     ├─ cases.discover_cases                    **/*.yml + **/*.yaml, sorted
+     │   └─ cases.load_cases_from_file          one file, one or many cases
+     │       ├─ yaml.safe_load
+     │       ├─ param_queries.resolve_param_queries    ONCE per file
+     │       ├─ cases._merge_defaults           defaults:, compare: merged deeper
+     │       └─ cases._build_case
+     │           ├─ pop vars: / param_queries: / drilldown:
+     │           ├─ params.resolve_variables    file < case < env < --param
+     │           ├─ params.substitute_spec      ${…} over the whole case
+     │           └─ shape dispatch              concept_check | expected+actual
+     ├─ make_result_sink                        one run_id for the invocation
+     └─ for case in cases:  try:                ← one failure never kills the run
+         └─ Case.run
+             ├─ Case.config                     unknown compare option → raise
+             ├─ Case._check_breakdown           breakdown_by must be a key
+             ├─ Case._guard_identical_sides     refuse a self-comparison
+             │                                  ↑ both before any connection
+             ├─ progress.step "expected"
+             │   └─ sources.load_source → sources._trino
+             │       ├─ params.merge_side_vars  ${facts} → this side's catalog
+             │       ├─ sources.resolve_query   reads the .sql, substitutes
+             │       ├─ trino_auth.connect      YAML over env; JWT | Basic | none
+             │       └─ fetchmany loop → concat_tables(permissive) → pa.Table
+             ├─ progress.step "actual"          same file, other catalog
+             ├─ progress.step "comparing"
+             │   └─ compare.compare_tables
+             │       ├─ _resolve_columns        MATCHED / DIFF / TYPE DIFF
+             │       ├─ canon_columns_vectorized    (only if vectorized: true)
+             │       └─ _compare_keyed  (or _compare_keyless)
+             │           ├─ _key_of             key tuple, used RAW
+             │           ├─ canon_row → row_digest       blake2b, 16 bytes
+             │           ├─ _column_diffs       only for rows whose digest differs
+             │           ├─ _accumulate_deltas  direction, constant?, extremeness
+             │           └─ breakdown groups    raw value, over EVERY row
+             │       └─ near_miss.analyse       which key column drifted (no I/O)
+             ├─ labels + row_summary onto the result
+             ├─ Case._generate_drilldowns       SQL only; failures swallowed
+             ├─ Case._guard_empty               zero rows ≠ equivalent
+             └─ result_sink.write
+         └─ render_console  →  write_reports (md then json)
+                            →  write_csv_reports
+                            →  write_run_report (results + errors)
+                            →  exit 0 | 1 | 2
+```
+
+---
+
+### 12.9 Three seams worth knowing
+
+If you are going to change this codebase, these are the three places where a
+change stays local. Everywhere else, it does not.
+
+**Seam 1 — `pyarrow.Table`, at the end of §12.5.** Everything after it is
+engine-agnostic. One comparison engine serves Trino, Snowflake, DuckDB, Parquet,
+Delta, Iceberg, Spark and inline fixtures because a source's entire contract is
+*return an Arrow table*. Adding a source type is one function and one line in
+`_HANDLERS`; nothing else in the codebase learns about it.
+
+The corollary is a constraint worth stating: **anything a source cannot express
+in Arrow does not exist downstream.** That is why type-awareness lives in
+`hashing.py` dispatching on `pa.DataType` rather than in each source.
+
+**Seam 2 — `ComparisonResult`, at the end of §12.6.** Every reporter consumes
+the same object: console, JSON, Markdown, CSV, the single-run HTML page, the
+result sink and the history page. Add a field and it is available to all of them
+at once; add a reporter and nothing upstream changes.
+
+`concept_check.py` is the proof: it performs a completely different analysis —
+business-concept coverage across a table remodel, fetching no rows at all — and
+emits a `ComparisonResult`. Every reporter works on it unchanged, which is why it
+is 157 lines instead of a parallel reporting stack.
+
+The corollary: `ComparisonResult` has to carry presentation-only fields
+(`expected_label`, `actual_label`, `row_summary`) that the comparison never
+reads. That is the price of one object, and it is worth paying.
+
+**Seam 3 — the `try/except` in §12.4.** One case's failure is a reported line and
+a `failures += 1`, never a dead run. This is what makes a directory of cases
+usable as a suite: a new case that cannot connect yet, a case whose batch has
+aged out, a case with a typo in its SQL — none of them stop the other twenty from
+producing results.
+
+The corollary is the reason `errors` exists as a separate list: a case that never
+produced a `ComparisonResult` is invisible to every reporter that walks
+`results`, so it has to be carried alongside and rendered explicitly.
 
 ---
 
