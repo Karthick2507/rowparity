@@ -13,6 +13,7 @@ Two modes:
   change. Ideal for backward-compatible-view checks where you just need
   "same set of rows, order irrelevant".
 """
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -46,7 +47,7 @@ class EmptyComparisonError(RuntimeError):
 @dataclass
 class CompareConfig:
     keys: Optional[List[str]] = None
-    select: Optional[List[str]] = None          # if set, only compare these columns
+    select: Optional[List[str]] = None  # if set, only compare these columns
     ignore_columns: List[str] = field(default_factory=list)
     float_tolerance: float = 0.0
     coerce_numeric_to_float: bool = False
@@ -115,7 +116,7 @@ class ColumnDiff:
 
 @dataclass
 class RowDiff:
-    kind: str                       # "missing" | "added" | "changed"
+    kind: str  # "missing" | "added" | "changed"
     key: Optional[Tuple] = None
     columns: List[ColumnDiff] = field(default_factory=list)
     expected_row: Optional[dict] = None
@@ -132,16 +133,17 @@ class ColumnDelta:
     row loses exactly one" from "the deltas are all over the place"; the first
     is a diagnosis and the second is a starting point.
     """
+
     column: str
     rows: int = 0
     # Direction tallies. Nulls are counted apart from value moves: "became
     # null" is a different failure from "got smaller", and averaging them
     # together would hide both.
-    lower: int = 0          # actual < expected
-    higher: int = 0         # actual > expected
+    lower: int = 0  # actual < expected
+    higher: int = 0  # actual > expected
     became_null: int = 0
     was_null: int = 0
-    numeric: int = 0        # rows where a delta could actually be computed
+    numeric: int = 0  # rows where a delta could actually be computed
     min_delta: Optional[float] = None
     max_delta: Optional[float] = None
     # Non-numeric columns get the most common (expected -> actual) pair
@@ -181,6 +183,7 @@ class ChangeSignature:
     *which columns differ* turns thousands of changed rows into a handful of
     patterns (e.g. "37 rows differ only in `margin`").
     """
+
     columns: Tuple[str, ...]
     count: int = 0
     example: Optional[RowDiff] = None
@@ -205,6 +208,7 @@ class BreakdownGroup:
     disagrees. The three-way `slot_user_drop_off` union is the motivating case:
     without this, 149 missing and 208 added rows are one undifferentiated pile.
     """
+
     value: Any
     expected_rows: int = 0
     actual_rows: int = 0
@@ -235,9 +239,9 @@ class ComparisonResult:
     compared_columns: List[str]
     expected_rows: int
     actual_rows: int
-    missing_count: int = 0          # in expected, not in actual
-    added_count: int = 0            # in actual, not in expected
-    changed_count: int = 0          # keyed only: same key, different content
+    missing_count: int = 0  # in expected, not in actual
+    added_count: int = 0  # in actual, not in expected
+    changed_count: int = 0  # keyed only: same key, different content
     columns_only_in_expected: List[str] = field(default_factory=list)
     columns_only_in_actual: List[str] = field(default_factory=list)
     type_mismatches: List[Tuple[str, str, str]] = field(default_factory=list)
@@ -269,7 +273,7 @@ class ComparisonResult:
     row_summary: List[Dict[str, Any]] = field(default_factory=list)
     # One drill-down per run: a single query per side covering every differing
     # row, plus the transaction ids each returned. See drilldown.py.
-    drilldown: Optional[Any] = None      # drilldown.DrilldownResult
+    drilldown: Optional[Any] = None  # drilldown.DrilldownResult
     # Keyless only: columns whose value multiset differs between the two sides.
     # Keyed comparisons attribute differences per row via change_signatures and
     # do not need this. See _compare_keyless for how it is computed.
@@ -286,7 +290,7 @@ class ComparisonResult:
     missing_keys: List[Tuple] = field(default_factory=list)
     added_keys: List[Tuple] = field(default_factory=list)
     changed_keys: List[Tuple] = field(default_factory=list)
-    near_miss: Optional[Any] = None      # near_miss.NearMissResult
+    near_miss: Optional[Any] = None  # near_miss.NearMissResult
 
     # Wall-clock seconds, filled in by Case.run(). Kept as three numbers rather
     # than one total because "the query was slow" and "the comparison was slow"
@@ -387,21 +391,35 @@ def compare_tables(expected: pa.Table, actual: pa.Table, cfg: CompareConfig) -> 
 
     if cfg.keys:
         _compare_keyed(
-            exp_rows, act_rows, expected.schema, actual.schema, sorted_cols, cfg, canon_cfg, result,
-            exp_canon, act_canon,
+            exp_rows,
+            act_rows,
+            expected.schema,
+            actual.schema,
+            sorted_cols,
+            cfg,
+            canon_cfg,
+            result,
+            exp_canon,
+            act_canon,
         )
     else:
         _compare_keyless(
-            exp_rows, act_rows, expected.schema, actual.schema, sorted_cols, canon_cfg, result, cfg,
-            exp_canon, act_canon,
+            exp_rows,
+            act_rows,
+            expected.schema,
+            actual.schema,
+            sorted_cols,
+            canon_cfg,
+            result,
+            cfg,
+            exp_canon,
+            act_canon,
         )
 
     if cfg.near_miss and cfg.keys and result.missing_keys and result.added_keys:
         from . import near_miss as _near_miss
 
-        result.near_miss = _near_miss.analyse(
-            result.missing_keys, result.added_keys, cfg.keys
-        )
+        result.near_miss = _near_miss.analyse(result.missing_keys, result.added_keys, cfg.keys)
 
     if result.total_differences > 0:
         result.equivalent = False
@@ -409,16 +427,30 @@ def compare_tables(expected: pa.Table, actual: pa.Table, cfg: CompareConfig) -> 
 
 
 def _key_of(
-    row: dict, schema: pa.Schema, keys: Sequence[str], canon_cfg: CanonConfig,
-    canon_cache: Optional[Dict[str, list]] = None, idx: Optional[int] = None,
+    row: dict,
+    schema: pa.Schema,
+    keys: Sequence[str],
+    canon_cfg: CanonConfig,
+    canon_cache: Optional[Dict[str, list]] = None,
+    idx: Optional[int] = None,
 ) -> Tuple:
     if canon_cache is not None:
         return tuple(canon_cache[k][idx] for k in keys)
     return tuple(canon_value(schema.field(k).type, row.get(k), canon_cfg) for k in keys)
 
 
-def _compare_keyed(exp_rows, act_rows, exp_schema, act_schema, cols, cfg, canon_cfg, result,
-                    exp_canon=None, act_canon=None):
+def _compare_keyed(
+    exp_rows,
+    act_rows,
+    exp_schema,
+    act_schema,
+    cols,
+    cfg,
+    canon_cfg,
+    result,
+    exp_canon=None,
+    act_canon=None,
+):
     keys = cfg.keys
     for k in keys:
         if k not in exp_schema.names or k not in act_schema.names:
@@ -502,7 +534,9 @@ def _compare_keyed(exp_rows, act_rows, exp_schema, act_schema, cols, cfg, canon_
         group = _group(key, exp_rows[idxs[0]])
         if group is not None:
             group.missing += len(idxs)
-        _maybe_example(result, cfg, RowDiff(kind="missing", key=key, expected_row=exp_rows[idxs[0]]))
+        _maybe_example(
+            result, cfg, RowDiff(kind="missing", key=key, expected_row=exp_rows[idxs[0]])
+        )
 
     for key in added:
         idxs = act_index[key]
@@ -525,7 +559,9 @@ def _compare_keyed(exp_rows, act_rows, exp_schema, act_schema, cols, cfg, canon_
         a_digest = row_digest(a_canon_row)
         if e_digest != a_digest:
             result.changed_count += 1
-            coldiffs = _column_diffs(e, a, exp_schema, act_schema, cols, cfg, canon_cfg, exp_canon, act_canon, ei, ai)
+            coldiffs = _column_diffs(
+                e, a, exp_schema, act_schema, cols, cfg, canon_cfg, exp_canon, act_canon, ei, ai
+            )
             diff = RowDiff(kind="changed", key=key, columns=coldiffs, expected_row=e, actual_row=a)
 
             for cd in coldiffs:
@@ -626,23 +662,34 @@ def _accumulate_deltas(stats: ChangeSignature, coldiffs, cfg: CompareConfig) -> 
     return worst
 
 
-def _column_diffs(e, a, exp_schema, act_schema, cols, cfg, canon_cfg,
-                   exp_canon=None, act_canon=None, ei=None, ai=None) -> List[ColumnDiff]:
+def _column_diffs(
+    e,
+    a,
+    exp_schema,
+    act_schema,
+    cols,
+    cfg,
+    canon_cfg,
+    exp_canon=None,
+    act_canon=None,
+    ei=None,
+    ai=None,
+) -> List[ColumnDiff]:
     diffs = []
     for c in cols:
         if exp_canon is not None:
             ce, ca = exp_canon[c][ei], act_canon[c][ai]
         else:
             unordered = c in set(cfg.unordered_list_columns)
-            ce = canon_value(exp_schema.field(c).type, e.get(c), canon_cfg, unordered_list=unordered)
-            ca = canon_value(act_schema.field(c).type, a.get(c), canon_cfg, unordered_list=unordered)
+            ce = canon_value(
+                exp_schema.field(c).type, e.get(c), canon_cfg, unordered_list=unordered
+            )
+            ca = canon_value(
+                act_schema.field(c).type, a.get(c), canon_cfg, unordered_list=unordered
+            )
         if ce != ca:
             ev, av = e.get(c), a.get(c)
             equivalent = False
-            if cfg.null_equivalence:
-                from .equivalence import globally_equivalent
-
-                equivalent = globally_equivalent(ev, av)
             diffs.append(ColumnDiff(column=c, expected=ev, actual=av, equivalent=equivalent))
     return diffs
 
@@ -650,8 +697,18 @@ def _column_diffs(e, a, exp_schema, act_schema, cols, cfg, canon_cfg,
 _HASH_MASK = (1 << 64) - 1
 
 
-def _compare_keyless(exp_rows, act_rows, exp_schema, act_schema, cols, canon_cfg, result, cfg,
-                      exp_canon=None, act_canon=None):
+def _compare_keyless(
+    exp_rows,
+    act_rows,
+    exp_schema,
+    act_schema,
+    cols,
+    canon_cfg,
+    result,
+    cfg,
+    exp_canon=None,
+    act_canon=None,
+):
     exp_counts: Counter = Counter()
     act_counts: Counter = Counter()
     sample: Dict[bytes, dict] = {}
@@ -680,32 +737,36 @@ def _compare_keyless(exp_rows, act_rows, exp_schema, act_schema, cols, canon_cfg
     act_col_hash = dict.fromkeys(cols, 0)
 
     for i, r in enumerate(exp_rows):
-        canon = tuple((c, exp_canon[c][i]) for c in cols) if exp_canon is not None \
+        canon = (
+            tuple((c, exp_canon[c][i]) for c in cols)
+            if exp_canon is not None
             else canon_row(exp_schema, r, cols, canon_cfg)
+        )
         d = row_digest(canon)
         exp_counts[d] += 1
         sample.setdefault(d, r)
         for c, v in canon:
             exp_col_hash[c] = (exp_col_hash[c] + hash(v)) & _HASH_MASK
     for i, r in enumerate(act_rows):
-        canon = tuple((c, act_canon[c][i]) for c in cols) if act_canon is not None \
+        canon = (
+            tuple((c, act_canon[c][i]) for c in cols)
+            if act_canon is not None
             else canon_row(act_schema, r, cols, canon_cfg)
+        )
         d = row_digest(canon)
         act_counts[d] += 1
         sample.setdefault(d, r)
         for c, v in canon:
             act_col_hash[c] = (act_col_hash[c] + hash(v)) & _HASH_MASK
 
-    result.column_value_mismatch = [
-        c for c in cols if exp_col_hash[c] != act_col_hash[c]
-    ]
+    result.column_value_mismatch = [c for c in cols if exp_col_hash[c] != act_col_hash[c]]
 
     for d in set(exp_counts) | set(act_counts):
         delta = exp_counts[d] - act_counts[d]
-        if delta > 0:                      # more copies in expected -> missing from actual
+        if delta > 0:  # more copies in expected -> missing from actual
             result.missing_count += delta
             _maybe_example(result, cfg, RowDiff(kind="missing", expected_row=sample[d]))
-        elif delta < 0:                    # more copies in actual -> added
+        elif delta < 0:  # more copies in actual -> added
             result.added_count += -delta
             _maybe_example(result, cfg, RowDiff(kind="added", actual_row=sample[d]))
 

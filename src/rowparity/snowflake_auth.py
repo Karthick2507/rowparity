@@ -1,7 +1,7 @@
 """Shared Snowflake connection builder — key-pair authentication only.
 
 Every Snowflake touchpoint (``sources.py``'s ``snowflake`` source,
-``schema_introspect.py``'s schema-only describe, ``snowflake_pushdown.py``'s
+schema-only describe, ``snowflake_pushdown.py``'s
 push-down engine) connects through :func:`connect` so there is exactly one
 Snowflake auth mechanism in the codebase, not one per call site. Password
 auth is deliberately not supported anywhere — key-pair (RSA private key) is
@@ -19,6 +19,7 @@ a file path or the raw PEM content of an environment variable:
 ``connection.private_key_path`` in a case's YAML can override the path
 per-case (still just a path, never key material itself).
 """
+
 from __future__ import annotations
 
 import os
@@ -67,9 +68,12 @@ def resolve_connection_args(spec: Dict[str, Any]) -> Dict[str, Any]:
     vars, plus the key-pair private key. No 'password' field is ever set."""
     conn_args = dict(spec.get("connection", {}))
     env_map = {
-        "account": "SNOWFLAKE_ACCOUNT", "user": "SNOWFLAKE_USER",
-        "role": "SNOWFLAKE_ROLE", "warehouse": "SNOWFLAKE_WAREHOUSE",
-        "database": "SNOWFLAKE_DATABASE", "schema": "SNOWFLAKE_SCHEMA",
+        "account": "SNOWFLAKE_ACCOUNT",
+        "user": "SNOWFLAKE_USER",
+        "role": "SNOWFLAKE_ROLE",
+        "warehouse": "SNOWFLAKE_WAREHOUSE",
+        "database": "SNOWFLAKE_DATABASE",
+        "schema": "SNOWFLAKE_SCHEMA",
     }
     for key, env in env_map.items():
         if key not in conn_args and os.environ.get(env):

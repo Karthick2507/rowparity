@@ -150,11 +150,10 @@ The suite is split into:
 | `tests/test_duckdb_pushdown_nested_types.py` | DuckDB push-down for `list`/`struct`/`map` |
 | `tests/test_trino_pushdown.py` | Trino push-down SQL generation + fake-connection orchestration |
 | `tests/test_snowflake_pushdown.py` | Snowflake push-down SQL generation + fake-connection orchestration |
-| `tests/test_schema_check.py` | `schema_check:` case type |
+| `tests/DELTE_test_schema_check.py` | `schema_check:` case type |
 | `tests/test_concept_check.py` | `concept_check:` case type |
 | `tests/test_examples.py` | End-to-end YAML cases (needs `make data` + `make tpch-data`) |
 | `tests/test_result_sink.py` | DuckDB/Snowflake/Iceberg result sinks |
-| `tests/test_history_report.py` | HTML report generation |
 | `tests/test_vectorized.py` | Vectorized canonicalization path |
 
 `xfail`-tagged cases (e.g. `tpch_orders_schema_drift`) are expected to fail and do not count against the exit code.

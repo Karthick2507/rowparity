@@ -63,6 +63,7 @@ DATE/TIMESTAMP arguments, unconfirmed for values nested inside a passed-in
 VARIANT. Validate a case with nested temporal values before trusting that
 specifically.
 """
+
 from __future__ import annotations
 
 import json
@@ -239,8 +240,16 @@ def _ensure_variant_udf(con) -> str:
     return fqn
 
 
-def _canon_expr(expr: str, meta, cfg: CompareConfig, *, label: str, peer_meta=None,
-                 unordered: bool = False, variant_udf_fqn: str = None) -> str:
+def _canon_expr(
+    expr: str,
+    meta,
+    cfg: CompareConfig,
+    *,
+    label: str,
+    peer_meta=None,
+    unordered: bool = False,
+    variant_udf_fqn: str = None,
+) -> str:
     """A full ``CASE WHEN <expr> IS NULL THEN <null tag> ELSE <canonicalized
     body> END`` for any supported type -- same tag scheme as duckdb_pushdown's
     _canon_expr, so the equivalence classes match (digests are ephemeral,
@@ -290,7 +299,9 @@ def _canon_expr(expr: str, meta, cfg: CompareConfig, *, label: str, peer_meta=No
     elif category == "timestamp_naive":
         body = f"'T:' || TO_VARCHAR({expr}, 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6')"
     elif category == "timestamp_aware":
-        body = f"'T:' || TO_VARCHAR(CONVERT_TIMEZONE('UTC', {expr}), 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6')"
+        body = (
+            f"'T:' || TO_VARCHAR(CONVERT_TIMEZONE('UTC', {expr}), 'YYYY-MM-DD\"T\"HH24:MI:SS.FF6')"
+        )
     elif category == "date":
         body = f"'D:' || TO_VARCHAR({expr}, 'YYYY-MM-DD')"
     elif category == "time":
@@ -302,14 +313,14 @@ def _canon_expr(expr: str, meta, cfg: CompareConfig, *, label: str, peer_meta=No
 
 
 def _describe_columns(con, sql: str) -> Dict[str, Any]:
-    # cursor.describe() is schema-only -- obtains column metadata WITHOUT
-    # executing the query, same guarantee schema_introspect.py relies on.
     cur = con.cursor()
     metadata = cur.describe(sql)
     return {m.name: m for m in metadata}
 
 
-def _resolve_cfg_column_casing(cfg: CompareConfig, exp_types: Dict[str, Any], act_types: Dict[str, Any]) -> CompareConfig:
+def _resolve_cfg_column_casing(
+    cfg: CompareConfig, exp_types: Dict[str, Any], act_types: Dict[str, Any]
+) -> CompareConfig:
     """Snowflake uppercases unquoted identifiers by default (CREATE TABLE t
     (id ...) actually creates a column named ID), but a YAML case's keys/
     select/ignore_columns/unordered_list_columns are written in whatever
@@ -331,7 +342,9 @@ def _resolve_cfg_column_casing(cfg: CompareConfig, exp_types: Dict[str, Any], ac
             real = exp_map.get(n.upper()) or act_map.get(n.upper())
             if real is None:
                 available = sorted(set(exp_types) | set(act_types))
-                raise ValueError(f"column '{n}' not found in expected or actual (available: {available})")
+                raise ValueError(
+                    f"column '{n}' not found in expected or actual (available: {available})"
+                )
             resolved.append(real)
         return resolved
 
@@ -364,7 +377,8 @@ def _resolve_columns(exp_types: Dict[str, Any], act_types: Dict[str, Any], cfg: 
 
     type_mismatches = [
         (c, _type_str(exp_types[c]), _type_str(act_types[c]))
-        for c in compared if _type_str(exp_types[c]) != _type_str(act_types[c])
+        for c in compared
+        if _type_str(exp_types[c]) != _type_str(act_types[c])
     ]
     return compared, only_exp, only_act, type_mismatches
 
@@ -373,31 +387,60 @@ def _any_semi_structured(columns: Sequence[str], types: Dict[str, Any]) -> bool:
     return any(_category(types[c]) == "semi_structured" for c in columns)
 
 
-def _fingerprint_sql(source_sql: str, columns: Sequence[str], types: Dict[str, Any],
-                      peer_types: Dict[str, Any], keys: Sequence[str], cfg: CompareConfig,
-                      variant_udf_fqn: str = None) -> str:
+def _fingerprint_sql(
+    source_sql: str,
+    columns: Sequence[str],
+    types: Dict[str, Any],
+    peer_types: Dict[str, Any],
+    keys: Sequence[str],
+    cfg: CompareConfig,
+    variant_udf_fqn: str = None,
+) -> str:
     fragments = [
-        _canon_expr(_quote(c), types[c], cfg, label=c, peer_meta=peer_types.get(c),
-                    unordered=(c in cfg.unordered_list_columns), variant_udf_fqn=variant_udf_fqn)
+        _canon_expr(
+            _quote(c),
+            types[c],
+            cfg,
+            label=c,
+            peer_meta=peer_types.get(c),
+            unordered=(c in cfg.unordered_list_columns),
+            variant_udf_fqn=variant_udf_fqn,
+        )
         for c in columns
     ]
-    combined = f"ARRAY_TO_STRING(ARRAY_CONSTRUCT({', '.join(fragments)}), chr(2))" if fragments else "''"
+    combined = (
+        f"ARRAY_TO_STRING(ARRAY_CONSTRUCT({', '.join(fragments)}), chr(2))" if fragments else "''"
+    )
     key_select = ", ".join(_quote(k) for k in keys)
     return f"SELECT {key_select}, MD5({combined}) AS __rp_fp FROM ({source_sql}) AS __rp_src"
 
 
-def _fingerprint_sql_full(source_sql: str, columns: Sequence[str], types: Dict[str, Any],
-                           peer_types: Dict[str, Any], cfg: CompareConfig,
-                           variant_udf_fqn: str = None) -> str:
+def _fingerprint_sql_full(
+    source_sql: str,
+    columns: Sequence[str],
+    types: Dict[str, Any],
+    peer_types: Dict[str, Any],
+    cfg: CompareConfig,
+    variant_udf_fqn: str = None,
+) -> str:
     """Like _fingerprint_sql, but selects the row's own compared columns
     alongside the digest -- keyless mode has no key to re-look-up rows by
     later, so example-row columns travel with the fingerprint query itself."""
     fragments = [
-        _canon_expr(_quote(c), types[c], cfg, label=c, peer_meta=peer_types.get(c),
-                    unordered=(c in cfg.unordered_list_columns), variant_udf_fqn=variant_udf_fqn)
+        _canon_expr(
+            _quote(c),
+            types[c],
+            cfg,
+            label=c,
+            peer_meta=peer_types.get(c),
+            unordered=(c in cfg.unordered_list_columns),
+            variant_udf_fqn=variant_udf_fqn,
+        )
         for c in columns
     ]
-    combined = f"ARRAY_TO_STRING(ARRAY_CONSTRUCT({', '.join(fragments)}), chr(2))" if fragments else "''"
+    combined = (
+        f"ARRAY_TO_STRING(ARRAY_CONSTRUCT({', '.join(fragments)}), chr(2))" if fragments else "''"
+    )
     col_select = ", ".join(_quote(c) for c in columns)
     return f"SELECT {col_select}, MD5({combined}) AS __rp_fp FROM ({source_sql}) AS __rp_src"
 
@@ -444,8 +487,15 @@ def _join_counts(con, exp_source: str, act_source: str, keys: Sequence[str]):
     return con.cursor().execute(sql).fetchone()
 
 
-def _run_summary_and_examples(con, expected_sql: str, actual_sql: str, exp_fp_sql: str, act_fp_sql: str,
-                               keys: Sequence[str], max_examples: int) -> Tuple[_Counts, List[Tuple]]:
+def _run_summary_and_examples(
+    con,
+    expected_sql: str,
+    actual_sql: str,
+    exp_fp_sql: str,
+    act_fp_sql: str,
+    keys: Sequence[str],
+    max_examples: int,
+) -> Tuple[_Counts, List[Tuple]]:
     """Same two-path strategy as duckdb_pushdown: join raw per-row
     fingerprints directly when keys are already unique on both sides (the
     common case); only pay for a dedup-before-join pass when duplicate keys
@@ -464,12 +514,21 @@ def _run_summary_and_examples(con, expected_sql: str, actual_sql: str, exp_fp_sq
     exp_rows = _row_count(con, expected_sql)
     act_rows = _row_count(con, actual_sql)
     missing, added, changed = _join_counts(con, exp_source, act_source, keys)
-    counts = _Counts(expected_rows=exp_rows, actual_rows=act_rows, dup_exp=dup_exp, dup_act=dup_act,
-                      missing=missing, added=added, changed=changed)
+    counts = _Counts(
+        expected_rows=exp_rows,
+        actual_rows=act_rows,
+        dup_exp=dup_exp,
+        dup_act=dup_act,
+        missing=missing,
+        added=added,
+        changed=changed,
+    )
 
     example_keys: List[Tuple] = []
     if max_examples > 0 and (counts.missing or counts.added or counts.changed):
-        key_object = "OBJECT_CONSTRUCT(" + ", ".join(f"{_sql_literal(k)}, {_quote(k)}" for k in keys) + ")"
+        key_object = (
+            "OBJECT_CONSTRUCT(" + ", ".join(f"{_sql_literal(k)}, {_quote(k)}" for k in keys) + ")"
+        )
         examples_sql = f"""
         WITH e AS ({exp_source}), a AS ({act_source})
         SELECT ARRAY_AGG({key_object}) FROM (
@@ -485,9 +544,15 @@ def _run_summary_and_examples(con, expected_sql: str, actual_sql: str, exp_fp_sq
     return counts, example_keys
 
 
-def _compare_example_subset(con, expected_sql: str, actual_sql: str, compared: Sequence[str],
-                             cfg: CompareConfig, keys: Sequence[str],
-                             example_keys: List[Tuple]) -> ComparisonResult:
+def _compare_example_subset(
+    con,
+    expected_sql: str,
+    actual_sql: str,
+    compared: Sequence[str],
+    cfg: CompareConfig,
+    keys: Sequence[str],
+    example_keys: List[Tuple],
+) -> ComparisonResult:
     """Bounded (<= max_examples) rows only -- reuse the existing, already-
     tested Python engine for the human-readable diff instead of
     reimplementing it in SQL."""
@@ -497,8 +562,16 @@ def _compare_example_subset(con, expected_sql: str, actual_sql: str, compared: S
         "(" + " AND ".join(f"{_quote(k)} = {_sql_literal(v)}" for k, v in zip(key_cols, row)) + ")"
         for row in example_keys
     )
-    exp_tbl = con.cursor().execute(f"SELECT {col_select} FROM ({expected_sql}) WHERE {where}").fetch_arrow_all()
-    act_tbl = con.cursor().execute(f"SELECT {col_select} FROM ({actual_sql}) WHERE {where}").fetch_arrow_all()
+    exp_tbl = (
+        con.cursor()
+        .execute(f"SELECT {col_select} FROM ({expected_sql}) WHERE {where}")
+        .fetch_arrow_all()
+    )
+    act_tbl = (
+        con.cursor()
+        .execute(f"SELECT {col_select} FROM ({actual_sql}) WHERE {where}")
+        .fetch_arrow_all()
+    )
     return compare_tables(exp_tbl or pa.table({}), act_tbl or pa.table({}), cfg)
 
 
@@ -512,7 +585,9 @@ def _sql_literal(value) -> str:
     return "'" + str(value).replace("'", "''") + "'"
 
 
-def snowflake_keyed_compare(con, expected_sql: str, actual_sql: str, cfg: CompareConfig) -> ComparisonResult:
+def snowflake_keyed_compare(
+    con, expected_sql: str, actual_sql: str, cfg: CompareConfig
+) -> ComparisonResult:
     """Keyed compare_tables() equivalent, computed inside Snowflake instead
     of Python. ``con`` is a live Snowflake connection (see
     open_pushdown_connection); expected_sql/actual_sql are SQL Snowflake can
@@ -533,8 +608,12 @@ def snowflake_keyed_compare(con, expected_sql: str, actual_sql: str, cfg: Compar
     if _any_semi_structured(compared, exp_types) or _any_semi_structured(compared, act_types):
         variant_udf_fqn = _ensure_variant_udf(con)
 
-    exp_fp_sql = _fingerprint_sql(expected_sql, compared, exp_types, act_types, cfg.keys, cfg, variant_udf_fqn)
-    act_fp_sql = _fingerprint_sql(actual_sql, compared, act_types, exp_types, cfg.keys, cfg, variant_udf_fqn)
+    exp_fp_sql = _fingerprint_sql(
+        expected_sql, compared, exp_types, act_types, cfg.keys, cfg, variant_udf_fqn
+    )
+    act_fp_sql = _fingerprint_sql(
+        actual_sql, compared, act_types, exp_types, cfg.keys, cfg, variant_udf_fqn
+    )
 
     counts, example_keys = _run_summary_and_examples(
         con, expected_sql, actual_sql, exp_fp_sql, act_fp_sql, cfg.keys, cfg.max_examples
@@ -559,16 +638,22 @@ def snowflake_keyed_compare(con, expected_sql: str, actual_sql: str, cfg: Compar
         result.equivalent = False
 
     if example_keys:
-        sub = _compare_example_subset(con, expected_sql, actual_sql, compared, cfg, cfg.keys, example_keys)
+        sub = _compare_example_subset(
+            con, expected_sql, actual_sql, compared, cfg, cfg.keys, example_keys
+        )
         result.examples = sub.examples
-        result.change_signatures = sub.change_signatures  # approximation: examples only, not full table
+        result.change_signatures = (
+            sub.change_signatures
+        )  # approximation: examples only, not full table
 
     if result.total_differences > 0:
         result.equivalent = False
     return result
 
 
-def snowflake_keyless_compare(con, expected_sql: str, actual_sql: str, cfg: CompareConfig) -> ComparisonResult:
+def snowflake_keyless_compare(
+    con, expected_sql: str, actual_sql: str, cfg: CompareConfig
+) -> ComparisonResult:
     """Keyless compare_tables() equivalent (multiset diff), computed in
     Snowflake. No fast path here (same reasoning as duckdb_pushdown's
     keyless mode) -- grouping by the full-row digest to count occurrences
@@ -585,8 +670,12 @@ def snowflake_keyless_compare(con, expected_sql: str, actual_sql: str, cfg: Comp
     if _any_semi_structured(compared, exp_types) or _any_semi_structured(compared, act_types):
         variant_udf_fqn = _ensure_variant_udf(con)
 
-    exp_fp_sql = _fingerprint_sql_full(expected_sql, compared, exp_types, act_types, cfg, variant_udf_fqn)
-    act_fp_sql = _fingerprint_sql_full(actual_sql, compared, act_types, exp_types, cfg, variant_udf_fqn)
+    exp_fp_sql = _fingerprint_sql_full(
+        expected_sql, compared, exp_types, act_types, cfg, variant_udf_fqn
+    )
+    act_fp_sql = _fingerprint_sql_full(
+        actual_sql, compared, act_types, exp_types, cfg, variant_udf_fqn
+    )
 
     counts_sql = f"""
     WITH e AS ({exp_fp_sql}), a AS ({act_fp_sql}),
@@ -665,6 +754,7 @@ def resolve_pushdown_sql(spec: Dict[str, Any], base_dir: str = ".") -> str:
             f"to use the regular (non-push-down) engine."
         )
     from .sources import resolve_query
+
     query = resolve_query(spec, base_dir)
     if not query and spec.get("table"):
         query = f"SELECT * FROM {spec['table']}"
