@@ -46,6 +46,9 @@ SAMPLING_MARKER = "--sampling filter"
 EXPECTED_SAMPLING_LINES = 3  # one per UNION ALL branch
 EXPECTED_FACT_REFS = 3       # ad, ack, ack
 
+BATCH_PLACEHOLDER = "${arena.presto.var.process_batch_id}"
+EXPECTED_BATCH_REFS = 3      # one predicate per UNION ALL branch
+
 
 @pytest.fixture(scope="module")
 def sql():
@@ -86,6 +89,29 @@ class TestTheTemplate:
 
     def test_every_fact_table_goes_through_the_placeholder(self, sql):
         assert sql.count("${facts}.") == EXPECTED_FACT_REFS
+
+    def test_every_batch_predicate_goes_through_the_placeholder(self, sql):
+        """Count, not presence -- presence is blind to a partially broken file.
+
+        The placeholder assertion above uses a *set*, so hardcoding the batch in
+        one of the three branches leaves the other two and the set is unchanged.
+        The substitution test in test_insight_plus_case.py is blind to it for a
+        worse reason: it renders with BATCH = "20260812010000" and asserts that
+        string appears, so a branch hardcoded to any plausible batch id
+        satisfies it -- the literal someone would paste in IS the literal the
+        test looks for.
+
+        One branch pinned to a stale batch returns rows for a different hour
+        than the other two, on both sides. The totals stay plausible, the run
+        does not error, and the drift reads as a migration defect.
+        """
+        assert sql.count(BATCH_PLACEHOLDER) == EXPECTED_BATCH_REFS
+
+    def test_no_batch_id_is_hardcoded(self, sql):
+        # Belt and braces for the count above: catches a batch predicate added
+        # with a literal rather than one converted to a literal.
+        literals = re.findall(r"process_batch_id\s*=\s*'(\d{8,14})'", sql)
+        assert literals == [], f"hardcoded batch id(s) in the template: {literals}"
 
     def test_no_catalog_is_hardcoded_any_more(self, sql):
         # A fact table left pointing at a literal catalog would read the same
