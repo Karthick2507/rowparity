@@ -967,15 +967,17 @@ branch of a union, and nothing in the output would say so.
 ### 9.5 The loop
 
 ```bash
-rowparity list scripts/cases_insight_plus          # 1. does it parse? no warehouse
-pytest tests/test_my_case.py -xvs                  # 2. is it wired right? no warehouse
-python scripts/trino_connectivity_check.py         # 3. can we connect?
-rowparity run scripts/cases_insight_plus \         # 4. run it
+rowparity list scripts/cases_insight_plus          # 1. does the YAML parse? no warehouse
+rowparity list scripts/cases_insight_plus --check \
+    --param arena.presto.var.process_batch_id=...  # 2. does the SQL resolve? local files only
+pytest tests/test_my_case.py -xvs                  # 3. is it wired right?  no warehouse
+python scripts/trino_connectivity_check.py         # 4. can we connect?
+rowparity run scripts/cases_insight_plus \         # 5. run it
     --param arena.presto.var.process_batch_id=20260827010000 \
     --html reports/run.html
 ```
 
-Do not skip to step 4.
+Do not skip to step 5.
 
 ### 9.6 Extending the framework
 
@@ -1077,7 +1079,11 @@ finding, and do **not** widen the exclusions.
 ### 10.5 CI
 
 ```bash
-rowparity run cases/ --json reports/rowparity.json \
+# cheap pre-flight: fails in milliseconds, opens no connection
+rowparity list cases/ --check --param batch_id="$BATCH" || exit 2
+
+rowparity run cases/ --param batch_id="$BATCH" \
+                     --json reports/rowparity.json \
                      --md reports/rowparity.md \
                      --html reports/run.html \
                      --csv reports/columns
@@ -1215,7 +1221,7 @@ required-choice subcommands and dispatches through a `func` default:
 | Subcommand | Handler | Purpose |
 |---|---|---|
 | `run` | `cli._run` | run cases, exit non-zero on any difference |
-| `list` | `cli._list` | enumerate cases — **never touches a warehouse** |
+| `list` | `cli._list` | enumerate cases — **never touches a warehouse**; `--check` also resolves each `query_file` from disk |
 | `report` | `cli._report` | render pass-rate history from a result sink |
 
 ```python
@@ -2311,21 +2317,35 @@ rowparity list scripts/cases_insight_plus
 Both cases must appear, **without `--param`**. If this needs a batch id, a
 run-time value has leaked into a load-time slot (§6.4).
 
-> **Trap, verified.** `rowparity list` does **not** catch an unresolved
-> placeholder inside your `.sql` file — query files are read at run time, not
-> load time. A `${oops_undefined}` in the SQL lists perfectly cleanly and then
-> fails on the run:
->
-> ```
-> FAILED expected (trino) 0.0s ParamError: unresolved parameter(s)
-> ['oops_undefined'] in .../f_supply_portfolio_hourly.sql. Define them in the
-> case's vars: block, set ROWPARITY_VAR_OOPS_UNDEFINED, or pass
-> --param oops_undefined=<value>.
-> Known: ['arena.presto.var.process_batch_id', 'facts', 'sampling_filter']
-> ```
->
-> It fails in 0.0s, before the query is sent, so it is cheap — but you only find
-> out when you run. **Step 3 is what turns this into a pytest failure instead.**
+Plain `list` proves the **YAML** parses. It proves nothing about the SQL, because
+`query_file` contents are read at *run* time — a `${oops_undefined}` in your
+`.sql` lists perfectly cleanly and fails only once the run starts. Use `--check`
+to close that gap without opening a connection:
+
+```bash
+rowparity list scripts/cases_insight_plus --check \
+    --param arena.presto.var.process_batch_id=20260827010000
+```
+
+It resolves both sides' query files against exactly the variables a run would
+use, reads local files only, and exits **2** listing every name that will not
+resolve:
+
+```
+  f_supply_portfolio_hourly [expected]: unresolved parameter(s) ['oops_undefined']
+  in .../f_supply_portfolio_hourly.sql. Define them in the case's vars: block,
+  set ROWPARITY_VAR_OOPS_UNDEFINED, or pass --param oops_undefined=<value>.
+  Known: ['arena.presto.var.process_batch_id', 'facts', 'sampling_filter']
+ERROR: 2 query file(s) will not resolve.
+```
+
+`--check` is opt-in rather than part of plain `list` because the batch parameter
+legitimately has no default: checking without it reports the batch as unresolved
+on every case, which is a false alarm on the one name that is *supposed* to be
+supplied per run. Pass the same `--param` you would pass to `run`.
+
+Step 3 pins the same property as a pytest assertion, so CI catches it without
+anyone remembering to type `--check`.
 
 ---
 
@@ -2433,9 +2453,11 @@ pytest tests/test_supply_case.py tests/test_supply_sql_sync.py -q
 > FAILED tests/test_insight_plus_case.py::...::test_the_case_is_keyed_not_keyless
 > ```
 >
-> Nothing in that output names your new file. **If tests you did not touch start
-> failing, suspect the YAML you just added.** Run `rowparity list` — it fails
-> with the real error, naming the file.
+> The pytest **summary** lines name only the tests, not the cause. The file is in
+> the traceback one line up — `ValueError: .../f_supply_portfolio_hourly.yaml:
+> case is missing required field 'expected'` — so read the failure, not the
+> summary. **If tests you did not touch start failing, suspect the YAML you just
+> added**, and run `rowparity list`, which now reports it cleanly and exits 2.
 >
 > The corollary: your new case must be loadable with only the batch parameter,
 > the same as the demand case.
@@ -2534,6 +2556,10 @@ read -rs TRINO_JWT_TOKEN && export TRINO_JWT_TOKEN     # no echo, no history
 # 1. does it parse?                       no warehouse, instant
 rowparity list scripts/cases_insight_plus
 
+# 1b. will the SQL resolve?               reads local files only, no connection
+rowparity list scripts/cases_insight_plus --check \
+    --param arena.presto.var.process_batch_id=20260827010000
+
 # 2. is it wired right?                   no warehouse, milliseconds
 pytest tests/test_supply_case.py tests/test_supply_sql_sync.py -q
 
@@ -2566,7 +2592,7 @@ Once it is stable, drop `--select` to run the pair in CI.
 | `missing required field 'expected'` | wrong case shape, or `expected:` mis-indented | check the YAML nesting under `cases:` |
 | `unknown compare option(s): [...]` | typo in `compare:` | §9.2 for the valid set |
 | `breakdown_by names [...] not in compare.keys` | breakdown column is not a key | add it to `keys`, or drop the breakdown |
-| `ParamError: unresolved parameter(s)` on the run, 0.0s | placeholder in the `.sql` nothing supplies | add it to `vars:`; step 3 catches this offline |
+| `ParamError: unresolved parameter(s)` on the run, 0.0s | placeholder in the `.sql` nothing supplies | add it to `vars:`; `rowparity list --check` and step 3 both catch this offline |
 | `IdenticalSourcesError` | both sides resolved to the same catalog | a copy-pasted side `vars:` where one value was never changed |
 | `EmptyComparisonError` | both sides returned zero rows | the batch does not exist on both sides, or a predicate matched nothing |
 | Tests fail in files you did not touch | your new YAML is malformed | **Trap in step 4** — run `rowparity list` for the real error |
@@ -2586,6 +2612,7 @@ Once it is stable, drop `--select` to run the pair in CI.
        keys = the GROUP BY dimensions
                      │
        ── rowparity list ──────────► both cases listed, no --param
+       ── rowparity list --check ──► the SQL's placeholders all resolve
                      │
  3. tests/test_supply_sql_sync.py                             NEW  (copy)
        placeholders · fact refs · one sampling marker per branch
