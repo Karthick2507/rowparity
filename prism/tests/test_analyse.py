@@ -14,10 +14,13 @@ import os
 import pytest
 
 from prism.analyse import (
+    AGGREGATE_FUNCTIONS,
     analyse,
     classify_arrays,
     count_branches,
     find_breakdown_column,
+    is_metric,
+    outermost_function,
     output_name,
     split_dimensions_and_metrics,
     strip_comments,
@@ -90,6 +93,84 @@ class TestTheSelectListParser:
         dims, metrics, _ = split_dimensions_and_metrics(sql)
         assert dims == ["day"]
         assert metrics == ["total", "other"]
+
+
+class TestKeysAreDimensionsNeverMetrics:
+    """The rule the whole thing rests on: a key must be a dimension.
+
+    A metric in `compare.keys` changes whenever the data does, so nothing pairs
+    and every difference becomes missing + added -- the keyless behaviour keys
+    exist to escape, arrived at silently.
+    """
+
+    @pytest.mark.parametrize("func", [
+        "sum", "count", "count_if", "min", "max", "avg", "approx_distinct",
+        "array_agg", "arbitrary", "any_value", "stddev", "histogram", "listagg",
+    ])
+    def test_every_aggregate_produces_a_metric_not_a_key(self, func):
+        sql = f"\nselect\n  day,\n  {func}(x) as measure\nfrom (t)"
+        dims, metrics, _ = split_dimensions_and_metrics(sql)
+        assert dims == ["day"], f"{func}() leaked into the keys"
+        assert metrics == ["measure"]
+
+    def test_the_shapes_that_used_to_leak_into_keys(self):
+        # Before the fix only sum() was recognised, so all five of these landed
+        # in compare.keys.
+        sql = ("\nselect\n  day,\n"
+               "  sum(revenue) as revenue,\n"
+               "  count(*) as impressions,\n"
+               "  max(bid) as top_bid,\n"
+               "  approx_distinct(user_id) as reach,\n"
+               "  count(distinct ad_id) as ads\nfrom (t)")
+        dims, metrics, _ = split_dimensions_and_metrics(sql)
+        assert dims == ["day"]
+        assert len(metrics) == 5
+
+    def test_an_aggregate_NESTED_in_a_dimension_stays_a_dimension(self):
+        # The real query's process_stage. set_agg is an aggregate, but it is an
+        # implementation detail inside a reduce() that yields one scalar per
+        # group -- and the hand-written case has it in keys. "Contains an
+        # aggregate" would demote it and drop a real key.
+        sql = ("\nselect\n  reduce(set_agg(stage), 0, (a, v) -> a + v, v -> v) "
+               "as process_stage,\n  sum(x) as t\nfrom (t)")
+        dims, metrics, _ = split_dimensions_and_metrics(sql)
+        assert dims == ["process_stage"]
+        assert metrics == ["t"]
+
+    def test_position_is_not_used_to_classify(self):
+        # "Everything after the first aggregate is a metric" is tempting and
+        # wrong: the real query has 13 genuine dimensions after its first sum(),
+        # event_date and partition_key among them.
+        sql = ("\nselect\n  a,\n  sum(x) as t,\n  event_date,\n"
+               "  sum(y) as u,\n  partition_key\nfrom (t)")
+        dims, metrics, _ = split_dimensions_and_metrics(sql)
+        assert dims == ["a", "event_date", "partition_key"]
+        assert metrics == ["t", "u"]
+
+    def test_a_scalar_function_column_is_a_dimension(self):
+        sql = "\nselect\n  coalesce(x, -1) as network_id,\n  sum(y) as t\nfrom (t)"
+        dims, _, _ = split_dimensions_and_metrics(sql)
+        assert dims == ["network_id"]
+
+    @pytest.mark.parametrize("item,expected", [
+        ("sum(f.metric01) as m", "sum"),
+        ("coalesce(a, -1) as network_id", "coalesce"),
+        ("reduce(set_agg(x), 0, (a,v) -> a+v, v -> v) as stage", "reduce"),
+        ("network_id", None),
+        ("t.network_id", None),
+    ])
+    def test_outermost_function(self, item, expected):
+        assert outermost_function(item) == expected
+
+    def test_is_metric_reads_the_outermost_call_only(self):
+        assert is_metric("sum(f.targeted_listings) as m")
+        assert not is_metric("reduce(set_agg(x), 0, (a,v) -> a+v, v -> v) as stage")
+        assert not is_metric("network_id")
+
+    def test_the_aggregate_list_covers_the_common_presto_set(self):
+        for func in ("sum", "count", "min", "max", "avg", "approx_distinct",
+                     "array_agg", "arbitrary", "count_if"):
+            assert func in AGGREGATE_FUNCTIONS
 
 
 class TestBranchCounting:
@@ -167,14 +248,23 @@ class TestTheWholeProfile:
         assert profile.sampling_markers == KNOWN_BRANCHES
         assert profile.batch_refs == KNOWN_BRANCHES
 
+    def test_no_metric_reached_the_dimensions(self, profile):
+        # Every dimension becomes a key, so this is the invariant that matters.
+        assert set(profile.dimensions).isdisjoint(profile.metrics)
+        assert profile.aggregates_seen == ["sum"]
+
     def test_the_shared_dimension_catalog_is_recognised(self, profile):
         assert profile.shared_catalogs == ["db.default"]
 
-    def test_a_clean_query_raises_only_the_row_summary_caveat(self, profile):
-        # row_summary is a presentation choice, so PRISM always says so. Any
-        # OTHER issue on this query would mean the analyser regressed.
-        assert len(profile.issues) == 1
-        assert "row_summary" in profile.issues[0]
+    def test_the_only_issues_are_the_two_known_ones(self, profile):
+        # Both are advisory, and both are expected on this query:
+        #   - row_summary is a presentation choice, so PRISM always says so
+        #   - process_stage is reduce(set_agg(...)), a dimension with an
+        #     aggregate nested inside, which is worth a look and not an error
+        # Any THIRD issue means the analyser regressed.
+        assert len(profile.issues) == 2, profile.issues
+        assert any("row_summary" in i for i in profile.issues)
+        assert any("process_stage" in i for i in profile.issues)
 
 
 class TestItSaysWhatItCouldNotDecide:

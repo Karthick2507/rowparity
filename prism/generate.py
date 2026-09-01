@@ -18,7 +18,7 @@ import datetime
 import os
 from typing import Dict, List
 
-from .analyse import QueryProfile
+from .analyse import AGGREGATE_FUNCTIONS, QueryProfile
 
 # Where the four files land, relative to whatever root they are written under.
 # These mirror the layout the existing case uses; PRISM does not invent a new one.
@@ -365,18 +365,18 @@ class TestBothSidesSampleIdentically:
     number of underlying rows and the run measured the sampling."""
 
     def test_the_filter_is_case_level_not_per_side(self, case):
-        assert "sampling_filter" in (case.get("vars") or {{}})
+        assert "sampling_filter" in (case.get("vars") or {})
         for side in ("expected", "actual"):
-            assert "sampling_filter" not in (case[side].get("vars") or {{}}), (
-                f"{{side}} overrides the sampling filter, so the two sides sample "
+            assert "sampling_filter" not in (case[side].get("vars") or {}), (
+                f"{side} overrides the sampling filter, so the two sides sample "
                 f"differently and the run measures the sampling ratio."
             )
 
     def test_every_union_branch_is_sampled(self, sql):
         count = sql.count(SAMPLING_MARKER)
         assert count == EXPECTED_SAMPLING_LINES, (
-            f"expected {{EXPECTED_SAMPLING_LINES}} sampling filters (one per UNION ALL "
-            f"branch), found {{count}}."
+            f"expected {EXPECTED_SAMPLING_LINES} sampling filters (one per UNION ALL "
+            f"branch), found {count}."
         )
 
     def test_the_filter_reaches_every_branch_when_rendered(self, sql, variables):
@@ -394,6 +394,10 @@ def render_case_test(profile: QueryProfile, *,
                      actual_facts: str = DEFAULT_ACTUAL_FACTS) -> str:
     p = profile
     unordered = repr(p.unordered_arrays)
+    aggregates = "{\n    " + ",\n    ".join(
+        ", ".join(repr(a) for a in sorted(AGGREGATE_FUNCTIONS)[i:i + 5])
+        for i in range(0, len(AGGREGATE_FUNCTIONS), 5)
+    ) + ",\n}"
     return f'''"""{_banner(p, "test")}
 
 Offline only -- no connection is made. These assert the wiring: that the case
@@ -576,6 +580,27 @@ def _output_name(item):
     return m.group(1) if m else None
 
 
+# Presto/Trino aggregates. An output column whose OUTERMOST call is one of these
+# is a measure; anything else is a dimension, and every dimension is a key.
+_AGGREGATES = {aggregates}
+
+
+def _outermost_function(item):
+    """The OUTERMOST call, not "an aggregate appears somewhere".
+
+    The difference is load-bearing: reduce(set_agg(x), ...) as stage yields one
+    scalar per group and IS a dimension. Searching the whole expression for an
+    aggregate would demote it and silently drop a real key.
+    """
+    expr = re.sub(r"\\s+as\\s+[a-z_][a-z0-9_]*\\s*$", "", item.strip(), flags=re.I | re.S)
+    m = re.match(r"^([a-z_][a-z0-9_]*)\\s*\\(", expr, re.I)
+    return m.group(1).lower() if m else None
+
+
+def _is_metric(item):
+    return _outermost_function(item) in _AGGREGATES
+
+
 class TestKeysMatchTheQueryDimensions:
     """The keys are the GROUP BY dimensions.
 
@@ -593,7 +618,7 @@ class TestKeysMatchTheQueryDimensions:
             if name is None:
                 unparsed.append(item.strip()[:80])
                 continue
-            (metrics if re.search(r"\\bsum\\s*\\(", item, re.I) else dims).append(name)
+            (metrics if _is_metric(item) else dims).append(name)
         return dims, metrics, unparsed
 
     def test_the_parser_accounts_for_every_output_column(self, sql_files_present):

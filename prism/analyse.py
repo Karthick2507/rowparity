@@ -67,6 +67,9 @@ class QueryProfile:
     unordered_arrays: List[str] = field(default_factory=list)
     constructed_arrays: List[str] = field(default_factory=list)
     shared_catalogs: List[str] = field(default_factory=list)
+    # Which aggregate functions produced the metrics. Reported so a reader can
+    # see at a glance that PRISM recognised the ones this query actually uses.
+    aggregates_seen: List[str] = field(default_factory=list)
     row_summary: List[Dict] = field(default_factory=list)
     row_summary_coverage: float = 0.0
     # Everything PRISM could not decide, or decided against the odds. A
@@ -127,15 +130,75 @@ def output_name(item: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+# Presto/Trino aggregate functions. An output column whose OUTERMOST call is one
+# of these is a measure; anything else is a dimension.
+#
+# The list is deliberately broad. Only `sum` appears in the query PRISM was built
+# against, and stopping there would have been the tempting thing to do -- but a
+# `count(*) as impressions` in someone else's query would then be classified as a
+# dimension and land in `compare.keys`. A key that changes whenever the data does
+# pairs nothing, so every difference becomes missing + added: exactly the keyless
+# behaviour keys exist to escape, arrived at silently.
+AGGREGATE_FUNCTIONS = frozenset({
+    "sum", "count", "count_if", "min", "max", "avg", "mean",
+    "min_by", "max_by", "arbitrary", "any_value",
+    "approx_distinct", "approx_percentile", "approx_set", "numeric_histogram",
+    "array_agg", "set_agg", "set_union", "map_agg", "map_union", "multimap_agg",
+    "bool_and", "bool_or", "every",
+    "stddev", "stddev_pop", "stddev_samp",
+    "variance", "var_pop", "var_samp",
+    "corr", "covar_pop", "covar_samp",
+    "geometric_mean", "checksum", "histogram",
+    "bitwise_and_agg", "bitwise_or_agg", "listagg",
+})
+
+
+def outermost_function(item: str) -> Optional[str]:
+    """The name of the OUTERMOST call in a SELECT item, or None for a bare column.
+
+    Outermost, not "appears anywhere", and the difference is load-bearing. The
+    real query contains::
+
+        reduce(set_agg(process_stage), 0, (acc, val) -> acc + val, val -> val)
+            as process_stage
+
+    ``set_agg`` is an aggregate, but the column is a **dimension** -- it is in the
+    hand-written keys. What it produces is one scalar per group, and the
+    aggregate is an implementation detail nested inside. A rule that searched for
+    an aggregate anywhere in the expression would demote it and silently drop a
+    real key.
+    """
+    expr = re.sub(r"\s+as\s+[a-z_][a-z0-9_]*\s*$", "", item.strip(), flags=re.I | re.S)
+    m = re.match(r"^([a-z_][a-z0-9_]*)\s*\(", expr, re.I)
+    return m.group(1).lower() if m else None
+
+
+def is_metric(item: str) -> bool:
+    """True when this SELECT item is a measure rather than a key."""
+    return outermost_function(item) in AGGREGATE_FUNCTIONS
+
+
 def split_dimensions_and_metrics(sql: str):
-    """(dimensions, metrics, unparsed). A sum() is a metric; everything else a key."""
+    """(dimensions, metrics, unparsed).
+
+    A metric is an output column whose outermost call is an aggregate. Everything
+    else is a dimension, and every dimension becomes a key -- so a
+    misclassification here silently changes what "the same row" means.
+
+    **Position is NOT used, deliberately.** It is tempting: the dimensions in
+    these queries do open the SELECT list, and "everything after the first
+    aggregate is a metric" would be a one-line rule. Measured against the real
+    query, it is wrong -- 13 genuine dimensions appear after the first ``sum()``,
+    including ``event_date`` and ``partition_key``, both of which are in the
+    hand-written keys. That rule would have dropped all 13.
+    """
     dims, metrics, unparsed = [], [], []
     for item in outer_select_items(sql):
         name = output_name(item)
         if name is None:
             unparsed.append(item.strip()[:80])
             continue
-        (metrics if re.search(r"\bsum\s*\(", item, re.I) else dims).append(name)
+        (metrics if is_metric(item) else dims).append(name)
     return dims, metrics, unparsed
 
 
@@ -238,6 +301,19 @@ def analyse(sql_path: str) -> QueryProfile:
 
     name = os.path.splitext(os.path.basename(sql_path))[0]
     dims, metrics, unparsed = split_dimensions_and_metrics(sql)
+    items = outer_select_items(sql)
+    aggregates_seen = sorted({
+        f for f in (outermost_function(i) for i in items) if f in AGGREGATE_FUNCTIONS
+    })
+    # A dimension whose expression HIDES an aggregate somewhere inside. Legitimate
+    # -- reduce(set_agg(...)) in the real query is one, and it is a real key -- but
+    # worth a look, because it is also what a genuine metric written in an unusual
+    # shape would look like.
+    aggregate_inside_dimension = [
+        output_name(i) for i in items
+        if not is_metric(i) and output_name(i)
+        and any(re.search(r"\b" + a + r"\s*\(", i, re.I) for a in AGGREGATE_FUNCTIONS)
+    ]
     branches = count_branches(sql)
     placeholders = set(PLACEHOLDER.findall(sql))
     batch_param = find_batch_param(placeholders)
@@ -261,6 +337,7 @@ def analyse(sql_path: str) -> QueryProfile:
         unordered_arrays=sorted(unordered),
         constructed_arrays=sorted(constructed),
         shared_catalogs=find_shared_catalogs(sql),
+        aggregates_seen=aggregates_seen,
         row_summary=derive_row_summary(sorted(dims)),
     )
 
@@ -275,7 +352,17 @@ def analyse(sql_path: str) -> QueryProfile:
     if not dims:
         p.issues.append("no dimensions found -- the generated case would be keyless")
     if not metrics:
-        p.issues.append("no sum() metrics found -- is this really an aggregate?")
+        p.issues.append(
+            "no aggregate output columns found -- is this really an aggregate query? "
+            "Every column would become a key."
+        )
+    if aggregate_inside_dimension:
+        p.issues.append(
+            f"{len(aggregate_inside_dimension)} column(s) become KEYS but have an "
+            f"aggregate nested inside: {aggregate_inside_dimension[:4]}. That is "
+            f"legitimate -- reduce(set_agg(x)) yields one scalar per group -- but "
+            f"check they are dimensions and not measures written unusually."
+        )
     if "facts" not in placeholders:
         p.issues.append(
             "no ${facts} placeholder: both sides would read the same tables and "

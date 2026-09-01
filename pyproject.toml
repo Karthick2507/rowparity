@@ -57,6 +57,7 @@ addopts = "-q"
 testpaths = ["tests"]
 
 [tool.ruff]
+extend-exclude = ["prism/output"]  # PRISM writes here; generated, gitignored
 line-length = 100
 target-version = "py39"
 
