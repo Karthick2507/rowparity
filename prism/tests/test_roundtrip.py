@@ -141,3 +141,58 @@ class TestWhereTheUncertaintyLives:
             for column in group["columns"]:
                 assert column not in seen, f"{column} appears twice"
                 seen.add(column)
+
+
+class TestTheInlinedParserDoesNotDrift:
+    """The generated test carries its OWN copy of the SELECT-list parser.
+
+    That is deliberate -- importing PRISM would make a repo's test suite depend
+    on a code generator at run time -- but a copy can drift from the original,
+    and when it does the generated test disagrees with the YAML PRISM generated
+    beside it. That already happened once: analyse.py learned to recognise
+    aggregates beyond sum() and the inlined copy did not, so the case listed 83
+    keys while its own test computed a different set.
+
+    This executes the inlined copy and compares it against the real one.
+    """
+
+    def test_the_copy_classifies_identically(self):
+        import re as _re
+        import types
+
+        from prism.analyse import split_dimensions_and_metrics
+        from prism.generate import render_case_test
+
+        if not os.path.isfile(SQL):
+            pytest.skip(f"{SQL} not present")
+
+        source = render_case_test(analyse(SQL))
+        # Pull just the parser out of the generated module and run it.
+        module = types.ModuleType("generated_parser")
+        module.__dict__["re"] = _re
+        start = source.index("def _strip_sql_comments")
+        end = source.index("class TestKeysMatchTheQueryDimensions")
+        exec(compile(source[start:end], "<generated>", "exec"), module.__dict__)  # noqa: S102
+
+        with open(SQL, encoding="utf-8") as fh:
+            sql = fh.read()
+        theirs_dims, theirs_metrics = [], []
+        for item in module._outer_select_items(sql):
+            name = module._output_name(item)
+            if name is None:
+                continue
+            (theirs_metrics if module._is_metric(item) else theirs_dims).append(name)
+
+        ours_dims, ours_metrics, _ = split_dimensions_and_metrics(sql)
+        assert theirs_dims == ours_dims, "the inlined parser has drifted on dimensions"
+        assert theirs_metrics == ours_metrics, "the inlined parser has drifted on metrics"
+
+    def test_the_copy_knows_the_same_aggregates(self):
+        from prism.analyse import AGGREGATE_FUNCTIONS
+        from prism.generate import render_case_test
+
+        if not os.path.isfile(SQL):
+            pytest.skip(f"{SQL} not present")
+        source = render_case_test(analyse(SQL))
+        for func in AGGREGATE_FUNCTIONS:
+            assert f"'{func}'" in source, f"{func} missing from the inlined aggregate set"
