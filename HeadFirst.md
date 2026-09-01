@@ -33,6 +33,7 @@ claim below is from the code as it stands, not from an earlier document.
     · [12.8 The whole path](#128-the-whole-path)
     · [12.9 Three seams worth knowing](#129-three-seams-worth-knowing)
 13. [Worked example — adding `f_supply_portfolio_hourly`](#13-worked-example--adding-f_supply_portfolio_hourly)
+14. [LiveWire — stepping through one successful run](#14-livewire--stepping-through-one-successful-run)
 
 ---
 
@@ -2645,3 +2646,551 @@ Once it is stable, drop `--select` to run the pair in CI.
 
 *Verified against the source. Function and option names are quoted from the
 code; line numbers are deliberately not, because they drift.*
+
+---
+
+## 14. LiveWire — stepping through one successful run
+
+§12 walks the control flow by reading the code. **This section is the debugger
+view**: every function the process actually entered, in the order it entered
+them, with the real values in scope at each step.
+
+It was not written by reading. A `sys.settrace` hook recorded every frame that
+entered `src/rowparity/` during a real run — **267 frames, 83 distinct
+functions** — and the call tree below is that recording, pruned only where a hot
+loop repeats. The values are printouts from the same run.
+
+### 14.0 The run
+
+```bash
+rowparity run scripts/cases_insight_plus \
+    --param arena.presto.var.process_batch_id=20260812010000 \
+    --result-sink duckdb:./reports/results.duckdb \
+    --html reports/insight_plus/run.html
+```
+
+**A positive success case**: both sides return the same rows, the verdict is
+`EQUIVALENT`, and the exit code is 0. Which stages that *skips* is itself worth
+teaching — see §14.9.
+
+To keep it reproducible on a laptop the trace was taken against a case with the
+same **shape** as the Hoover one — one SQL file, per-side `vars:` supplying
+`${facts}`, a case-level `${sampling_filter}`, a required batch parameter, keyed
+compare with `breakdown_by` and `near_miss` — but reading two Parquet files
+through DuckDB instead of two Presto catalogs. Every frame below is identical
+for the real case except `sources._duckdb` in place of `sources._trino`.
+
+Real output:
+
+```
+Result sink: duckdb:./reports/results.duckdb  run_id=dd5d189f-e1c1-4b5a-8d26-b0ddd0803dea
+Case 'f_portfolio_hourly'
+  -> expected  (duckdb) ...
+  OK expected  (duckdb)  0.0s  3 rows x 4 cols
+  -> actual    (duckdb) ...
+  OK actual    (duckdb)  0.0s  3 rows x 4 cols
+  -> comparing ...
+  OK comparing  0.0s  4 columns compared
+Case 'f_portfolio_hourly': [EQUIVALENT] keyed on ['event_date', 'network_id'] | expected=3 actual=3 | missing=0 added=0 changed=0
+  timing: expected 0.0s | actual 0.0s | compare 0.0s | total 0.0s
+  row differences by network_id:
+    101  rows 1/1  missing=0 added=0 changed=0  differing=0.0%
+    102  rows 1/1  missing=0 added=0 changed=0  differing=0.0%
+    103  rows 1/1  missing=0 added=0 changed=0  differing=0.0%
+
+Wrote HTML report to reports/insight_plus/run.html
+Summary: 1/1 equivalent
+```
+
+---
+
+### 14.1 Frames 1–4 — entry, progress, parameters
+
+```
+cli.py:225  main(argv=None)
+  cli.py:49    _run(args=Namespace(cmd='run', path='...', param=[...], ...))
+    progress.py:51  configure(enabled=True, stream=None)
+    params.py:53    parse_cli_params(items=['arena.presto.var.process_batch_id=20260812010000'])
+```
+
+Four frames before anything can fail slowly.
+
+`configure(enabled=True)` flips the module-global `_enabled` and stores the
+heartbeat interval. **Nothing has been opened, read or connected.** This is
+first so that the next thing — which may take minutes — is not silent.
+
+`parse_cli_params` splits on the first `=` only and returns:
+
+```python
+{"arena.presto.var.process_batch_id": "20260812010000"}
+```
+
+> **Step-into note.** `progress.emit()` appears nowhere in the trace as a frame
+> even though it runs constantly — the tracer skipped it deliberately, the way
+> you would step *over* a logging call. Every `-> ...` and `OK ...` line in the
+> output above came from it.
+
+---
+
+### 14.2 Frames 5–30 — loading the case
+
+```
+    cli.py:37  _load_cases(path='.../cases', cli_params={'arena...batch_id': '20260812010000'})
+      cases.py:502  discover_cases(path=..., params_=...)
+        cases.py:442  load_cases_from_file(path='.../cases/portfolio.yaml', params_=...)
+          cases.py:365   _merge_defaults(case={'name': 'f_portfolio_hourly', ...}, defaults={})
+          cases.py:377   _build_case(raw={'name': 'f_portfolio_hourly', ...}, source_file=...)
+            params.py:72   resolve_variables(file_vars={}, case_vars={'sampling_filter': 'bit_flags > 0'})
+            params.py:145  substitute_spec(value={'name': 'f_portfolio_hourly', ...}, variables={...})
+              params.py:145  substitute_spec(value='f_portfolio_hourly', ...)
+                params.py:120  substitute(text='f_portfolio_hourly', ...)
+              params.py:145  substitute_spec(value='Hoover', ...)
+                params.py:120  substitute(text='Hoover', ...)
+              params.py:145  substitute_spec(value='duckdb', ...)
+              params.py:145  substitute_spec(value=':memory:', ...)
+              params.py:145  substitute_spec(value="read_parquet('.../old.parquet')", ...)
+              params.py:145  substitute_spec(value="read_parquet('.../new.parquet')", ...)
+              ... 20 more substitute_spec / substitute pairs
+```
+
+**This is the recursion worth showing a peer.** `substitute_spec` calls itself
+once per string, dict and list in the case — including `'f_portfolio_hourly'`
+and `'Hoover'`, which contain no placeholders at all. It walks *everything*
+rather than only the fields it expects to be templated, which is why every case
+shape gets substitution for free.
+
+After `resolve_variables`, the merged mapping is exactly:
+
+```python
+case.variables = {
+    "sampling_filter":                   "bit_flags > 0",          # from the case's vars:
+    "arena.presto.var.process_batch_id": "20260812010000",         # from --param
+}
+```
+
+Note what is **not** there: `facts`. It lives in each side's own `vars:` block
+and is merged in per side, later, at §14.4.
+
+Note also what **did not happen**: no frame entered `sources.py`. The
+`query_file` has not been opened. The case object carries the path and the
+variables and nothing else.
+
+```python
+case.expected = {'type': 'duckdb', 'database': ':memory:',
+                 'query_file': '../sql/portfolio.sql',
+                 'vars': {'facts': "read_parquet('.../old.parquet')"}}
+```
+
+---
+
+### 14.3 Frame 31 — the result sink opens
+
+```
+    result_sink.py:301  make_result_sink(spec='duckdb:./reports/results.duckdb', run_id='dd5d189f-...')
+      result_sink.py:158   __init__()
+        result_sink.py:131   __init__()
+        result_sink.py:171   _bootstrap()
+```
+
+`_bootstrap()` is the `CREATE TABLE IF NOT EXISTS` pass. After it, the DuckDB
+file holds two tables:
+
+```
+rowparity_run_summary        one row per case per run
+rowparity_run_diffs          one row per diff example
+```
+
+One `run_id` was minted in `_run` before this and is passed in, so every case in
+this invocation lands as one correlatable batch.
+
+> **Failure note.** This whole block sits in a `try/except` that only *warns*. A
+> sink that cannot open does not stop the run — persistence is an artifact of
+> the run, not the run.
+
+---
+
+### 14.4 Frames 32–45 — the guards, before any I/O
+
+```
+    cases.py:107  run(base_dir=None)
+      cases.py:95    config(base_dir='.../cases')
+      cases.py:202   _check_breakdown(cfg=CompareConfig(keys=['event_date', 'network_id'], ...))
+      cases.py:245   _guard_identical_sides(base_dir='.../cases')
+        params.py:91    merge_side_vars(side_vars={'facts': "read_parquet('.../old.parquet')"}, variables={...})
+        sources.py:76   resolve_query(spec={'type': 'duckdb', ...}, base_dir='.../cases')
+          sources.py:72    _resolve_path(path='../sql/portfolio.sql', base_dir='.../cases')
+          params.py:120    substitute(text='-- Placeholders: facts, sampling_filter, ...', variables={...})
+            params.py:124    _replace(match=<re.Match span=(179, 187) '${facts}'>)
+            params.py:124    _replace(match=<re.Match span=(194, 212) '${sampling_filter}'>)
+            ... _replace once per placeholder occurrence
+        params.py:91    merge_side_vars(side_vars={'facts': "read_parquet('.../new.parquet')"}, ...)
+        sources.py:76   resolve_query(...)                       ← the OTHER side
+```
+
+Three things a peer should take from this block.
+
+**`config()` runs first and can reject the case outright.** It diffs
+`set(self.compare)` against `_COMPARE_KEYS` and raises on any unknown option, so
+a typo'd `ignore_colums:` dies here rather than doing nothing quietly.
+
+**`_guard_identical_sides` reads and renders BOTH SQL files** — you can see
+`resolve_query` called twice — and then compares the two strings. That is real
+work done before any connection, deliberately: if the two renders were
+identical, the run would compare a source with itself and report EQUIVALENT no
+matter what the data held.
+
+**`_replace` is called once per placeholder occurrence**, not once per name.
+This is the frame that would raise `ParamError` on an unresolved name; it
+appends to a `missing` list and `substitute` raises after the whole pass, so the
+error names *every* missing placeholder rather than only the first.
+
+The rendered SQL at the end of this block, expected side:
+
+```sql
+select
+    event_date,
+    network_id,
+    sum(requests) as requests,
+    sum(revenue)  as revenue
+from read_parquet('.../old.parquet')     -- ${facts}, from THIS side's vars:
+where bit_flags > 0                      -- ${sampling_filter}, case-level
+  and process_batch_id = '20260812010000'  -- ${arena...batch_id}, from --param
+group by 1, 2
+```
+
+The actual side is byte-identical except for `new.parquet`. The guard sees they
+differ, and returns.
+
+---
+
+### 14.5 Frames 46–70 — fetching each side
+
+```
+      progress.py:139  step(label='expected  (duckdb)', heartbeat_seconds=None)
+        progress.py:101   start()                                  ← daemon heartbeat thread
+      sources.py:41    load_source(spec={'type': 'duckdb', ...})
+        params.py:91     merge_side_vars(...)                      ← AGAIN, per side
+        sources.py:178   _duckdb(spec=..., base_dir='.../cases')
+          sources.py:76    resolve_query(...)                      ← the file is read a SECOND time
+            sources.py:72    _resolve_path(path='../sql/portfolio.sql', ...)
+            params.py:120    substitute(text='-- Placeholders: ...', ...)
+              params.py:124    _replace(...)  ×3
+      progress.py:171  describe_table(table=pyarrow.Table event_date: date32[day] ...)
+      progress.py:130  result(summary='3 rows x 4 cols')
+      progress.py:155  step(...)                                   ← context manager exiting
+        progress.py:113   stop()                                   ← heartbeat joined, 1s bound
+        progress.py:134   summary()
+      [the same 12 frames again for the actual side]
+```
+
+**The SQL file is read and substituted twice per side** — once by the guard,
+once by the real load. Four reads total for two sides. Cheap, and it keeps the
+guard from having to hand state forward to the loader.
+
+`progress.step` appears twice per step in the trace because it is a
+`@contextmanager`: once entering, once resuming after the `yield`. Between them
+sit the frames that did the work. `start()` spawns the daemon heartbeat;
+`stop()` sets the event and joins with a one-second bound so a wedged stream
+cannot block the run.
+
+After this block both sides are Arrow:
+
+```
+['event_date', 'network_id', 'requests', 'revenue'] | 3 rows
+event_date: date32[day], network_id: int32, requests: decimal128, revenue: decimal128
+```
+
+**Nothing downstream knows DuckDB was involved.** This is seam 1 (§12.9).
+
+---
+
+### 14.6 Frames 71–120 — the comparison
+
+```
+      compare.py:354  compare_tables(expected=pyarrow.Table..., actual=pyarrow.Table...)
+        compare.py:333   _resolve_columns(exp=<schema>, act=<schema>)
+        compare.py:97    canon()                                   ← CompareConfig → CanonConfig
+        compare.py:442   _compare_keyed(exp_rows=[{...}, ...], act_rows=[{...}, ...])
+
+          compare.py:429   _key_of(row={'event_date': date(2026,8,12), 'network_id': 101, ...})
+            hashing.py:117   canon_value(dtype=DataType(date32[day]), value=date(2026, 8, 12))
+              hashing.py:71    _canon_scalar(value=date(2026, 8, 12), cfg=CanonConfig(...))
+            hashing.py:117   canon_value(dtype=DataType(int32), value=101)
+          compare.py:429   _key_of(row={... 'network_id': 102 ...})
+          ... _key_of once per row per side  (6 calls: 3 rows × 2 sides)
+
+          compare.py:506   _group(key=(('D', '2026-08-12'), ('i', 101)), row={...})
+            compare.py:489    _bd(row={...})                       ← RAW value, not canonical
+          compare.py:506   _group(key=(('D', '2026-08-12'), ('i', 102)), row={...})
+          ... _group once per key per side
+
+          hashing.py:172   canon_row(schema=<schema>, row={...})
+            hashing.py:117    canon_value(dtype=DataType(date32[day]), value=date(2026,8,12))
+              hashing.py:71     _canon_scalar(...)
+            hashing.py:117    canon_value(dtype=DataType(int32), value=101)
+            hashing.py:117    canon_value(dtype=DataType(decimal128), value=Decimal('5'))
+              hashing.py:71     _canon_scalar(value=Decimal('5'), ...)
+          hashing.py:172   canon_row(...)                          ← the OTHER side, same key
+          hashing.py:275   row_digest(canon=(('event_date', ('D','2026-08-12')), ...))
+          hashing.py:275   row_digest(...)                         ← the OTHER side
+          ... canon_row / row_digest once per PAIRED key per side
+
+        compare.py:308   total_differences()
+```
+
+This is the heart of the tool, so slow down here.
+
+**`_key_of` is called once per row per side, and it canonicalises only the key
+columns.** For row 0:
+
+```
+raw    {'event_date': datetime.date(2026, 8, 12), 'network_id': 101}
+canon  (('D', '2026-08-12'), ('i', 101))
+```
+
+That tuple is used **raw as a dict key**. No hashing. `'D'` is the date tag,
+`'i'` the integer tag — the tags are what stop `1` and `'1'` from colliding
+(§5.4).
+
+**`_group` runs on the same pass**, calling `_bd(row)` to read the breakdown
+value **from the raw row**, not from the canonical key — so
+`result.breakdown[101]` means what it looks like.
+
+**`canon_row` + `row_digest` run only for keys present on BOTH sides.** They are
+the last step, not the first: a key that exists on one side only never reaches
+them, because a missing row has nothing to compare against.
+
+Row 0, both sides:
+
+```
+canon_row →  event_date  ('D', '2026-08-12')
+             network_id  ('i', 101)
+             requests    ('d', '5')          ← decimal, trailing zeros stripped
+             revenue     ('d', '12.5')
+row_digest → bd76f12947d5414b7508d4c08f8c3081     (blake2b, 16 bytes)
+```
+
+Both sides produce the identical digest, so `_column_diffs` is **never called**.
+That is the fast path: one 16-byte comparison per paired row decides the
+question, and the expensive per-column work only happens for rows that already
+failed it.
+
+`total_differences()` returns 0, so `result.equivalent` stays `True`.
+
+---
+
+### 14.7 Frames 121–140 — the post-comparison stages
+
+```
+      cases.py:174  _generate_drilldowns(result=ComparisonResult(equivalent=True, ...))
+      cases.py:296  _guard_empty(result=ComparisonResult(equivalent=True, ...))
+      result_sink.py:136  write(case_name='f_portfolio_hourly')
+        result_sink.py:75    _build_summary_batch(run_id='dd5d189f-...', run_ts=datetime(2026,9,1,8,32,...))
+        result_sink.py:101   _build_diffs_batch(run_id='dd5d189f-...', case_name='f_portfolio_hourly')
+        result_sink.py:194   _write_batches(summary=pyarrow.Table run_id: string ...)
+```
+
+**Two frames that enter and immediately return** — and that is the lesson:
+
+- `_generate_drilldowns` hits `if not self.drilldown or result.equivalent: return`
+  on its first line. No drill-down SQL is generated for a passing run, because
+  there is nothing to investigate.
+- `_guard_empty` hits `if result.expected_rows or result.actual_rows: return`.
+  Three rows a side, so it passes.
+
+Note the tracer shows them as **entered**. Stepping in and returning on line one
+is a real frame, and a peer reading a stack trace should expect to see them.
+
+`result_sink.write()` builds two Arrow batches. What actually landed:
+
+```
+rowparity_run_summary
+   run_id                   dd5d189f-e1c1-4b5a-8d26-b0ddd0803dea
+   run_ts                   2026-09-01 08:32:46.675527+00:00
+   case_name                f_portfolio_hourly
+   tags                     ["livewire"]
+   equivalent               True
+   expected_rows            3
+   actual_rows              3
+   missing_count            0
+   added_count              0
+   changed_count            0
+   compared_columns         ["event_date", "network_id", "requests", "revenue"]
+   keys                     ["event_date", "network_id"]
+   type_mismatches          []
+   columns_only_in_expected []
+   columns_only_in_actual   []
+
+rowparity_run_diffs
+   0 rows        ← a success case has no diff examples to persist
+```
+
+`_build_diffs_batch` still runs and still returns a (empty) batch. The summary
+row is what makes a green run visible in `rowparity report` history: without it,
+the trend line would only ever plot failures.
+
+---
+
+### 14.8 Frames 141–160 — reporting and exit
+
+```
+    report.py:154  render_console(result=ComparisonResult(equivalent=True, ...), case_name='f_portfolio_hourly')
+      compare.py:315   summary()
+      compare.py:304   total_seconds()
+      report.py:116    _render_breakdown(result=...)
+        compare.py:223    differing_share()
+          compare.py:219     differences()
+        ... once per breakdown group
+
+    result_sink.py:201  close()
+
+    run_report.py:384  write_run_report(path='reports/insight_plus/run.html', results=[('f_portfolio_hourly', ComparisonResult(...))])
+      run_report.py:360   render_run_report()
+        run_report.py:327    build_payload()
+          run_report.py:254     case_to_dict()
+            run_report.py:184      _breakdown_to_dict()
+              run_report.py:41        _short()
+            run_report.py:237      _drilldown_to_dict()
+```
+
+`render_console` is one call producing the whole block of stdout. `summary()`
+and `total_seconds()` are `@property` reads that show up as frames — worth
+knowing when you are counting frames in a profiler.
+
+**`result_sink.close()` runs BEFORE the reports.** Persistence is flushed first;
+if the HTML writer then throws, the history is already durable.
+
+`write_run_report` → `render_run_report` → `build_payload` → `case_to_dict`
+is the whole chain: the `ComparisonResult` is turned into a JSON payload, which
+is string-substituted into `templates/run_report.html`. `_drilldown_to_dict` is
+entered and returns `None` on its first line (`if dd is None: return None`),
+exactly like `_generate_drilldowns` did.
+
+Result: a 39 KB self-contained page, and:
+
+```
+Summary: 1/1 equivalent
+exit 0
+```
+
+---
+
+### 14.9 What a success case skips
+
+This is the part most worth teaching, because a green run exercises noticeably
+less code than a failing one. Everything below **did not execute**:
+
+| Never entered | Guard that stopped it |
+|---|---|
+| `_column_diffs` | the two digests matched, per paired row |
+| `_accumulate_deltas` | only called from inside the changed branch |
+| `ChangeSignature` construction | ditto |
+| `near_miss.analyse` | `if cfg.near_miss and ... result.missing_keys and result.added_keys` — both empty |
+| `drilldown.generate` | `_generate_drilldowns` returned on `result.equivalent` |
+| `_maybe_example` | no `RowDiff` was ever constructed |
+| `report._render_near_miss` / `_render_signature` | nothing to render |
+
+`near_miss: true` was set in the case file and the analysis still never ran.
+**A configured feature that produces no output is not necessarily broken** — on
+a passing run there is nothing for it to pair.
+
+To see those frames, change one value on one side and re-run. The trace then
+gains, in order: `_column_diffs` → `_accumulate_deltas` → `_maybe_example` →
+`near_miss.analyse` → `drilldown.generate` → `_render_signature`.
+
+---
+
+### 14.10 The whole stack, one page
+
+```
+main                                          cli.py       argparse → args.func
+└─ _run                                       cli.py
+   ├─ progress.configure                      progress.py  FIRST. stderr, flushed
+   ├─ parse_cli_params                        params.py    split on first '='
+   ├─ _load_cases → discover_cases            cli/cases    glob **/*.yaml, sorted
+   │  └─ load_cases_from_file                 cases.py
+   │     ├─ yaml.safe_load
+   │     ├─ _merge_defaults                   cases.py     compare: merges deeper
+   │     └─ _build_case                       cases.py
+   │        ├─ resolve_variables              params.py    file<case<env<--param
+   │        └─ substitute_spec ↻               params.py    recurses the WHOLE dict
+   ├─ make_result_sink → _bootstrap           result_sink  CREATE TABLE IF NOT EXISTS
+   └─ Case.run                                cases.py
+      ├─ config                               cases.py     unknown option → raise
+      ├─ _check_breakdown                     cases.py     breakdown_by ⊆ keys
+      ├─ _guard_identical_sides               cases.py     renders BOTH sides, compares
+      │  ├─ merge_side_vars ×2                params.py    side var beats --param
+      │  └─ resolve_query ×2                  sources.py   reads + substitutes the .sql
+      ├─ progress.step "expected"             progress.py  heartbeat thread starts
+      │  └─ load_source → _duckdb             sources.py   ( _trino for the real case )
+      │     └─ resolve_query                  sources.py   file read again
+      ├─ progress.step "actual"               progress.py  same, other side
+      ├─ progress.step "comparing"
+      │  └─ compare_tables                    compare.py
+      │     ├─ _resolve_columns               compare.py   MATCHED / DIFF / TYPE DIFF
+      │     ├─ CompareConfig.canon            compare.py   → CanonConfig
+      │     └─ _compare_keyed                 compare.py
+      │        ├─ _key_of ↻                   compare.py   per row per side
+      │        │  └─ canon_value ↻            hashing.py   ('D','2026-08-12'), ('i',101)
+      │        ├─ _group / _bd ↻              compare.py   RAW value as the group label
+      │        ├─ canon_row ↻                 hashing.py   paired keys only
+      │        └─ row_digest ↻                hashing.py   blake2b, 16 bytes
+      ├─ _generate_drilldowns                 cases.py     RETURNS: equivalent
+      ├─ _guard_empty                         cases.py     RETURNS: rows > 0
+      └─ result_sink.write                    result_sink  summary batch + empty diffs
+   ├─ render_console                          report.py    → stdout
+   ├─ result_sink.close                       result_sink  flushed BEFORE the reports
+   └─ write_run_report                        run_report   → build_payload → case_to_dict
+      └─ exit 0
+```
+
+### 14.11 Reproducing this trace yourself
+
+The tracer is fifteen lines. Point it at your own case and read the real answer
+instead of trusting this document:
+
+```python
+import os, sys
+SRC = os.path.abspath("src/rowparity")
+depth = [0]
+
+def tr(frame, event, arg):
+    code = frame.f_code
+    if not code.co_filename.startswith(SRC):
+        return None                                  # step OVER everything else
+    if event == "call":
+        args = {k: frame.f_locals.get(k) for k in code.co_varnames[:code.co_argcount]}
+        print(f"{'  ' * depth[0]}{os.path.basename(code.co_filename)}:"
+              f"{frame.f_lineno} {code.co_name}({list(args)})")
+        depth[0] += 1
+        return tr
+    if event == "return":
+        depth[0] -= 1
+    return tr
+
+sys.argv = ["rowparity", "run", "scripts/cases_insight_plus",
+            "--param", "arena.presto.var.process_batch_id=20260812010000"]
+from rowparity.cli import main
+sys.settrace(tr)
+try:
+    main()
+finally:
+    sys.settrace(None)
+```
+
+Two knobs: the `startswith(SRC)` test is your "step over library code", and
+adding names to a skip set is your "step over this function" — `emit`,
+`format_duration` and the dataclass `__init__`s are the ones worth muting first,
+or the signal drowns.
+
+---
+
+*Verified against the source. Function and option names are quoted from the code.
+Sections 1–13 deliberately quote no line numbers, because they drift.*
+
+*§14 is the exception, and it has to be: a debugger view without line numbers is
+not a debugger view. Its call tree, its `file:line` pairs and its printed values
+are a recording of one real run — every one of the 27 line numbers was
+re-checked against the source when this was written. **They will drift.** Treat
+them as "roughly here", and if one is wrong, re-run the fifteen-line tracer in
+§14.11 rather than trusting the page.*
