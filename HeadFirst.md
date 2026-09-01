@@ -34,6 +34,7 @@ claim below is from the code as it stands, not from an earlier document.
     · [12.9 Three seams worth knowing](#129-three-seams-worth-knowing)
 13. [Worked example — adding `f_supply_portfolio_hourly`](#13-worked-example--adding-f_supply_portfolio_hourly)
 14. [LiveWire — stepping through one successful run](#14-livewire--stepping-through-one-successful-run)
+15. [Does my run use DuckDB? — and what a result sink is](#15-does-my-run-use-duckdb--and-what-a-result-sink-is)
 
 ---
 
@@ -3185,6 +3186,182 @@ or the signal drowns.
 
 ---
 
+## 15. Does my run use DuckDB? — and what a result sink is
+
+A question that comes up every time someone reads §14, because §14's trace is
+DuckDB-backed. It deserves a straight answer with evidence, because "is this
+thing in my pipeline?" is exactly the kind of question a document should settle
+rather than leave to inference.
+
+### 15.1 The short answer
+
+**No. The Hoover parity run does not use DuckDB at any point.**
+
+```
+$ python -c "..."
+engine:             None      → default Python engine (compare.py)
+expected  type=trino          handler=_trino
+actual    type=trino          handler=_trino
+```
+
+And it is not merely unused — it is never imported. After importing every module
+the run touches:
+
+```python
+>>> 'duckdb' in sys.modules
+False
+```
+
+Heavy drivers are lazy imports inside their own handler (§2.4), so a driver you
+do not use is never loaded. That is also why `pip install -e ".[trino]"` alone is
+a complete install for this case.
+
+### 15.2 Then why is §14's trace DuckDB-backed?
+
+So it reproduces on a laptop, with no Presto cluster and no credentials. The
+traced case has the Hoover case's **shape** — one SQL file, per-side `vars:`
+supplying `${facts}`, a case-level `${sampling_filter}`, a required batch
+parameter, keyed compare with `breakdown_by` and `near_miss` — reading two
+Parquet files instead of two Presto catalogs.
+
+**Exactly one frame differs:**
+
+| §14's trace | Your run |
+|---|---|
+| `sources.py:178  _duckdb(...)` | `sources.py:288  _trino(...)` |
+
+Everything above it is identical (`cli` → `cases` → `params` → the guards), and
+everything below it is identical (`compare` → `hashing` → `result_sink` →
+`run_report`) — because both handlers return a `pyarrow.Table` and **nothing
+downstream knows where the data came from**. That is seam 1 (§12.9), and this is
+the clearest demonstration of it in the whole document: you can swap the source
+engine and 95% of the call tree is unchanged.
+
+What `_trino` adds inside that one frame, which `_duckdb` does not have:
+`trino_auth.connect()`, the `fetchmany` batching loop with its
+`... fetched N rows` heartbeat, and `pa.concat_tables(promote_options="permissive")`.
+See §12.5.
+
+### 15.3 DuckDB's three unrelated roles
+
+Mixing these up is the source of the confusion. §6 covers them as reference;
+here is which of them touches *your* case:
+
+| Role | Declared by | Yours? |
+|---|---|---|
+| **Source** — a local query engine reading files or a `.duckdb` database | `type: duckdb` / `type: sql` | **No** — you use `type: trino` |
+| **Push-down engine** — canonicalise and fingerprint inside DuckDB | `engine: duckdb` | **No** — you set no `engine:`, so you get the default Python engine |
+| **Result sink** — where run history is written | `--result-sink duckdb:...` | **Only if you pass the flag** |
+
+The third is the real answer to "does it use DuckDB", and it is worth
+understanding on its own terms.
+
+### 15.4 What `--result-sink duckdb:./reports/results.duckdb` means
+
+**Append a permanent record of this run to a local DuckDB file.** It has nothing
+to do with comparing your data: `result_sink.write()` runs *after* the comparison
+has already reached its verdict (§14.7).
+
+Two tables, created on first use by `_bootstrap()`:
+
+```
+rowparity_run_summary        one row per case per run
+rowparity_run_diffs          one row per diff example
+```
+
+Here is what three real runs produced — two passing, then one with a value
+changed on the actual side:
+
+```
+rowparity_run_summary
+   9ea9d3ee  09:06:50  f_portfolio_hourly  equivalent=True   3/3  miss=0 add=0 chg=0
+   c3586a00  09:06:55  f_portfolio_hourly  equivalent=True   3/3  miss=0 add=0 chg=0
+   a418ffd7  09:06:55  f_portfolio_hourly  equivalent=False  3/3  miss=0 add=0 chg=1
+
+rowparity_run_diffs
+   1 row — only the failing run contributed
+      run_id        a418ffd7-…
+      case_name     f_portfolio_hourly
+      diff_kind     changed
+      key_json      ["2026-08-12", "103"]
+      expected_row  {"event_date":"2026-08-12","network_id":103,"requests":"9",…}
+      actual_row    {"event_date":"2026-08-12","network_id":103,"requests":"8",…}
+      column_diffs  [{"column":"requests","expected":"9","actual":"8"}, …]
+```
+
+**Passing runs are recorded too, and that is the point.** Without them a trend
+line could only ever plot failures, and "this case has passed every day for three
+weeks" would be unanswerable.
+
+`run_id` is one UUID per `rowparity run` invocation, minted in `_run` before any
+case executes, so every case in a run lands as one correlatable batch.
+
+### 15.5 What you get for it
+
+**The history report:**
+
+```bash
+rowparity report --result-sink duckdb:./reports/results.duckdb --html trend.html
+```
+
+Reads the same two tables back out, reshapes them to one point per case per
+calendar day (latest run wins if there were several), and renders a pass-rate
+trend, a per-case ledger with sparklines, schema-drift history and a row-level
+drill-down. Against the three runs above: a 40 KB self-contained page.
+
+**Or just query it.** It is a plain DuckDB file, so nothing obliges you to go
+through rowparity at all:
+
+```sql
+-- pass rate per case
+select case_name, count(*) runs, sum(equivalent::int) passed,
+       round(100.0*sum(equivalent::int)/count(*), 1) as pct
+from rowparity_run_summary group by 1;
+--   ('f_portfolio_hourly', 3, 2, 66.7)
+
+-- which columns drift most often, across every run ever recorded
+select json_extract_string(cd, '$.column') as column_name, count(*) as times
+from (select unnest(from_json(column_diffs, '["JSON"]')) as cd
+      from rowparity_run_diffs)
+group by 1 order by 2 desc;
+--   ('requests', 1)   ('revenue', 1)
+
+-- row-count SLA: has either side's volume moved?
+select case_name, min(expected_rows), max(expected_rows),
+       min(actual_rows), max(actual_rows)
+from rowparity_run_summary group by 1;
+
+-- consecutive-failure alerting
+select case_name, run_ts, equivalent
+from rowparity_run_summary order by run_ts desc limit 5;
+```
+
+That last one is the practical CI use: alert when a case has failed N runs in a
+row, rather than on every individual red build.
+
+### 15.6 Three things to know before you turn it on
+
+| | |
+|---|---|
+| **`duckdb:` is one of three backends** | `snowflake:MY_DB.QA_SCHEMA` for a shared team warehouse, `iceberg:qa_results` for a lakehouse. But `rowparity report` reads **DuckDB and Snowflake only** — `IcebergResultSink` is write-only today (§11.3) |
+| **The file accumulates, it is not overwritten** | three runs, three summary rows. It is a build artifact: do not commit it |
+| **A sink failure never fails your run** | `make_result_sink` is wrapped in a `try/except` that only warns. And `result_sink.close()` runs *before* the reports are written (§14.8), so history is already durable if the HTML writer throws |
+
+`--result-sink-prefix` renames both tables if `rowparity_*` collides with
+something in a shared schema.
+
+### 15.7 The summary a peer should leave with
+
+> The comparison is Trino end to end. DuckDB appears in this pipeline in exactly
+> one place — the local file your run history is *written to* — and only when you
+> ask for it with `--result-sink`. It never reads, hashes or compares your data.
+>
+> If you want the trend page and the ability to ask "how long has this been
+> failing", turn it on. If you only ever look at one run's HTML report, you do
+> not need it.
+
+---
+
 *Verified against the source. Function and option names are quoted from the code.
 Sections 1–13 deliberately quote no line numbers, because they drift.*
 
@@ -3194,3 +3371,6 @@ are a recording of one real run — every one of the 27 line numbers was
 re-checked against the source when this was written. **They will drift.** Treat
 them as "roughly here", and if one is wrong, re-run the fifteen-line tracer in
 §14.11 rather than trusting the page.*
+
+*§15's tables, row counts and query results are output from three real runs, not
+illustrations.*
