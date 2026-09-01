@@ -7,18 +7,43 @@ optionally writes JSON + Markdown reports, and exits non-zero if any case differ
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import uuid
 from typing import List, Tuple
 
+import yaml
+
 from . import progress
 from .cases import discover_cases
 from .compare import ComparisonResult
-from .params import ParamError, parse_cli_params
+from .params import ParamError, merge_side_vars, parse_cli_params
 from .report import render_console, write_csv_reports, write_reports
 from .report_html import render_report_from_sink
 from .result_sink import make_result_sink
 from .run_report import write_run_report
+from .sources import SourceError, resolve_query
+
+# Everything case loading can fail with. A malformed YAML raises ValueError out
+# of cases._build_case, an unreadable one OSError, a syntactically broken one
+# yaml.YAMLError -- none of which are ParamError, so all three used to escape
+# both entry points as a bare traceback and exit 1 (Python's default for an
+# uncaught exception) instead of the documented 2. Exit 2 is the contract CI
+# depends on: "the tool could not run" must stay distinct from "the data
+# disagrees", and a loading failure is squarely the former.
+_LOAD_ERRORS = (ParamError, ValueError, SourceError, yaml.YAMLError, OSError)
+
+
+def _load_cases(path, cli_params, *, resolve_queries=True):
+    """Discover cases, or print a clean error and return the exit code.
+
+    Returns ``(cases, None)`` or ``(None, exit_code)``.
+    """
+    try:
+        return discover_cases(path, cli_params, resolve_queries=resolve_queries), None
+    except _LOAD_ERRORS as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return None, 2
 
 
 def _run(args) -> int:
@@ -36,10 +61,12 @@ def _run(args) -> int:
     # composing.
     try:
         cli_params = parse_cli_params(getattr(args, "param", None))
-        cases = discover_cases(args.path, cli_params)
     except ParamError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
+    cases, failed = _load_cases(args.path, cli_params)
+    if failed is not None:
+        return failed
     if not cases:
         print(f"No cases found at {args.path}", file=sys.stderr)
         return 2
@@ -133,20 +160,65 @@ def _report(args) -> int:
     return 0
 
 
+def _check_query_files(cases) -> int:
+    """Resolve every side's query_file offline and report what will not resolve.
+
+    Listing a case proves its YAML parses. It proves nothing about the SQL,
+    because ``query_file`` contents are read at RUN time -- so a case naming a
+    placeholder nothing supplies lists perfectly cleanly and only fails once
+    credentials are exported and someone is waiting. The failure is cheap when
+    it comes (0.0s, before the query is sent) but it comes late, and late is the
+    expensive part.
+
+    This reads the same files ``sources.resolve_query`` would, substitutes with
+    the same variables, and reports every name that cannot be resolved. No
+    connection is opened: reading a local .sql file is not touching a warehouse.
+
+    Opt-in rather than part of plain ``list`` because the batch parameter
+    legitimately has no default -- checking without it would report the batch as
+    unresolved on every case, which is a false alarm on the one name that is
+    supposed to be supplied per run.
+    """
+    problems = 0
+    for case in cases:
+        for label, spec in (("expected", getattr(case, "expected", None)),
+                            ("actual", getattr(case, "actual", None))):
+            if not isinstance(spec, dict) or not spec.get("query_file"):
+                continue
+            base_dir = os.path.dirname(case.source_file) or "."
+            variables = merge_side_vars(spec.get("vars"), getattr(case, "variables", {}))
+            try:
+                resolve_query(spec, base_dir, variables)
+            except _LOAD_ERRORS as exc:
+                problems += 1
+                print(f"  {case.name} [{label}]: {exc}", file=sys.stderr)
+    if problems:
+        print(
+            f"ERROR: {problems} query file(s) will not resolve. Pass the missing "
+            f"--param, or add the name to the case's vars: block.",
+            file=sys.stderr,
+        )
+        return 2
+    return 0
+
+
 def _list(args) -> int:
     try:
-        # resolve_queries=False: listing cases must never hit a warehouse.
-        cases = discover_cases(
-            args.path, parse_cli_params(getattr(args, "param", None)), resolve_queries=False
-        )
+        cli_params = parse_cli_params(getattr(args, "param", None))
     except ParamError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
+    # resolve_queries=False: listing cases must never hit a warehouse.
+    cases, failed = _load_cases(args.path, cli_params, resolve_queries=False)
+    if failed is not None:
+        return failed
     for case in cases:
         tags = f" [{', '.join(case.tags)}]" if case.tags else ""
         print(f"{case.name}{tags}  ({case.source_file})")
         if case.description:
             print(f"    {case.description}")
+    if getattr(args, "check", False):
+        return _check_query_files(cases)
     return 0
 
 
@@ -206,6 +278,15 @@ def main(argv=None) -> int:
     list_p.add_argument(
         "--param", action="append", metavar="NAME=VALUE",
         help="set a ${name} placeholder (same as `run --param`)",
+    )
+    list_p.add_argument(
+        "--check", action="store_true",
+        help="also resolve each side's query_file and report any ${name} that "
+             "will not resolve. Listing alone proves only that the YAML parses; "
+             "SQL files are read at run time, so a bad placeholder in one lists "
+             "cleanly and fails only once the run starts. Reads local files "
+             "only -- no connection is opened. Exits 2 on any problem. Pass the "
+             "same --param you would pass to `run`.",
     )
     list_p.set_defaults(func=_list)
 
