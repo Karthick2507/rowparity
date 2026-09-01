@@ -19,6 +19,7 @@ Minimal example::
       keys: [order_id]
       float_tolerance: 1e-9
 """
+
 from __future__ import annotations
 
 import glob
@@ -37,16 +38,27 @@ from .compare import (
     compare_tables,
 )
 from .concept_check import ConceptCheckCase, build_concept_check_case
-from .exclusions import ExclusionError, merge_ignore_columns
-from .schema_check import SchemaCheckCase, build_schema_check_case
 from .sources import load_source, resolve_query
 
 _COMPARE_KEYS = {
-    "keys", "select", "ignore_columns", "float_tolerance", "coerce_numeric_to_float",
-    "trim_strings", "case_insensitive", "unordered_list_columns", "strict_columns",
-    "max_examples", "vectorized", "null_equivalence", "allow_empty",
-    "allow_identical_sources", "breakdown_by", "near_miss",
-    "ignore_columns_file", "ignore_columns_table",
+    "keys",
+    "select",
+    "ignore_columns",
+    "float_tolerance",
+    "coerce_numeric_to_float",
+    "trim_strings",
+    "case_insensitive",
+    "unordered_list_columns",
+    "strict_columns",
+    "max_examples",
+    "vectorized",
+    "null_equivalence",
+    "allow_empty",
+    "allow_identical_sources",
+    "breakdown_by",
+    "near_miss",
+    "ignore_columns_file",
+    "ignore_columns_table",
 }
 
 # Consumed while building CompareConfig and then dropped -- they resolve into
@@ -90,19 +102,6 @@ class Case:
         # downstream sees a list and never has to ask which it got.
         if isinstance(options.get("breakdown_by"), str):
             options["breakdown_by"] = [options["breakdown_by"]]
-        exclusion_file = self.compare.get("ignore_columns_file")
-        exclusion_table = self.compare.get("ignore_columns_table")
-        if exclusion_file or exclusion_table:
-            base_dir = base_dir or (os.path.dirname(self.source_file) or ".")
-            try:
-                options["ignore_columns"] = merge_ignore_columns(
-                    self.compare.get("ignore_columns"),
-                    exclusion_file,
-                    exclusion_table,
-                    base_dir=base_dir,
-                )
-            except ExclusionError as exc:
-                raise ExclusionError(f"case '{self.name}': {exc}") from exc
         return CompareConfig(**options)
 
     def run(self, base_dir: Optional[str] = None, sink=None, result_sink=None) -> ComparisonResult:
@@ -146,9 +145,7 @@ class Case:
             expected_seconds = st.elapsed
 
             with progress.step(f"actual    ({self.actual.get('type', '?')})") as st:
-                actual_tbl = load_source(
-                    self.actual, base_dir=base_dir, variables=self.variables
-                )
+                actual_tbl = load_source(self.actual, base_dir=base_dir, variables=self.variables)
                 st.result(progress.describe_table(actual_tbl))
             actual_seconds = st.elapsed
 
@@ -195,9 +192,7 @@ class Case:
         ]
         try:
             cfg = dd.DrilldownConfig.from_yaml(self.drilldown)
-            generated = dd.generate(
-                cfg, result, sides, base_dir, self.variables, keys=result.keys
-            )
+            generated = dd.generate(cfg, result, sides, base_dir, self.variables, keys=result.keys)
         except Exception as exc:
             progress.emit(f"  drill-down SQL not generated: {type(exc).__name__}: {exc}")
             return
@@ -273,10 +268,14 @@ class Case:
             return
         try:
             expected_sql = resolve_query(
-                self.expected, base_dir, params.merge_side_vars(self.expected.get("vars"), self.variables)
+                self.expected,
+                base_dir,
+                params.merge_side_vars(self.expected.get("vars"), self.variables),
             )
             actual_sql = resolve_query(
-                self.actual, base_dir, params.merge_side_vars(self.actual.get("vars"), self.variables)
+                self.actual,
+                base_dir,
+                params.merge_side_vars(self.actual.get("vars"), self.variables),
             )
         except Exception:
             # Not this guard's job to report. Let the real load raise it, in
@@ -382,7 +381,7 @@ def _build_case(
     cli_params: Optional[Dict[str, Any]] = None,
     query_vars: Optional[Dict[str, str]] = None,
     deferred_names: frozenset = frozenset(),
-) -> Union[Case, ConceptCheckCase, SchemaCheckCase]:
+) -> Union[Case, ConceptCheckCase]:
     if "name" not in raw:
         raise ValueError(f"{source_file}: case is missing required field 'name': {raw!r}")
 
@@ -412,9 +411,6 @@ def _build_case(
     for name in deferred_names:
         variables.pop(name, None)
 
-    if "schema_check" in raw:
-        return build_schema_check_case(raw, source_file, variables=variables)
-
     if "concept_check" in raw:
         return build_concept_check_case(raw, source_file)
 
@@ -423,7 +419,9 @@ def _build_case(
             raise ValueError(f"{source_file}: case is missing required field '{required}': {raw!r}")
     engine = raw.get("engine")
     if engine not in _ENGINES:
-        raise ValueError(f"{source_file}: case '{raw['name']}' has unknown engine {engine!r} (known: {sorted(e for e in _ENGINES if e)})")
+        raise ValueError(
+            f"{source_file}: case '{raw['name']}' has unknown engine {engine!r} (known: {sorted(e for e in _ENGINES if e)})"
+        )
     return Case(
         name=raw["name"],
         expected=raw["expected"],
