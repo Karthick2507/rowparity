@@ -73,3 +73,6 @@ secrets/
 
 # detect-secrets baseline (committed intentionally — keep it)
 # .secrets.baseline  ← do NOT ignore this file
+
+# PRISM generates here; regenerable, copy into the tree yourself
+prism/output/

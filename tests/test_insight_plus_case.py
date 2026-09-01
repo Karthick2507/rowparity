@@ -28,6 +28,7 @@ CASES_DIR = os.path.join(REPO, "scripts", "cases_insight_plus")
 CASE_FILE = os.path.join(CASES_DIR, "f_demand_portfolio_hourly.yaml")
 BATCH = "20260812010000"
 BATCH_PARAM = "arena.presto.var.process_batch_id"
+BATCH_PLACEHOLDER = "${" + BATCH_PARAM + "}"
 PARAMS = {BATCH_PARAM: BATCH}
 
 
@@ -138,7 +139,11 @@ class TestBatchParameter:
         for side in ("expected", "actual"):
             sql = _sql(case, side)
             assert f"process_batch_id = '{BATCH}'" in sql, side
-            assert BATCH_PARAM not in sql, f"{side} still carries the placeholder"
+            # The PLACEHOLDER form, not the bare name. A .sql header comment
+            # legitimately lists its parameter names in prose -- writing them
+            # bare is the point, since ${...} inside a comment is a real
+            # substitution site. What must not survive is an unsubstituted one.
+            assert BATCH_PLACEHOLDER not in sql, f"{side} still carries the placeholder"
 
     def test_omitting_it_raises_rather_than_running(self, sql_files_present):
         # The false-pass guard. Silence here is what produced a green run over
