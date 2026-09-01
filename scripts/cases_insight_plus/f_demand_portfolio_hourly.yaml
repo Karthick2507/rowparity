@@ -1,41 +1,6 @@
 # Hoover vs Hoover++ query parity — f_demand_portfolio_hourly.
-#
-# Runs the same aggregate on both layouts and compares the two result sets.
-# Nothing is written to a table: both sides are queries, executed once each on
-# one Presto connection, compared in memory.
-#
 #   Hoover    mrm_log_flat.default.{ad,ack}   WITH the bit-59 sampling filter
 #   Hoover++  etl.public_test1.{ad,ack}       WITH the same filter
-#
-# ONE SQL file serves both sides. It reads `from ${facts}.ad`, and each side's
-# `vars:` block below says what ${facts} is. There were two near-identical
-# copies of this 2,000-line query before, kept in step by a test that diffed
-# them; the file is 185 KB, so "identical apart from three lines" was a promise
-# a test had to keep rather than something you could see. One file cannot drift
-# from itself.
-#
-# Hoover++ was originally run WITHOUT the sampling filter, on the understanding
-# that its source data was already the bit-59 sample. The first live run
-# disproved that: Hoover returned 2,719 rows and Hoover++ 1,113,423 -- a ratio
-# of 409, which is a sampling difference, not a migration defect. Every sum was
-# over a different number of underlying rows, so the run measured the sampling
-# and nothing else. Both sides are filtered now.
-#
-# Run:
-#   export TRINO_HOST=presto-gateway.presto.stg.aws.fwmrm.net
-#   export TRINO_PORT=8080 TRINO_HTTP_SCHEME=https
-#   export TRINO_USER=...
-#   read -rs TRINO_JWT_TOKEN && export TRINO_JWT_TOKEN
-#
-#   rowparity run scripts/cases_insight_plus \
-#       --param arena.presto.var.process_batch_id=20260812010000 \
-#       --csv reports/insight_plus \
-#       --html reports/insight_plus/run.html
-#
-# The batch parameter is REQUIRED and has no default. A default would name a
-# batch that may not exist, both sides would return zero rows, and the run would
-# report EQUIVALENT -- a green result proving nothing. Unresolved is a hard
-# error instead, which is the whole reason params.py recognises dotted names.
 
 cases:
   - name: f_demand_portfolio_hourly
@@ -48,21 +13,12 @@ cases:
       The f_demand_portfolio_hourly aggregate must produce identical rows
       whether built from the Hoover layout (sampled to bit 59) or the Hoover++
       layout (already sampled). Both sides are queries; neither is materialised.
-
-    # Shared by BOTH sides. The sampling filter lives here rather than in either
-    # side's vars: on purpose -- it is the one thing that must never differ
-    # between them. Comparing a sampled side against an unsampled one measures
-    # the sampling ratio and nothing else, which is what the 409x run above was.
     # Defined once and used by both, that bug is not expressible.
     #
     # To run unsampled (both sides, together): --param sampling_filter=true
     vars:
       sampling_filter: "bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0"
 
-    # Per-side vars: the only difference between the two runs. These outrank
-    # --param deliberately (see params.merge_side_vars) -- a --param reaching
-    # both sides would point them at the same catalog, and a comparison of a
-    # table with itself passes no matter what the data holds.
     expected:
       type: trino
       query_file: ../../sql/insight_plus/f_demand_portfolio_hourly.sql
@@ -76,34 +32,6 @@ cases:
         facts: etl.public_test1
 
     compare:
-      # The 83 GROUP BY dimensions. Not a business key -- nobody would call it
-      # one -- but unique by construction after the outer aggregation, which is
-      # all a key has to be.
-      #
-      # This case ran keyless first, and the result was undiagnosable: 158
-      # missing + 217 added with no way to tell whether those were the same
-      # logical rows with drifting metrics or genuinely different groups.
-      # Without a key nothing can pair a missing row with the added row it
-      # corresponds to, so every difference surfaces as missing + added and
-      # never as "changed" -- and the per-column report flagged all 262 columns,
-      # because one side had 59 extra rows and so every column's value multiset
-      # differed. True, and useless.
-      #
-      # Keyed on the dimensions, the same run separates the two questions:
-      #   missing / added  -> dimension combinations absent from one side
-      #                       (a structural difference)
-      #   changed          -> same dimensions, different metrics
-      #                       (value drift, with only the drifting columns named)
-      # and change_signatures groups the changed rows by which columns differ,
-      # so hundreds collapse into a handful of patterns.
-      #
-      # 83 dimensions + 179 sum() metrics = 262 output columns. The split is
-      # asserted against the query itself in tests/test_insight_plus_case.py, so
-      # adding a column to the SELECT without updating this list fails a test
-      # rather than silently changing what "the same row" means.
-      #
-      # If these turn out not to be unique, rowparity reports duplicate_keys_*
-      # rather than guessing -- and that would itself be a finding.
       keys:
         - ack_traffic_type
         - ad_id
@@ -189,48 +117,12 @@ cases:
         - user_agent_visibility
         - user_country_id
 
-      # Sums over DOUBLE are not associative, so two engines summing the same
-      # values in a different partition order can differ in the last bits.
-      # Left unset (exact) deliberately until a live run shows whether these
-      # metrics are DECIMAL -- in which case exact is correct and tightening it
-      # later would be a regression. If a run reports diffs that are all
-      # last-digit, that is the signal to set this rather than a defect.
-      # float_tolerance: 1e-9
-
-      # Arrays reaching the output straight from the source, whose element
-      # order Presto does not guarantee. rowparity treats list as ORDERED by
-      # default, so without this a pure ordering difference reads as a data
-      # difference. The single-element array[...] constructions in this query
-      # (time_position_classes, slot_ad_unit_ids) cannot vary and are not listed.
       unordered_list_columns:
         - global_advertiser_ids
         - global_brand_ids
 
       max_examples: 50
-
-      # Split every difference by which UNION ALL branch produced it.
-      #
-      # The query is a 3-way union, and slot_user_drop_off is a hardcoded
-      # literal in each branch -- 'Included' from ${facts}.ad, 'Removed' from
-      # the ads_in_slot__* array inside ${facts}.ack, 'Not Applicable' from
-      # ad-level acks and error events. So it partitions the output exactly,
-      # and because it is also a key its value is available for missing, added
-      # and changed rows alike at no cost.
-      #
-      # Without it, 149 missing + 208 added rows are one undifferentiated pile
-      # and the first question -- which branch is wrong? -- has no answer. With
-      # it, differences concentrated in 'Removed' point at the nested-array
-      # unnest (the structurally fragile one), and an even spread points at the
-      # shared predicates or the outer aggregate instead.
       breakdown_by: slot_user_drop_off
-
-      # Find the single key column whose drift turned one logical row into a
-      # missing + added pair. 149 missing against 208 added is suspiciously
-      # balanced for real data loss -- balance is the signature of a key that
-      # stopped matching. event_date is key #16 and is known to shift between
-      # the two layouts for some batches, which would do exactly this.
-      #
-      # Costs no warehouse time: it re-pairs key tuples already in memory.
       near_miss: true
 
     # How a differing row is digested in the report, instead of dumping a
@@ -247,67 +139,22 @@ cases:
 
     # Per-row investigation SQL, generated but NOT executed -- see
     # drilldown.py for why running it is a separate step.
-    #
-    # Only creative_id is bound, by decision. Binding more dimensions narrows
-    # the result but risks excluding the very rows whose dimensions drifted,
-    # which is exactly what is being looked for. The expression is the source
-    # expression, not the output alias: creative_id in the parity output is
-    # really the if(...) below.
+
     drilldown:
       query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_drilldown.sql
       bind:
         creative_id: "if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1)"
       id_column: request__transaction_id
-
-      # Which differing rows contribute a creative_id to the IN-list. Missing
-      # only: the question a drill-down is opened to answer is "this row did
-      # not arrive in Hoover++, where did its transactions go?".
-      #
-      # Merging all three kinds was the first shape and read badly. With an
-      # 83-column key one creative_id spans many aggregate rows, so
-      # missing + added + changed collapses into a long list that looks like
-      # the whole column and says nothing about why any id is in it -- and
-      # `added` rows are mostly the missing ones again under a shifted
-      # event_date, so they contribute the same ids twice over.
-      #
       # The kinds left out are still counted in the report, so narrowing the
       # filter is visible rather than something you have to know about.
       # Widen it here when the question changes:
       #   kinds: [missing, added, changed]
       kinds: [missing]
-
-      # Generated, never executed. Running both sides was tried and taken back
-      # out: against the real cluster the two scans took long enough to
-      # dominate the parity run they were meant to annotate. Run them yourself
-      # when you want the ids -- the tedious part, pasting values into a
-      # 40-line WHERE, is what was worth automating.
-
-      # The time window is DERIVED from the run's batch parameter, never typed
-      # in. 20260827010000 is YYYYMMDDHHMMSS, so it yields:
-      #
-      #   ${batch_hour}        2026-08-27 01:00:00
-      #   ${batch_hour_start}  2026-08-27 00:00:00   (1 hour before)
-      #   ${batch_hour_end}    2026-08-27 04:00:00   (3 hours after)
-      #   ${batch_date}        2026-08-27
-      #
-      # A hardcoded date goes stale the moment you drill a different batch, and
-      # nothing in the output says the window was wrong -- the query just
-      # returns rows from some other hour and they look like an answer.
       time:
         param: arena.presto.var.process_batch_id
         format: "%Y%m%d%H%M%S"
         hours_before: 1
         hours_after: 3
-
-      # Per side, and deliberately ASYMMETRIC. Hoover++ is pinned to the hour
-      # the batch names; Hoover is searched across the wider window, because
-      # "the event_date shifted between the two layouts" is the hypothesis
-      # under test. Pinning both sides to the same hour would assume the answer
-      # and return nothing on exactly the rows being investigated.
-      #
-      # These live here rather than in the sides' own vars: because they
-      # reference the derived names above, which do not exist until the
-      # drill-down is generated.
       vars:
         expected:
           time_filter: >-
