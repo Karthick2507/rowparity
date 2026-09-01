@@ -2364,7 +2364,15 @@ HOOVER_PLUS = "etl.public_test1"
 SAMPLING_MARKER       = "--sampling filter"
 EXPECTED_SAMPLING_LINES = <how many UNION ALL branches your query has>
 EXPECTED_FACT_REFS      = <how many ${facts}. references it should have>
+EXPECTED_BATCH_REFS     = <how many batch predicates it should have>
 ```
+
+**Three counts, and they are counts on purpose.** A *set* of placeholder names
+cannot see a template that is half converted: hardcode the batch in one of three
+branches and the set still contains `arena.presto.var.process_batch_id`, because
+the other two branches supply it. One branch pinned to a stale batch reads a
+different hour than the other two, **on both sides**, so the totals stay
+plausible, nothing errors, and the drift reads as a migration defect.
 
 The assertions you inherit, and what each one catches:
 
@@ -2372,6 +2380,8 @@ The assertions you inherit, and what each one catches:
 |---|---|
 | `test_it_has_exactly_the_placeholders_we_expect` | **Trap A above** — a placeholder nothing supplies, offline |
 | `test_every_fact_table_goes_through_the_placeholder` | **step 1a missed one** — the highest-value test in the file |
+| `test_every_batch_predicate_goes_through_the_placeholder` | **step 1d missed one branch** — a *count*, because the placeholder-set test is blind to a partially converted file |
+| `test_no_batch_id_is_hardcoded` | a batch predicate written with a literal in the first place |
 | `test_no_catalog_is_hardcoded_any_more` | a literal `mrm_log_flat.default` left in the template |
 | `test_the_dimension_catalog_stays_literal` | step 1b templated by accident |
 | `test_each_side_reads_only_its_own_catalog` | cross-contamination between the two renders |
