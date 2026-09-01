@@ -744,16 +744,43 @@
   function renderDrilldown(c) {
     var dd = c.drilldown;
     var wrap = el("div");
-    wrap.appendChild(el("h3", null, "Drill-down SQL - " + dd.id_column));
+    var A = c.expected_label || "expected";
+    var B = c.actual_label || "actual";
+    // The IN-list is built from selected kinds only, so the heading says which.
+    // "Drill-down SQL" alone reads as "all the differences", which it is not.
+    var kinds = dd.kinds || [];
+    var kindWord = {
+      missing: "missing in " + B,
+      added: "added in " + B,
+      changed: "changed"
+    };
+    var scoped = kinds.map(function (k) { return kindWord[k] || k; }).join(" + ");
+
+    wrap.appendChild(el("h3", null,
+      "Drill-down SQL - " + dd.id_column + (scoped ? " for rows " + scoped : "")));
     wrap.appendChild(el("p", "sub",
-      "ONE query per side, not one per row: every differing row's " + dd.column +
-      " goes into a single IN-list, so one scan per side covers all " +
+      "ONE query per side, not one per row: the " + dd.column + " of every row " +
+      scoped + " goes into a single IN-list, so one scan per side covers all " +
       num(dd.rows_covered) + " of them. " +
       (dd.complete
-        ? "Values are taken from every differing row. "
+        ? "Values are taken from every such row. "
         : "Values are taken from the bounded example list, so this covers a subset. ") +
       "Run both, then compare the two lists of " + dd.id_column +
       " - the ids on one side only are the transactions that differ."));
+
+    // What the filter deliberately leaves out. Without this a narrowed
+    // drill-down and an exhaustive one look identical, and "no rows found"
+    // cannot be told apart from "never asked for".
+    var omitted = ["missing", "added", "changed"].filter(function (k) {
+      return kinds.indexOf(k) === -1 && (dd.kind_values || {})[k];
+    });
+    if (omitted.length) {
+      wrap.appendChild(el("p", "sub",
+        "Not in this filter: " + omitted.map(function (k) {
+          return num(dd.kind_values[k]) + " " + dd.column + " value(s) from rows " +
+                 (kindWord[k] || k);
+        }).join(", ") + ". Add them with drilldown.kinds if you want them."));
+    }
 
     dd.sides.forEach(function (s) {
       var box = el("div", "sig");
