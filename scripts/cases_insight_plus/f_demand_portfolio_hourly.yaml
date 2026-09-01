@@ -68,27 +68,12 @@ cases:
       query_file: ../../sql/insight_plus/f_demand_portfolio_hourly.sql
       vars:
         facts: mrm_log_flat.default
-        # Drill-down only. Deliberately WIDER than the Hoover++ window below:
-        # "the event_date shifted between the two layouts" is the hypothesis,
-        # so pinning both sides to the same hour would assume the answer.
-        time_filter: >-
-          date_trunc('HOUR', cast(ack__timestamp as timestamp)) >= timestamp '2026-08-27 00:00:00'
-          and date_trunc('HOUR', cast(ack__timestamp as timestamp)) < timestamp '2026-08-27 04:00:00'
 
     actual:
       type: trino
       query_file: ../../sql/insight_plus/f_demand_portfolio_hourly.sql
       vars:
         facts: etl.public_test1
-        # Drill-down only. Pinned to the one hour the parity row claims.
-        #
-        # A literal, NOT ${arena.presto.var.process_batch_id}. A spec value is
-        # substituted when the case LOADS, so a parameter here would make
-        # `rowparity list` fail without --param -- listing cases must never
-        # need a batch id. These two windows are investigation-time knobs
-        # anyway: edit them when you drill a different hour.
-        time_filter: >-
-          date_trunc('HOUR', cast(ack__timestamp as timestamp)) = timestamp '2026-08-27 01:00:00'
 
     compare:
       # The 83 GROUP BY dimensions. Not a business key -- nobody would call it
@@ -276,5 +261,40 @@ cases:
       # Both queries are run and their id sets diffed. Two narrow scans next to
       # a 14-minute parity run; set false to review the SQL without executing.
       execute: true
+
+      # The time window is DERIVED from the run's batch parameter, never typed
+      # in. 20260827010000 is YYYYMMDDHHMMSS, so it yields:
+      #
+      #   ${batch_hour}        2026-08-27 01:00:00
+      #   ${batch_hour_start}  2026-08-27 00:00:00   (1 hour before)
+      #   ${batch_hour_end}    2026-08-27 04:00:00   (3 hours after)
+      #   ${batch_date}        2026-08-27
+      #
+      # A hardcoded date goes stale the moment you drill a different batch, and
+      # nothing in the output says the window was wrong -- the query just
+      # returns rows from some other hour and they look like an answer.
+      time:
+        param: arena.presto.var.process_batch_id
+        format: "%Y%m%d%H%M%S"
+        hours_before: 1
+        hours_after: 3
+
+      # Per side, and deliberately ASYMMETRIC. Hoover++ is pinned to the hour
+      # the batch names; Hoover is searched across the wider window, because
+      # "the event_date shifted between the two layouts" is the hypothesis
+      # under test. Pinning both sides to the same hour would assume the answer
+      # and return nothing on exactly the rows being investigated.
+      #
+      # These live here rather than in the sides' own vars: because they
+      # reference the derived names above, which do not exist until the
+      # drill-down is generated.
+      vars:
+        expected:
+          time_filter: >-
+            date_trunc('HOUR', cast(ack__timestamp as timestamp)) >= timestamp '${batch_hour_start}'
+            and date_trunc('HOUR', cast(ack__timestamp as timestamp)) < timestamp '${batch_hour_end}'
+        actual:
+          time_filter: >-
+            date_trunc('HOUR', cast(ack__timestamp as timestamp)) = timestamp '${batch_hour}'
 
     tags: [insight_plus, hoover]
