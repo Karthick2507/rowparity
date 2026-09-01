@@ -244,6 +244,9 @@ def _drilldown_to_dict(dd) -> Optional[Dict[str, Any]]:
         "value_count": len(dd.values),
         "complete": dd.complete,
         "rows_covered": dd.rows_covered,
+        "kinds": list(getattr(dd, "kinds", []) or []),
+        "kind_values": dict(getattr(dd, "kind_values", {}) or {}),
+        "kind_rows": dict(getattr(dd, "kind_rows", {}) or {}),
         "sides": [{"label": s.label, "sql": s.sql} for s in dd.sides],
     }
 

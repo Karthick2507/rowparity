@@ -258,6 +258,24 @@ cases:
       bind:
         creative_id: "if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1)"
       id_column: request__transaction_id
+
+      # Which differing rows contribute a creative_id to the IN-list. Missing
+      # only: the question a drill-down is opened to answer is "this row did
+      # not arrive in Hoover++, where did its transactions go?".
+      #
+      # Merging all three kinds was the first shape and read badly. With an
+      # 83-column key one creative_id spans many aggregate rows, so
+      # missing + added + changed collapses into a long list that looks like
+      # the whole column and says nothing about why any id is in it -- and
+      # `added` rows are mostly the missing ones again under a shifted
+      # event_date, so they contribute the same ids twice over.
+      #
+      # The kinds left out are still counted in the report, so narrowing the
+      # filter is visible rather than something you have to know about.
+      # Widen it here when the question changes:
+      #   kinds: [missing, added, changed]
+      kinds: [missing]
+
       # Generated, never executed. Running both sides was tried and taken back
       # out: against the real cluster the two scans took long enough to
       # dominate the parity run they were meant to annotate. Run them yourself

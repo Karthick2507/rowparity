@@ -35,6 +35,18 @@ in the key tuple of every unpaired row. That matters here: at realistic
 proportions the examples list fills entirely with ``missing`` rows before an
 ``added`` or ``changed`` row is ever reached, so drawing from it would silently
 cover one third of the problem.
+
+**Which differing rows, though.** ``kinds:`` selects that, and defaults to
+``[missing]``. Merging all three was the first shape and read badly: with an
+83-column key one ``creative_id`` spans many aggregate rows, so a union of
+missing + added + changed collapses into a long list that looks like the whole
+column and says nothing about why any given id is in it. Missing rows are also
+the ones an engineer is chasing -- "this did not arrive" -- while ``added`` is
+usually the same row under a shifted ``event_date`` and ``changed`` is metric
+drift, a different investigation with a different query.
+
+The kinds left out are still counted and reported, so a narrowed filter is
+visible in the output rather than something you have to know about.
 """
 from __future__ import annotations
 
@@ -50,6 +62,15 @@ ROW_FILTER = "row_filter"
 # A very long IN-list stops being a query and starts being a problem for the
 # parser. Well past anything a readable report would show, but bounded.
 MAX_VALUES = 1000
+
+# The three ways a keyed comparison can disagree. Order is the order they are
+# reported in, not a precedence.
+KINDS = ("missing", "added", "changed")
+
+# Rows present on the expected side and absent from the actual one -- "this did
+# not arrive", which is the question a drill-down is usually opened to answer.
+DEFAULT_KINDS = ("missing",)
+
 
 class DrilldownError(RuntimeError):
     pass
@@ -72,6 +93,13 @@ class DrilldownResult:
     # examples list. False means the report is describing a subset.
     complete: bool = True
     rows_covered: int = 0
+    # Which kinds of difference the IN-list was built from.
+    kinds: List[str] = field(default_factory=lambda: list(DEFAULT_KINDS))
+    # Distinct values each kind contributes, INCLUDING the kinds left out of
+    # the filter. A narrowed drill-down should say what it narrowed away --
+    # otherwise "no rows found" and "never asked" look identical in the report.
+    kind_values: Dict[str, int] = field(default_factory=dict)
+    kind_rows: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -80,6 +108,9 @@ class DrilldownConfig:
     bind: List[Dict[str, str]]
     id_column: str = "request__transaction_id"
     max_values: int = MAX_VALUES
+    # Which kinds of differing row contribute values to the IN-list. See the
+    # module docstring for why this defaults to missing alone.
+    kinds: List[str] = field(default_factory=lambda: list(DEFAULT_KINDS))
     # {param, format, hours_before, hours_after} -- how to turn the run's batch
     # parameter into ${batch_hour} and friends.
     time: Optional[Dict[str, Any]] = None
@@ -93,12 +124,31 @@ class DrilldownConfig:
     def from_yaml(cls, raw: Optional[dict]) -> "Optional[DrilldownConfig]":
         if not raw:
             return None
-        known = {"query_file", "bind", "id_column", "max_values", "time", "vars"}
+        known = {"query_file", "bind", "id_column", "max_values", "kinds", "time", "vars"}
         unknown = set(raw) - known
         if unknown:
             raise DrilldownError(f"unknown drilldown option(s): {sorted(unknown)}")
         if "query_file" not in raw:
             raise DrilldownError("drilldown needs a 'query_file'")
+
+        kinds = raw.get("kinds", list(DEFAULT_KINDS))
+        if isinstance(kinds, str):
+            kinds = [kinds]
+        kinds = [str(k).strip().lower() for k in kinds]
+        bad = [k for k in kinds if k not in KINDS]
+        if bad:
+            raise DrilldownError(
+                f"drilldown kinds {bad} are not comparison outcomes; "
+                f"expected any of {list(KINDS)}"
+            )
+        if not kinds:
+            raise DrilldownError(
+                "drilldown kinds is empty, which would leave the IN-list with "
+                "nothing to filter on. Name at least one of " + str(list(KINDS))
+            )
+        # Deduplicated, in KINDS order, so the report reads the same however
+        # the case file happened to list them.
+        kinds = [k for k in KINDS if k in kinds]
 
         bind = raw.get("bind") or []
         if isinstance(bind, str):
@@ -124,6 +174,7 @@ class DrilldownConfig:
             bind=bind,
             id_column=raw.get("id_column", "request__transaction_id"),
             max_values=int(raw.get("max_values", MAX_VALUES)),
+            kinds=kinds,
             time=raw.get("time"),
             vars=raw.get("vars") or {},
         )
@@ -226,51 +277,67 @@ def _unwrap(value: Any) -> Any:
     return value
 
 
-def collect_values(result, column: str, keys: Optional[Sequence[str]], max_values: int):
-    """Every distinct value of *column* across the differing rows.
+def collect_values_by_kind(result, column: str, keys: Optional[Sequence[str]]):
+    """Distinct values of *column*, per kind of difference.
 
-    Returns ``(values, complete, rows_covered)``. When *column* is part of the
-    key, values are read from the key tuples of every missing, added and changed
-    row, so the list is complete. Otherwise it falls back to the bounded
-    ``examples`` list and says so, because that list fills with whichever kind
-    of difference the comparison happened to encounter first.
+    Returns ``({kind: [values]}, {kind: row_count}, complete)``. When *column*
+    is part of the key, values are read from the key tuples of every unpaired
+    and changed row, so each kind's list is complete. Otherwise it falls back to
+    the bounded ``examples`` list and says so, because that list fills with
+    whichever kind of difference the comparison happened to encounter first.
+
+    Kept per kind rather than merged so the caller can filter on one of them and
+    still report what the others held.
     """
-    values, seen = [], set()
+    per_kind: Dict[str, List[Any]] = {k: [] for k in KINDS}
+    per_rows: Dict[str, int] = {k: 0 for k in KINDS}
+    seen: Dict[str, set] = {k: set() for k in KINDS}
 
-    def _add(value):
-        if value in seen:
+    def _add(kind: str, value: Any) -> None:
+        if value in seen[kind]:
             return
-        seen.add(value)
-        values.append(value)
+        seen[kind].add(value)
+        per_kind[kind].append(value)
 
     if keys and column in keys:
         position = list(keys).index(column)
-        rows = 0
-        for group in (result.missing_keys, result.added_keys, result.changed_keys):
+        groups = zip(KINDS, (result.missing_keys, result.added_keys, result.changed_keys))
+        for kind, group in groups:
             for key in group:
-                rows += 1
-                _add(_unwrap(key[position]))
+                per_rows[kind] += 1
+                _add(kind, _unwrap(key[position]))
         complete = True
     else:
-        rows = 0
         for diff in result.examples:
-            row = diff.expected_row if diff.kind != "added" else diff.actual_row
+            kind = diff.kind if diff.kind in per_kind else "changed"
+            row = diff.actual_row if diff.kind == "added" else diff.expected_row
             if not row or column not in row:
                 continue
-            rows += 1
-            _add(row[column])
+            per_rows[kind] += 1
+            _add(kind, row[column])
         complete = False
 
-    truncated = len(values) > max_values
+    return per_kind, per_rows, complete
+
+
+def _sorted_values(values: Sequence[Any], max_values: int):
+    """Deduplicated, ordered, bounded. Returns ``(values, truncated)``."""
+    out, seen = [], set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    truncated = len(out) > max_values
     if truncated:
-        values = values[:max_values]
+        out = out[:max_values]
     # Sorted so the same run produces the same query text twice, and so a human
     # can scan the list. Mixed types would make sort() raise, hence the guard.
     try:
-        values.sort(key=lambda v: (v is None, v))
+        out.sort(key=lambda v: (v is None, v))
     except TypeError:
         pass
-    return values, complete and not truncated, rows
+    return out, truncated
 
 
 def build_in_filter(expression: str, values: Sequence[Any]) -> str:
@@ -306,17 +373,36 @@ def generate(
     """Render one query per side, covering every differing row at once."""
     column = cfg.bind[0]["column"]
     expression = cfg.bind[0]["expression"]
-    values, complete, rows = collect_values(result, column, keys, cfg.max_values)
-    if not values:
+    per_kind, per_rows, complete = collect_values_by_kind(result, column, keys)
+
+    if not any(per_kind.values()):
         raise DrilldownError(
             f"drilldown binds '{column}', which is not a key column and does not "
             f"appear in any example row. Add it to compare.keys, or bind a "
             f"column the compared query selects."
         )
 
+    selected = [v for kind in cfg.kinds for v in per_kind[kind]]
+    if not selected:
+        # The comparison found differences, just none of the selected kind.
+        # Naming what it does hold is the difference between a dead end and a
+        # one-word edit to the case file.
+        held = ", ".join(f"{k}: {len(per_kind[k])}" for k in KINDS if per_kind[k]) or "none"
+        raise DrilldownError(
+            f"drilldown kinds {cfg.kinds} matched no differing rows for "
+            f"'{column}' ({held}). Widen drilldown.kinds, or drop the block for "
+            f"this run."
+        )
+
+    values, truncated = _sorted_values(selected, cfg.max_values)
+    rows = sum(per_rows[k] for k in cfg.kinds)
+
     out = DrilldownResult(
         column=column, values=values, id_column=cfg.id_column,
-        complete=complete, rows_covered=rows,
+        complete=complete and not truncated, rows_covered=rows,
+        kinds=list(cfg.kinds),
+        kind_values={k: len(per_kind[k]) for k in KINDS},
+        kind_rows=dict(per_rows),
     )
     row_filter = build_in_filter(expression, values)
     # ${batch_hour} and friends, derived from the run's batch parameter rather
