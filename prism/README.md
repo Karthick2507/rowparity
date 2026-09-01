@@ -11,11 +11,15 @@ python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
                                  │
                               PRISM
                                  │
+                                 │
+                         prism/output/   ← never your source tree
         ┌────────────────┬───────┴────────┬──────────────────────┐
         ▼                ▼                ▼                      ▼
-  cases_insight_plus/  tests/          tests/            sql/insight_plus/
-  ..._hourly.yaml      test_..._      test_..._          ..._drilldown.sql
-                       case.py        sql_sync.py
+  scripts/             tests/           tests/           sql/insight_plus/
+  cases_insight_plus/  test_..._        test_..._        ..._drilldown.sql
+  ..._hourly.yaml      case.py          sql_sync.py
+
+                        review it, then  cp -r prism/output/* .
 ```
 
 ## Why this can work at all
@@ -50,7 +54,8 @@ generator at run time.
 
 **Not an owner.** Every generated file says it was generated, from what, and
 that it is meant to be edited. `generate` refuses to overwrite an existing file
-without `--force`. The moment you edit one, you own it.
+without `--force`, and writes into `prism/output/` rather than your source tree.
+The moment you copy one into place and edit it, you own it.
 
 ## Install
 
@@ -62,13 +67,53 @@ not by PRISM itself.
 
 ```bash
 python -m prism inspect  <file.sql>     # what it read; writes nothing
-python -m prism generate <file.sql>     # write the four files
-python -m prism verify   <file.sql>     # diff what it would write against disk
+python -m prism generate <file.sql>     # write the four files into prism/output/
+python -m prism verify   <file.sql>     # diff what it would write against the repo
 ```
+
+### Where the files land
+
+**`prism/output/`, never your source tree.** A generator that writes straight
+into `tests/` on a first run is one you have to `git checkout` your way out of.
+You generate, read what came out, and copy it into place yourself.
+
+```
+prism/output/
+  scripts/cases_insight_plus/f_supply_portfolio_hourly.yaml
+  tests/test_f_supply_portfolio_hourly_case.py
+  tests/test_f_supply_portfolio_hourly_sql_sync.py
+  sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql
+  sql/insight_plus/f_supply_portfolio_hourly.sql        ← your source, copied in
+```
+
+The output **mirrors the repo layout** rather than being a flat dump, and that
+is forced rather than chosen: the generated YAML carries
+`query_file: ../../sql/insight_plus/<name>.sql`, so the case file has to sit two
+levels under a root that also holds `sql/insight_plus/`. Flatten it and the path
+breaks — and you could not even run `rowparity list` on the output to review it.
+
+Your parity `.sql` is copied in for the same reason, which makes the output a
+**complete, runnable preview**:
+
+```bash
+rowparity list prism/output/scripts/cases_insight_plus
+rowparity list prism/output/scripts/cases_insight_plus --check --param <batch>=...
+```
+
+Both work against the output tree, before anything touches your repo. When you
+are happy:
+
+```bash
+cp -r prism/output/* .
+```
+
+`prism/output/` is gitignored — it is regenerable, and the files that matter are
+the ones you copied.
 
 | Flag | |
 |---|---|
-| `--root DIR` | repo root (default `.`) — generate into a scratch tree first |
+| `--root DIR` | override the destination. `generate` defaults to `prism/output`; `verify` defaults to the repo root, because its job is diffing the case actually in use |
+| `--no-copy-source` | do not copy the parity `.sql` into the output (the copy is what makes the preview runnable) |
 | `--dry-run` | say what would be written |
 | `--force` | overwrite files that exist |
 | `--only case sql_sync_test case_test drilldown` | regenerate a subset |
@@ -191,16 +236,16 @@ vim sql/insight_plus/f_supply_portfolio_hourly.sql
 # 2. look before you leap
 python -m prism inspect sql/insight_plus/f_supply_portfolio_hourly.sql
 
-# 3. generate into a scratch tree first if you want to see it whole
-python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql --root /tmp/try
-
-# 4. for real
+# 3. generate — lands in prism/output/, touches nothing else
 python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
 
-# 5. the checks that cost nothing
-rowparity list scripts/cases_insight_plus
-rowparity list scripts/cases_insight_plus --check \
+# 4. review it where it stands; the output tree is runnable
+rowparity list prism/output/scripts/cases_insight_plus
+rowparity list prism/output/scripts/cases_insight_plus --check \
     --param arena.presto.var.process_batch_id=20260812010000
+
+# 5. install, then the checks that cost nothing
+cp -r prism/output/* .
 pytest tests/test_f_supply_portfolio_hourly_case.py \
        tests/test_f_supply_portfolio_hourly_sql_sync.py -q
 

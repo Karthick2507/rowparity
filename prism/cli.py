@@ -17,10 +17,17 @@ from __future__ import annotations
 import argparse
 import difflib
 import os
+import shutil
 import sys
 
 from .analyse import AnalysisError, analyse
-from .generate import planned_outputs, render_all
+from .generate import (
+    SQL_DIR,
+    default_output_root,
+    planned_outputs,
+    render_all,
+    repo_root,
+)
 
 
 def _print_profile(p) -> None:
@@ -71,7 +78,8 @@ def _generate(args) -> int:
         expected_label=args.expected_label,
         actual_label=args.actual_label,
     )
-    paths = planned_outputs(p, args.root)
+    root = args.root or default_output_root()
+    paths = planned_outputs(p, root)
     only = set(args.only) if args.only else set(rendered)
 
     print()
@@ -96,16 +104,33 @@ def _generate(args) -> int:
         print(f"  WROTE  {path}  ({len(rendered[kind].splitlines())} lines)")
         written += 1
 
+    # The parity SQL is copied in beside the generated files so the output tree
+    # is a COMPLETE, runnable preview: `rowparity list` on it resolves the
+    # ../../sql/insight_plus/<name>.sql the YAML points at. Without this the
+    # output could only be read, not exercised.
+    if not args.dry_run and written and not args.no_copy_source:
+        dest = os.path.join(root, SQL_DIR, os.path.basename(args.sql))
+        if os.path.abspath(dest) != os.path.abspath(args.sql):
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copyfile(args.sql, dest)
+            print(f"  COPIED {dest}  (so the preview is runnable)")
+
     if args.dry_run:
         print("\n  dry run: nothing written.")
         return 0
-    print(f"\n  {written} written, {skipped} skipped.")
-    if written:
-        print("\n  Next:")
-        print(f"    rowparity list {os.path.join(args.root, 'scripts', 'cases_insight_plus')}")
-        print(f"    rowparity list {os.path.join(args.root, 'scripts', 'cases_insight_plus')} "
-              f"--check --param {p.batch_param}=<batch>")
-        print(f"    pytest tests/test_{p.name}_case.py tests/test_{p.name}_sql_sync.py -q")
+    print(f"\n  {written} written, {skipped} skipped, into {root}")
+    if not written:
+        return 0
+
+    cases = os.path.join(root, "scripts", "cases_insight_plus")
+    print("\n  Review it where it stands -- the output tree is runnable:")
+    print(f"    rowparity list {cases}")
+    if p.batch_param:
+        print(f"    rowparity list {cases} --check --param {p.batch_param}=<batch>")
+    print("\n  Then install into the repo:")
+    print(f"    cp -r {os.path.join(root, '')}* {repo_root()}/")
+    print(f"    pytest tests/test_{p.name}_case.py tests/test_{p.name}_sql_sync.py -q")
+    print("\n  PRISM never writes into your source tree. Copying is your decision.")
     return 0
 
 
@@ -119,7 +144,9 @@ def _verify(args) -> int:
         expected_label=args.expected_label,
         actual_label=args.actual_label,
     )
-    paths = planned_outputs(p, args.root)
+    # verify defaults to the REPO, not prism/output: its whole purpose is to
+    # diff what PRISM would generate against the case that is actually in use.
+    paths = planned_outputs(p, args.root or repo_root())
     only = set(args.only) if args.only else set(rendered)
 
     differing = 0
@@ -157,7 +184,11 @@ def main(argv=None) -> int:
 
     def common(sp):
         sp.add_argument("sql", help="path to the parity SQL template")
-        sp.add_argument("--root", default=".", help="repo root (default: .)")
+        sp.add_argument(
+            "--root", default=None,
+            help="where to write / what to diff against. generate defaults to "
+                 "prism/output; verify defaults to the repo root.",
+        )
         sp.add_argument("--expected-facts", default="mrm_log_flat.default")
         sp.add_argument("--actual-facts", default="etl.public_test1")
         sp.add_argument("--expected-label", default="Hoover")
@@ -174,6 +205,11 @@ def main(argv=None) -> int:
     common(gen)
     gen.add_argument("--force", action="store_true", help="overwrite existing files")
     gen.add_argument("--dry-run", action="store_true", help="say what would be written")
+    gen.add_argument(
+        "--no-copy-source", action="store_true",
+        help="do not copy the parity .sql into the output tree (the copy is what "
+             "makes the preview runnable)",
+    )
     gen.set_defaults(func=_generate)
 
     ver = sub.add_parser("verify", help="diff what PRISM would generate against disk")

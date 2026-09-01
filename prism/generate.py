@@ -20,11 +20,38 @@ from typing import Dict, List
 
 from .analyse import QueryProfile
 
-# Where the four files land, relative to the repo root. These mirror the layout
-# the existing case uses; PRISM does not invent a new one.
+# Where the four files land, relative to whatever root they are written under.
+# These mirror the layout the existing case uses; PRISM does not invent a new one.
 SQL_DIR = os.path.join("sql", "insight_plus")
 CASE_DIR = os.path.join("scripts", "cases_insight_plus")
 TEST_DIR = "tests"
+
+# PRISM writes into its own folder by default, never into your source tree. You
+# generate, read what came out, and copy it into place yourself -- a code
+# generator that writes straight into `tests/` on a first run is one you have to
+# `git checkout` your way out of.
+#
+# The output MIRRORS the repo layout rather than being a flat dump, and that is
+# forced rather than chosen: the generated YAML carries
+# `query_file: ../../sql/insight_plus/<name>.sql`, so the case file has to sit
+# two levels under a root that also holds `sql/insight_plus/`. Flatten it and the
+# path breaks -- and you could not even run `rowparity list` on the output to
+# review it before installing.
+OUTPUT_DIR = "output"
+
+
+def package_dir() -> str:
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def repo_root() -> str:
+    """The rowparity checkout PRISM lives inside."""
+    return os.path.dirname(package_dir())
+
+
+def default_output_root() -> str:
+    """``prism/output`` — absolute, so it does not move with the cwd."""
+    return os.path.join(package_dir(), OUTPUT_DIR)
 
 # Defaults for the two sides. Overridable, because a second migration will have
 # different catalogs -- but defaulted, because for this project they do not.
@@ -397,6 +424,7 @@ SQL_FILE = os.path.join(REPO, "sql", "insight_plus", "{p.name}.sql")
 CASE_NAME = "{p.name}"
 BATCH = "20260812010000"
 BATCH_PARAM = "{p.batch_param}"
+BATCH_PLACEHOLDER = "${{{p.batch_param}}}"
 PARAMS = {{BATCH_PARAM: BATCH}}
 
 EXPECTED_FACTS = "{expected_facts}"
@@ -481,7 +509,11 @@ class TestBatchParameter:
         for side in ("expected", "actual"):
             sql = _sql(case, side)
             assert BATCH in sql, side
-            assert BATCH_PARAM not in sql, f"{{side}} still carries the placeholder"
+            # The PLACEHOLDER form, not the bare name. A .sql header comment
+            # legitimately lists its parameter names in prose -- writing them
+            # bare is the whole point, since ${{...}} inside a comment is a real
+            # substitution site. What must not survive is an unsubstituted one.
+            assert BATCH_PLACEHOLDER not in sql, f"{{side}} still carries the placeholder"
 
     def test_omitting_it_raises_rather_than_running(self, sql_files_present):
         # The false-pass guard. Silence here is what produces a green run over
