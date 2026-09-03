@@ -4,7 +4,7 @@
 own it: what problem it solves, how it is built and why that way, what its
 guarantees actually are, how to operate it, and where it will let you down.
 
-Derived by reading `src/rowparity/` (7,700 lines, 25 modules) directly. Every
+Derived by reading `src/rowparity/` (7,347 lines, 25 modules) directly. Every
 claim below is from the code as it stands, not from an earlier document.
 
 ---
@@ -35,6 +35,7 @@ claim below is from the code as it stands, not from an earlier document.
 13. [Worked example — adding `f_supply_portfolio_hourly`](#13-worked-example--adding-f_supply_portfolio_hourly)
 14. [LiveWire — stepping through one successful run](#14-livewire--stepping-through-one-successful-run)
 15. [Does my run use DuckDB? — and what a result sink is](#15-does-my-run-use-duckdb--and-what-a-result-sink-is)
+16. [PRISM — the case generator beside the repo](#16-prism--the-case-generator-beside-the-repo)
 
 ---
 
@@ -143,25 +144,34 @@ kind of analysis (business-concept coverage across a table remodel) and emits a
 | Module | Lines | Responsibility |
 |---|---|---|
 | `hashing.py` | 277 | canonicalisation rules and the fingerprint — **the semantics of the tool** |
-| `compare.py` | 776 | keyed/keyless comparison, signatures, breakdown, deltas |
-| `cases.py` | 524 | YAML loading, case shapes, orchestration, the guards |
-| `sources.py` | 397 | 12 source handlers → Arrow |
-| `params.py` | 157 | `${…}` resolution and precedence |
-| `near_miss.py` | 159 | which key column broke the pairing |
-| `drilldown.py` | 431 | generated investigation SQL |
+| `compare.py` | 669 | keyed/keyless comparison, signatures, breakdown, deltas |
+| `cases.py` | 471 | YAML loading, case shapes, orchestration, the guards |
+| `sources.py` | 397 | the source handlers, twelve `type:` names → Arrow |
+| `params.py` | 137 | `${…}` resolution and precedence |
+| `near_miss.py` | 116 | which key column broke the pairing |
+| `drilldown.py` | 316 | generated investigation SQL |
 | `duckdb_pushdown.py` | 626 | in-DuckDB comparison |
 | `snowflake_pushdown.py` | 792 | in-Snowflake comparison |
 | `trino_pushdown.py` | 781 | in-Trino comparison |
-| `report.py` | 469 | console, JSON, Markdown, CSV |
-| `run_report.py` + `templates/run_report.html` | 397 + template | single-run HTML |
+| `report.py` | 437 | console, JSON, Markdown, CSV |
+| `run_report.py` + `templates/run_report.html` | 350 + template | single-run HTML |
 | `report_html.py` + `templates/report.html` | 42 + template | multi-run history HTML |
 | `result_sink.py` / `history.py` | 324 / 196 | persist runs / read them back |
-| `progress.py` | 176 | step timing, heartbeat |
+| `progress.py` | 160 | step timing, heartbeat |
 | `param_queries.py` | 90 | a parameter resolved by querying |
-| `concept_check.py` | 157 | N-tables-to-one-wide-table coverage |
+| `concept_check.py` | 158 | N-tables-to-one-wide-table coverage |
 | `trino_auth.py` / `snowflake_auth.py` | 80 / 90 | one connection-builder per warehouse |
-| `schema_introspect.py` | 227 | schema without reading a row |
-| `cli.py` / `runner.py` | 233 / 30 | CLI, pytest entry point |
+| `schema_introspect.py` | 222 | schema without reading a row |
+| `schema_mapper.py` | 234 | column-coverage mapping — **orphaned**, see §11.4 |
+| `cli.py` / `runner.py` | 318 / 30 | CLI, pytest entry point |
+
+Beside `src/`, and importing nothing from it:
+
+| | Lines | |
+|---|---|---|
+| `prism/` | 1,988 | **PRISM** — derives a case from the query it compares. §16 |
+| `tests/` | 19 files | rowparity's own suite |
+| `prism/tests/` | 2 files | PRISM's, kept with the tool |
 
 **Note the two HTML templates.** `run_report.html` is *one run*
 (`rowparity run --html`). `report.html` is *pass-rate history across runs*
@@ -2657,9 +2667,10 @@ view**: every function the process actually entered, in the order it entered
 them, with the real values in scope at each step.
 
 It was not written by reading. A `sys.settrace` hook recorded every frame that
-entered `src/rowparity/` during a real run — **267 frames, 83 distinct
+entered `src/rowparity/` during a real run — **267 frames across 65 distinct
 functions** — and the call tree below is that recording, pruned only where a hot
-loop repeats. The values are printouts from the same run.
+loop repeats. Re-measured after the source was later trimmed of comments: still
+267, because the trim changed no control flow. The values are printouts from the same run.
 
 ### 14.0 The run
 
@@ -2708,10 +2719,10 @@ Summary: 1/1 equivalent
 ### 14.1 Frames 1–4 — entry, progress, parameters
 
 ```
-cli.py:225  main(argv=None)
-  cli.py:49    _run(args=Namespace(cmd='run', path='...', param=[...], ...))
-    progress.py:51  configure(enabled=True, stream=None)
-    params.py:53    parse_cli_params(items=['arena.presto.var.process_batch_id=20260812010000'])
+cli.py:202  main(argv=None)
+  cli.py:50    _run(args=Namespace(cmd='run', path='...', param=[...], ...))
+    progress.py:43  configure(enabled=True, stream=None)
+    params.py:42    parse_cli_params(items=['arena.presto.var.process_batch_id=20260812010000'])
 ```
 
 Four frames before anything can fail slowly.
@@ -2736,21 +2747,21 @@ first so that the next thing — which may take minutes — is not silent.
 ### 14.2 Frames 5–30 — loading the case
 
 ```
-    cli.py:37  _load_cases(path='.../cases', cli_params={'arena...batch_id': '20260812010000'})
-      cases.py:502  discover_cases(path=..., params_=...)
-        cases.py:442  load_cases_from_file(path='.../cases/portfolio.yaml', params_=...)
-          cases.py:365   _merge_defaults(case={'name': 'f_portfolio_hourly', ...}, defaults={})
-          cases.py:377   _build_case(raw={'name': 'f_portfolio_hourly', ...}, source_file=...)
-            params.py:72   resolve_variables(file_vars={}, case_vars={'sampling_filter': 'bit_flags > 0'})
-            params.py:145  substitute_spec(value={'name': 'f_portfolio_hourly', ...}, variables={...})
-              params.py:145  substitute_spec(value='f_portfolio_hourly', ...)
-                params.py:120  substitute(text='f_portfolio_hourly', ...)
-              params.py:145  substitute_spec(value='Hoover', ...)
-                params.py:120  substitute(text='Hoover', ...)
-              params.py:145  substitute_spec(value='duckdb', ...)
-              params.py:145  substitute_spec(value=':memory:', ...)
-              params.py:145  substitute_spec(value="read_parquet('.../old.parquet')", ...)
-              params.py:145  substitute_spec(value="read_parquet('.../new.parquet')", ...)
+    cli.py:38  _load_cases(path='.../cases', cli_params={'arena...batch_id': '20260812010000'})
+      cases.py:449  discover_cases(path=..., params_=...)
+        cases.py:405  load_cases_from_file(path='.../cases/portfolio.yaml', params_=...)
+          cases.py:342   _merge_defaults(case={'name': 'f_portfolio_hourly', ...}, defaults={})
+          cases.py:354   _build_case(raw={'name': 'f_portfolio_hourly', ...}, source_file=...)
+            params.py:61   resolve_variables(file_vars={}, case_vars={'sampling_filter': 'bit_flags > 0'})
+            params.py:125  substitute_spec(value={'name': 'f_portfolio_hourly', ...}, variables={...})
+              params.py:125  substitute_spec(value='f_portfolio_hourly', ...)
+                params.py:100  substitute(text='f_portfolio_hourly', ...)
+              params.py:125  substitute_spec(value='Hoover', ...)
+                params.py:100  substitute(text='Hoover', ...)
+              params.py:125  substitute_spec(value='duckdb', ...)
+              params.py:125  substitute_spec(value=':memory:', ...)
+              params.py:125  substitute_spec(value="read_parquet('.../old.parquet')", ...)
+              params.py:125  substitute_spec(value="read_parquet('.../new.parquet')", ...)
               ... 20 more substitute_spec / substitute pairs
 ```
 
@@ -2813,18 +2824,18 @@ this invocation lands as one correlatable batch.
 ### 14.4 Frames 32–45 — the guards, before any I/O
 
 ```
-    cases.py:107  run(base_dir=None)
-      cases.py:95    config(base_dir='.../cases')
-      cases.py:202   _check_breakdown(cfg=CompareConfig(keys=['event_date', 'network_id'], ...))
-      cases.py:245   _guard_identical_sides(base_dir='.../cases')
-        params.py:91    merge_side_vars(side_vars={'facts': "read_parquet('.../old.parquet')"}, variables={...})
+    cases.py:104  run(base_dir=None)
+      cases.py:92    config(base_dir='.../cases')
+      cases.py:195   _check_breakdown(cfg=CompareConfig(keys=['event_date', 'network_id'], ...))
+      cases.py:234   _guard_identical_sides(base_dir='.../cases')
+        params.py:80    merge_side_vars(side_vars={'facts': "read_parquet('.../old.parquet')"}, variables={...})
         sources.py:76   resolve_query(spec={'type': 'duckdb', ...}, base_dir='.../cases')
           sources.py:72    _resolve_path(path='../sql/portfolio.sql', base_dir='.../cases')
-          params.py:120    substitute(text='-- Placeholders: facts, sampling_filter, ...', variables={...})
-            params.py:124    _replace(match=<re.Match span=(179, 187) '${facts}'>)
-            params.py:124    _replace(match=<re.Match span=(194, 212) '${sampling_filter}'>)
+          params.py:100    substitute(text='-- Placeholders: facts, sampling_filter, ...', variables={...})
+            params.py:104    _replace(match=<re.Match span=(179, 187) '${facts}'>)
+            params.py:104    _replace(match=<re.Match span=(194, 212) '${sampling_filter}'>)
             ... _replace once per placeholder occurrence
-        params.py:91    merge_side_vars(side_vars={'facts': "read_parquet('.../new.parquet')"}, ...)
+        params.py:80    merge_side_vars(side_vars={'facts': "read_parquet('.../new.parquet')"}, ...)
         sources.py:76   resolve_query(...)                       ← the OTHER side
 ```
 
@@ -2867,20 +2878,20 @@ differ, and returns.
 ### 14.5 Frames 46–70 — fetching each side
 
 ```
-      progress.py:139  step(label='expected  (duckdb)', heartbeat_seconds=None)
-        progress.py:101   start()                                  ← daemon heartbeat thread
+      progress.py:127  step(label='expected  (duckdb)', heartbeat_seconds=None)
+        progress.py:91   start()                                  ← daemon heartbeat thread
       sources.py:41    load_source(spec={'type': 'duckdb', ...})
-        params.py:91     merge_side_vars(...)                      ← AGAIN, per side
+        params.py:80     merge_side_vars(...)                      ← AGAIN, per side
         sources.py:178   _duckdb(spec=..., base_dir='.../cases')
           sources.py:76    resolve_query(...)                      ← the file is read a SECOND time
             sources.py:72    _resolve_path(path='../sql/portfolio.sql', ...)
-            params.py:120    substitute(text='-- Placeholders: ...', ...)
-              params.py:124    _replace(...)  ×3
-      progress.py:171  describe_table(table=pyarrow.Table event_date: date32[day] ...)
-      progress.py:130  result(summary='3 rows x 4 cols')
-      progress.py:155  step(...)                                   ← context manager exiting
-        progress.py:113   stop()                                   ← heartbeat joined, 1s bound
-        progress.py:134   summary()
+            params.py:100    substitute(text='-- Placeholders: ...', ...)
+              params.py:104    _replace(...)  ×3
+      progress.py:155  describe_table(table=pyarrow.Table event_date: date32[day] ...)
+      progress.py:117  result(summary='3 rows x 4 cols')
+      progress.py:127  step(...)                                   ← context manager exiting
+        progress.py:103   stop()                                   ← heartbeat joined, 1s bound
+        progress.py:122   summary()
       [the same 12 frames again for the actual side]
 ```
 
@@ -2908,21 +2919,21 @@ event_date: date32[day], network_id: int32, requests: decimal128, revenue: decim
 ### 14.6 Frames 71–120 — the comparison
 
 ```
-      compare.py:354  compare_tables(expected=pyarrow.Table..., actual=pyarrow.Table...)
-        compare.py:333   _resolve_columns(exp=<schema>, act=<schema>)
-        compare.py:97    canon()                                   ← CompareConfig → CanonConfig
-        compare.py:442   _compare_keyed(exp_rows=[{...}, ...], act_rows=[{...}, ...])
+      compare.py:282  compare_tables(expected=pyarrow.Table..., actual=pyarrow.Table...)
+        compare.py:261   _resolve_columns(exp=<schema>, act=<schema>)
+        compare.py:66    canon()                                   ← CompareConfig → CanonConfig
+        compare.py:365   _compare_keyed(exp_rows=[{...}, ...], act_rows=[{...}, ...])
 
-          compare.py:429   _key_of(row={'event_date': date(2026,8,12), 'network_id': 101, ...})
+          compare.py:352   _key_of(row={'event_date': date(2026,8,12), 'network_id': 101, ...})
             hashing.py:117   canon_value(dtype=DataType(date32[day]), value=date(2026, 8, 12))
               hashing.py:71    _canon_scalar(value=date(2026, 8, 12), cfg=CanonConfig(...))
             hashing.py:117   canon_value(dtype=DataType(int32), value=101)
-          compare.py:429   _key_of(row={... 'network_id': 102 ...})
+          compare.py:352   _key_of(row={... 'network_id': 102 ...})
           ... _key_of once per row per side  (6 calls: 3 rows × 2 sides)
 
-          compare.py:506   _group(key=(('D', '2026-08-12'), ('i', 101)), row={...})
-            compare.py:489    _bd(row={...})                       ← RAW value, not canonical
-          compare.py:506   _group(key=(('D', '2026-08-12'), ('i', 102)), row={...})
+          compare.py:424   _group(key=(('D', '2026-08-12'), ('i', 101)), row={...})
+            compare.py:407    _bd(row={...})                       ← RAW value, not canonical
+          compare.py:424   _group(key=(('D', '2026-08-12'), ('i', 102)), row={...})
           ... _group once per key per side
 
           hashing.py:172   canon_row(schema=<schema>, row={...})
@@ -2936,7 +2947,7 @@ event_date: date32[day], network_id: int32, requests: decimal128, revenue: decim
           hashing.py:275   row_digest(...)                         ← the OTHER side
           ... canon_row / row_digest once per PAIRED key per side
 
-        compare.py:308   total_differences()
+        compare.py:239   total_differences()
 ```
 
 This is the heart of the tool, so slow down here.
@@ -2983,12 +2994,12 @@ failed it.
 ### 14.7 Frames 121–140 — the post-comparison stages
 
 ```
-      cases.py:174  _generate_drilldowns(result=ComparisonResult(equivalent=True, ...))
-      cases.py:296  _guard_empty(result=ComparisonResult(equivalent=True, ...))
+      cases.py:171  _generate_drilldowns(result=ComparisonResult(equivalent=True, ...))
+      cases.py:277  _guard_empty(result=ComparisonResult(equivalent=True, ...))
       result_sink.py:136  write(case_name='f_portfolio_hourly')
         result_sink.py:75    _build_summary_batch(run_id='dd5d189f-...', run_ts=datetime(2026,9,1,8,32,...))
         result_sink.py:101   _build_diffs_batch(run_id='dd5d189f-...', case_name='f_portfolio_hourly')
-        result_sink.py:194   _write_batches(summary=pyarrow.Table run_id: string ...)
+        result_sink.py:142   _write_batches(summary=pyarrow.Table run_id: string ...)
 ```
 
 **Two frames that enter and immediately return** — and that is the lesson:
@@ -3035,23 +3046,23 @@ the trend line would only ever plot failures.
 ### 14.8 Frames 141–160 — reporting and exit
 
 ```
-    report.py:154  render_console(result=ComparisonResult(equivalent=True, ...), case_name='f_portfolio_hourly')
-      compare.py:315   summary()
-      compare.py:304   total_seconds()
-      report.py:116    _render_breakdown(result=...)
-        compare.py:223    differing_share()
-          compare.py:219     differences()
+    report.py:144  render_console(result=ComparisonResult(equivalent=True, ...), case_name='f_portfolio_hourly')
+      compare.py:245   summary()
+      compare.py:235   total_seconds()
+      report.py:111    _render_breakdown(result=...)
+        compare.py:186    differing_share()
+          compare.py:182     differences()
         ... once per breakdown group
 
-    result_sink.py:201  close()
+    result_sink.py:145  close()
 
-    run_report.py:384  write_run_report(path='reports/insight_plus/run.html', results=[('f_portfolio_hourly', ComparisonResult(...))])
-      run_report.py:360   render_run_report()
-        run_report.py:327    build_payload()
-          run_report.py:254     case_to_dict()
-            run_report.py:184      _breakdown_to_dict()
-              run_report.py:41        _short()
-            run_report.py:237      _drilldown_to_dict()
+    run_report.py:337  write_run_report(path='reports/insight_plus/run.html', results=[('f_portfolio_hourly', ComparisonResult(...))])
+      run_report.py:319   render_run_report()
+        run_report.py:286    build_payload()
+          run_report.py:221     case_to_dict()
+            run_report.py:153      _breakdown_to_dict()
+              run_report.py:27        _short()
+            run_report.py:204      _drilldown_to_dict()
 ```
 
 `render_console` is one call producing the whole block of stdout. `summary()`
@@ -3371,6 +3382,156 @@ are a recording of one real run — every one of the 27 line numbers was
 re-checked against the source when this was written. **They will drift.** Treat
 them as "roughly here", and if one is wrong, re-run the fifteen-line tracer in
 §14.11 rather than trusting the page.*
+
+## 16. PRISM — the case generator beside the repo
+
+§13 walks you through writing the five files of a new parity case by hand.
+PRISM writes four of them for you, from the fifth.
+
+```bash
+python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
+```
+
+### 16.1 Where it sits, and what it is not
+
+```
+rowparity/
+  src/rowparity/     the product
+  prism/             a tool that writes files FOR the product
+    analyse.py         .sql → QueryProfile.  Deterministic, stdlib only.
+    rules.py           the ONE judgement call, isolated
+    generate.py        QueryProfile → four files
+    cli.py             inspect | generate | verify
+    __main__.py        python -m prism
+    tests/             its own suite, kept with the tool
+    output/            where generated files land.  Gitignored.
+    README.md          the full reference
+```
+
+Three boundaries, all enforced rather than intended:
+
+- **Not an entry point.** No `[project.scripts]` line, and there will not be
+  one. rowparity is the product; PRISM writes files for it, and a tool that
+  installs itself onto everyone's PATH beside the thing it generates for invites
+  exactly the confusion the separation exists to avoid.
+- **Not a dependency.** Nothing in `src/rowparity/` imports it, and it imports
+  nothing from `src/rowparity/` either — an AST check over `prism/*.py` shows
+  only `re`, `os`, `argparse`, `dataclasses`, `typing`, `difflib`, `datetime`.
+  (`grep "from rowparity"` gives four false positives: they are inside the
+  template strings, which are what the *generated* files will import.)
+- **Not in your source tree.** `generate` writes to `prism/output/`, mirroring
+  the repo layout. You review it there — the output tree is runnable — and copy
+  it in yourself.
+
+### 16.2 Why a generator is possible here at all
+
+A case is not *authored* so much as *implied* by the query it compares:
+
+| The case file says | Where that fact already lives |
+|---|---|
+| `keys: [83 columns]` | the query's GROUP BY dimensions |
+| `breakdown_by: slot_user_drop_off` | the one dimension that is a distinct literal per UNION branch |
+| `unordered_list_columns: [...]` | which arrays come from a source column vs are built inline |
+| `EXPECTED_FACT_REFS = 3` | count of `${facts}.` in the file |
+| `EXPECTED_SAMPLING_LINES = 3` | count of the sampling marker |
+| `assert len(dims) == 83` | the SELECT list |
+
+None of those is a judgement call. Today a human transcribes them, and every
+transcription is a chance for the list to drift from the query — which is the
+exact failure §13's generated tests exist to catch. PRISM removes the
+transcription step, and the drift with it.
+
+### 16.3 The one rule that decides `keys`
+
+**A key is a dimension, never a measure.** A metric in `compare.keys` changes
+whenever the data does, so nothing pairs and every difference becomes
+missing + added — the keyless behaviour of §4.3, arrived at silently.
+
+An output column is a **metric** when its **outermost call** is an aggregate,
+against the Presto/Trino set. Two nearly-right rules were measured against the
+real query and both drop real keys:
+
+| Rule | What it breaks |
+|---|---|
+| "an aggregate appears anywhere in the expression" | demotes `process_stage`, which is `reduce(set_agg(stage), ...)` and **is** in the hand-written keys — it yields one scalar per group |
+| "everything after the first aggregate is a metric" | **13 genuine dimensions** follow the first `sum()`, `event_date` and `partition_key` among them |
+
+Position is not used.
+
+### 16.4 The three commands
+
+| | |
+|---|---|
+| `prism inspect <f.sql>` | what it read, and what it could not decide. Writes nothing |
+| `prism generate <f.sql>` | the four files into `prism/output/`. Refuses to clobber |
+| `prism verify <f.sql>` | regenerate in memory, diff against the repo. Exit 1 on any difference |
+
+`verify` is the one that matters. Point it at a case a human already wrote and
+the diff shows where PRISM's derivation disagrees with judgement — a PRISM bug,
+or a decision worth writing down. It is also the CI hook: add a column to a
+SELECT and forget `keys:`, and it goes red before the cluster is touched.
+
+### 16.5 What it guesses, and how it says so
+
+Exactly one output is a guess: **`row_summary`**, the labelled column groups the
+report's Detail column uses (§8.7). It comes from column-name rules in
+`prism/rules.py`, and the output always says so, with coverage:
+
+```
+  1 thing(s) PRISM wants you to look at:
+    - row_summary came from column-name rules (prism/rules.py), not from the
+      query -- it is a presentation choice. 8 group(s) covering 35% of
+      dimensions; review them.
+```
+
+That `issues` list is a deliverable, not a warning log. It also raises a missing
+`${facts}` placeholder, fewer sampling markers than branches, fewer batch
+predicates than branches, and UNION branches with nothing to partition them —
+the same class of silent-green failure §7 exists to prevent, caught before the
+case is ever run.
+
+Where PRISM cannot derive at all, it writes `TODO(you)`: the drill-down's branch
+predicates must be copied verbatim from the parity query, and no parser knows
+which branch you mean.
+
+### 16.6 Verified against the hand-written case
+
+`f_demand_portfolio_hourly` was derived by a person and confirmed on a live
+cluster, which makes it a known-correct answer that predates PRISM:
+
+```
+13/13 semantic fields match
+   compare.keys (83 dimensions) · breakdown_by · unordered_list_columns
+   near_miss · max_examples · vars.sampling_filter
+   expected/actual .type and .vars.facts
+   drilldown .bind, .kinds, .time
+
+28/28 generated tests pass against the real 185 KB query
+```
+
+`row_summary` differs — 8 rules-derived groups against the human's 7 — and
+`prism/tests/test_roundtrip.py` **asserts that difference** rather than papering
+over it. When a model eventually beats the rules, that assertion is what flips.
+
+### 16.7 On the ML question
+
+The stack considered was numpy / scikit-learn / joblib / skl2onnx / onnxruntime.
+None of it ships, for two reasons: the training set does not exist (n=1 case),
+and the classification that looked like it needed a model turned out to be one
+rule — `array[...]` is constructed and cannot vary in order, anything else
+yielding an array is a passthrough and can — correct 4/4 against the
+hand-written YAML.
+
+`rules.derive_row_summary(dimensions) -> [{"label", "columns"}]` is the seam if
+that changes. Two conditions first: a corpus of reviewed groupings, and a
+held-out measurement showing a model beats the rules. The boundary is fixed
+regardless — **nothing that decides what "equal" means (`keys`, `breakdown_by`,
+`unordered_list_columns`, the test counts) will ever be model-derived.** A wrong
+`row_summary` label is cosmetic. A wrong key silently redefines "the same row".
+
+`prism/README.md` is the full reference.
+
+---
 
 *§15's tables, row counts and query results are output from three real runs, not
 illustrations.*
