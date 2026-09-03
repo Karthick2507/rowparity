@@ -14,14 +14,25 @@ from rowparity.history import build_case_histories, read_raw_history
 from rowparity.report_html import render_html_report, render_report_from_sink
 from rowparity.result_sink import DuckDBResultSink
 
-BASE = datetime(2026, 6, 30, tzinfo=timezone.utc)
+# Anchored to NOW, not to a literal date. read_raw_history() filters on
+# `now - days`, so a hardcoded BASE is a time bomb: it passes while the date is
+# recent and starts failing silently once the window moves past it. This file
+# was written with BASE = 2026-06-30 and went red on 2026-09-03, when every
+# fixture row had aged out of the default 21-day window and the reader
+# correctly returned nothing.
+#
+# Offsets are DAYS AGO, which is also what the call sites read as -- "(40, ...)
+# # 40 days out -> outside a 21-day window" only makes sense counting backwards.
+BASE = datetime.now(tz=timezone.utc).replace(
+    hour=12, minute=0, second=0, microsecond=0
+)
 
 
 def _write_days(db_path, case_name, tags, day_results):
     """day_results: list of (offset_days, ComparisonResult)."""
     for i, (offset, result) in enumerate(day_results):
         sink = DuckDBResultSink(db_path, run_id=f"{case_name}-{i}")
-        sink.write(case_name, tags, result, run_ts=BASE + timedelta(days=offset))
+        sink.write(case_name, tags, result, run_ts=BASE - timedelta(days=offset))
         sink.close()
 
 
@@ -59,8 +70,10 @@ def test_read_raw_history_respects_window(db_path):
 
 def test_build_case_histories_one_point_per_day_latest_wins(db_path):
     # two runs on the SAME day -- the transform should pick the later one
+    # Both at midday +/- 6h so they land on the SAME calendar day, which is
+    # what the transform buckets by.
     sink = DuckDBResultSink(db_path, run_id="run-early")
-    sink.write("case_a", [], _r(changed_count=0), run_ts=BASE)
+    sink.write("case_a", [], _r(changed_count=0), run_ts=BASE - timedelta(hours=6))
     sink.close()
     sink = DuckDBResultSink(db_path, run_id="run-late")
     sink.write(
@@ -123,8 +136,10 @@ def test_schema_drift_carried_in_history(db_path):
         "case_a",
         [],
         [
-            (0, _r()),
-            (1, _r(equivalent=False, columns_only_in_actual=["new_col"])),
+            # Offsets are DAYS AGO, so the clean run is the OLDER one and the
+            # drift shows up on the more recent day -- history[] is chronological.
+            (1, _r()),
+            (0, _r(equivalent=False, columns_only_in_actual=["new_col"])),
         ],
     )
     summary_rows, diffs_rows = read_raw_history(f"duckdb:{db_path}", days=30)
