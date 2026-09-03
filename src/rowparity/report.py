@@ -5,6 +5,7 @@ fails: the headline counts plus a handful of concrete example rows showing
 exactly what differs. ``render_markdown`` / ``to_dict`` produce the CI artifacts
 (a diff report you can publish from Jenkins, and a JSON summary for dashboards).
 """
+
 from __future__ import annotations
 
 import json
@@ -58,18 +59,12 @@ def _render_signature(sig: ChangeSignature, changed_count: int = 0) -> List[str]
         parts = ", ".join(f"{k} {v}" for k, v in sig.breakdown.items())
         lines.append(f"        by group: {parts}")
 
-    # Direction and magnitude, not just "these columns differ". A constant
-    # delta across every row is a systematic loss and says so; a range is a
-    # starting point. One example could never distinguish the two.
     for d in sig.deltas.values():
         constant = d.constant_delta
         if constant is not None:
             amount = f"{_fmt_delta(constant)} (constant)"
         elif d.numeric:
             lo, hi = _fmt_delta(d.min_delta), _fmt_delta(d.max_delta)
-            # Ends that differ only below display precision -- true of most
-            # float deltas with no tolerance set. Shown as a range it reads as
-            # a broken report; "~" states what is known without overclaiming.
             amount = f"~{lo}" if lo == hi else f"{lo} to {hi}"
         elif d.top_pair is not None:
             amount = f"{_short(d.top_pair[0])} -> {_short(d.top_pair[1])} in {d.top_pair_count}"
@@ -122,9 +117,7 @@ def _render_breakdown(result: ComparisonResult) -> List[str]:
     """
     name = ", ".join(result.breakdown_columns)
     lines = [f"  row differences by {name}:"]
-    groups = sorted(
-        result.breakdown.values(), key=lambda g: (-g.differing_share, -g.differences)
-    )
+    groups = sorted(result.breakdown.values(), key=lambda g: (-g.differing_share, -g.differences))
     width = max((len(str(g.value)) for g in groups), default=1)
     for g in groups:
         lines.append(
@@ -135,9 +128,6 @@ def _render_breakdown(result: ComparisonResult) -> List[str]:
     return lines
 
 
-# Schema drift on a wide table can run to hundreds of columns. Dumping the raw
-# list produced a single 32,000-character line -- technically complete, wholly
-# unreadable. The full set goes to the CSV report instead.
 MAX_LISTED_COLUMNS = 20
 
 
@@ -169,7 +159,9 @@ def render_console(result: ComparisonResult, case_name: str = "") -> str:
         )
 
     if result.columns_only_in_expected:
-        lines.append(_render_column_list("columns only in expected", result.columns_only_in_expected))
+        lines.append(
+            _render_column_list("columns only in expected", result.columns_only_in_expected)
+        )
     if result.columns_only_in_actual:
         lines.append(_render_column_list("columns only in actual", result.columns_only_in_actual))
     if result.type_mismatches:
@@ -287,12 +279,6 @@ def to_dict(result: ComparisonResult, case_name: str = "") -> Dict[str, Any]:
                 key=lambda g: (-g.differing_share, -g.differences),
             )
         ],
-        # Kept split rather than totalled: a slow warehouse query and a slow
-        # comparison need different fixes. Accumulated across runs by the
-        # result sink, these answer how many cases fit in a window.
-        # Microseconds, not milliseconds: rounding to 3 places turned a fast
-        # step into 0.0, which is exactly how an unmeasured step is reported.
-        # "instant" and "never ran" must not look alike.
         "timing_seconds": {
             "expected_load": round(result.expected_load_seconds, 6),
             "actual_load": round(result.actual_load_seconds, 6),
@@ -326,33 +312,16 @@ def render_markdown(results: List[Tuple[str, ComparisonResult]]) -> str:
     return "\n".join(lines)
 
 
-# --------------------------------------------------------------------------- #
-# Per-column CSV
-# --------------------------------------------------------------------------- #
-# The headline lists (columns_only_in_expected and friends) are fine at a
-# handful of columns and unreadable at 900 -- render_console dumps them as one
-# enormous line. A row-per-column CSV is the shape that actually scales, and is
-# sortable/filterable/diffable between runs.
-#
-# `status` deliberately reuses the vocabulary of the BCV analyser this replaced,
-# so the values are the ones the team already reads:
-#
 #     MATCHED              present on both sides, same type, no value diffs
 #     MATCHED - TYPE DIFF  present on both sides, types disagree
 #     MATCHED - VALUE DIFF present on both sides, values differ (row cases)
 #     DIFF                 present on one side only
-#
-# Column names use rowparity's own expected/actual vocabulary rather than BCV's
-# src/bcv, because this ships for every case type, not just a migration.
 
 CSV_FIELDS = ("case", "status", "column", "expected_type", "actual_type", "diff_rows")
 
 STATUS_MATCHED = "MATCHED"
 STATUS_TYPE_DIFF = "MATCHED - TYPE DIFF"
 STATUS_VALUE_DIFF = "MATCHED - VALUE DIFF"
-# Every difference in this column was only a different spelling of absence.
-# Mirrors the BCV analyser's third validation state: MATCHED is its Y,
-# EQUIVALENT its E, VALUE DIFF its N.
 STATUS_EQUIVALENT = "MATCHED - EQUIVALENT"
 STATUS_DIFF = "DIFF"
 
@@ -379,11 +348,6 @@ def to_column_rows(result: ComparisonResult, case_name: str = "") -> List[Dict[s
     value_mismatch = set(result.column_value_mismatch)
     exp_schema, act_schema = result.expected_schema, result.actual_schema
     rows: List[Dict[str, Any]] = []
-
-    # A type-mismatched column is normally in compared_columns too, but union
-    # them rather than trusting that: a producer that reported a mismatch
-    # without listing the column would otherwise drop it from the report
-    # silently, which is the worst way to lose a real finding.
     both_sides = list(result.compared_columns)
     both_sides += [c for c in type_mismatch if c not in set(result.compared_columns)]
 
@@ -395,11 +359,6 @@ def to_column_rows(result: ComparisonResult, case_name: str = "") -> List[Dict[s
             total = diff_counts.get(column, 0)
             equivalent = equiv_counts.get(column, 0)
             if column in value_mismatch:
-                # Keyless: the column's value multiset differs between the two
-                # sides. There is no per-row count to report -- without a key
-                # rows cannot be paired -- but "this column's values differ" is
-                # the fact that makes 262 columns triageable, and calling it
-                # MATCHED beside a million row differences did not.
                 status = STATUS_VALUE_DIFF
             elif total == 0:
                 status = STATUS_MATCHED
@@ -410,25 +369,39 @@ def to_column_rows(result: ComparisonResult, case_name: str = "") -> List[Dict[s
                 status = STATUS_VALUE_DIFF
             expected_type = exp_schema.get(column, "")
             actual_type = act_schema.get(column, "")
-        rows.append({
-            "case": case_name,
-            "status": status,
-            "column": column,
-            "expected_type": expected_type,
-            "actual_type": actual_type,
-            "diff_rows": diff_counts.get(column, ""),
-        })
+        rows.append(
+            {
+                "case": case_name,
+                "status": status,
+                "column": column,
+                "expected_type": expected_type,
+                "actual_type": actual_type,
+                "diff_rows": diff_counts.get(column, ""),
+            }
+        )
 
     for column in result.columns_only_in_expected:
-        rows.append({
-            "case": case_name, "status": STATUS_DIFF, "column": column,
-            "expected_type": exp_schema.get(column, ""), "actual_type": "", "diff_rows": "",
-        })
+        rows.append(
+            {
+                "case": case_name,
+                "status": STATUS_DIFF,
+                "column": column,
+                "expected_type": exp_schema.get(column, ""),
+                "actual_type": "",
+                "diff_rows": "",
+            }
+        )
     for column in result.columns_only_in_actual:
-        rows.append({
-            "case": case_name, "status": STATUS_DIFF, "column": column,
-            "expected_type": "", "actual_type": act_schema.get(column, ""), "diff_rows": "",
-        })
+        rows.append(
+            {
+                "case": case_name,
+                "status": STATUS_DIFF,
+                "column": column,
+                "expected_type": "",
+                "actual_type": act_schema.get(column, ""),
+                "diff_rows": "",
+            }
+        )
     return rows
 
 
@@ -452,18 +425,13 @@ def write_csv_reports(results: List[Tuple[str, ComparisonResult]], out_dir: str)
     return written
 
 
-def write_reports(results: List[Tuple[str, ComparisonResult]], *, json_path: str = None, md_path: str = None):
-    # Markdown first. These are independent artifacts, and writing JSON first
-    # meant a failure there took the Markdown report down with it -- losing
-    # both at once, on precisely the runs that had something to report.
+def write_reports(
+    results: List[Tuple[str, ComparisonResult]], *, json_path: str = None, md_path: str = None
+):
     if md_path:
         with open(md_path, "w", encoding="utf-8") as fh:
             fh.write(render_markdown(results))
     if json_path:
         payload = [to_dict(r, name) for name, r in results]
         with open(json_path, "w", encoding="utf-8") as fh:
-            # default=str: to_dict() embeds raw cell values from example rows,
-            # so any Decimal, date, datetime or bytes in a failing case would
-            # otherwise raise mid-write and leave a truncated, unparseable
-            # file. result_sink.py already serialises rows this way.
             json.dump(payload, fh, indent=2, default=str)

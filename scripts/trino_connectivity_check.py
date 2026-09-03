@@ -1,37 +1,3 @@
-#!/usr/bin/env python3
-"""Sanity check before running any Trino/Presto rowparity case.
-
-Validates, in order, the things every later BCV phase depends on:
-
-  1. trino_auth.py can actually connect to the gateway (auth, scheme, port).
-  2. schema_introspect._describe_trino works against a real cluster -- this
-     is the code path `schema_check:` cases use, and it has never run live.
-  3. The two tables' schemas can be compared, previewing exactly what a
-     Phase 1 schema_check case will report (MATCHED / TYPE DIFF / DIFF).
-  4. The join key exists on both sides with the same type.
-  5. The deterministic sampling expression compiles on this engine -- the
-     Phase 3 value-parity cases are built on it, and function availability
-     differs between Presto and Trino builds.
-
-Every step is independent: a failure is reported and the script moves on, so
-one run surfaces all the problems rather than one at a time.
-
-Usage:
-    export TRINO_HOST=presto-gateway.presto.stg.aws.fwmrm.net
-    export TRINO_PORT=8080
-    export TRINO_USER=<your-user>
-    export TRINO_JWT_TOKEN=<your-token>      # never commit or paste this
-    export TRINO_HTTP_SCHEME=https
-
-    python scripts/trino_connectivity_check.py \
-        --src mrm_log_flat.default.request \
-        --bcv etl.public_test1.request \
-        --key request__transaction_id
-
-Note TRINO_HOST is the bare hostname -- the scheme goes in TRINO_HTTP_SCHEME,
-not in the host string.
-"""
-
 import argparse
 import os
 import sys

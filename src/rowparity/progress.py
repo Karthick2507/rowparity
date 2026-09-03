@@ -1,11 +1,5 @@
 """Live progress reporting for long-running steps.
 
-A case that runs two multi-minute warehouse queries printed nothing at all
-until both had finished. From the terminal that is indistinguishable from a
-hang, and the only way to tell them apart was to open the cluster's web UI and
-look for a running query. That is not a reasonable thing to ask of someone
-waiting on a verification run.
-
 So each step announces itself before it starts, emits a heartbeat while it
 runs, and reports how long it took and what came back::
 
@@ -24,15 +18,13 @@ Design notes:
 * **Output goes to stderr**, so ``rowparity run > results.txt`` keeps stdout
   clean and parseable while progress still reaches the terminal. Redirect with
   ``2>&1`` to capture both into one log.
-* **Every write is flushed.** Without that, a pipe into ``tee`` or a file
-  buffers the output and it arrives all at once when the run ends -- which
-  defeats the entire purpose.
 * **Off by default**, switched on by the CLI. Importing rowparity as a library
   or running it under pytest stays silent, and no heartbeat threads are
   created.
 * **The heartbeat is a daemon thread** that only ever writes to the stream. It
   cannot keep the process alive and it cannot fail the run.
 """
+
 from __future__ import annotations
 
 import sys
@@ -74,8 +66,6 @@ def emit(text: str = "") -> None:
         _stream.write(text + "\n")
         _stream.flush()
     except Exception:
-        # Progress reporting must never be the reason a run fails. A closed or
-        # broken stream (a killed pager, a full disk) is not a comparison error.
         pass
 
 
@@ -113,9 +103,6 @@ class _Heartbeat:
     def stop(self) -> None:
         self._stop.set()
         if self._thread is not None:
-            # Nothing to wait for -- the thread is either sleeping on the event
-            # (now set) or writing one line. join() with a bound keeps a wedged
-            # stream from blocking the run.
             self._thread.join(timeout=1.0)
 
 
@@ -146,9 +133,7 @@ def step(label: str, heartbeat_seconds: Optional[float] = None):
     """
     handle = Step(label)
     emit(f"  -> {label} ...")
-    beat = _Heartbeat(
-        _heartbeat_seconds if heartbeat_seconds is None else heartbeat_seconds
-    )
+    beat = _Heartbeat(_heartbeat_seconds if heartbeat_seconds is None else heartbeat_seconds)
     beat.start()
     started = time.monotonic()
     try:
@@ -157,8 +142,7 @@ def step(label: str, heartbeat_seconds: Optional[float] = None):
         handle.elapsed = time.monotonic() - started
         beat.stop()
         emit(
-            f"  FAILED {label}  {format_duration(handle.elapsed)}  "
-            f"{type(exc).__name__}: {exc}"
+            f"  FAILED {label}  {format_duration(handle.elapsed)}  " f"{type(exc).__name__}: {exc}"
         )
         raise
     else:

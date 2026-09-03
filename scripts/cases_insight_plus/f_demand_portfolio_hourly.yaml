@@ -4,17 +4,12 @@
 
 cases:
   - name: f_demand_portfolio_hourly
-    # How the two sides are named in the HTML report. Without these it says
-    # "expected" and "actual", which are accurate and mean nothing to a reader
-    # who has to remember which one is the source of truth.
     expected_label: Hoover
     actual_label: Hoover++
     description: >-
       The f_demand_portfolio_hourly aggregate must produce identical rows
       whether built from the Hoover layout (sampled to bit 59) or the Hoover++
       layout (already sampled). Both sides are queries; neither is materialised.
-    # Defined once and used by both, that bug is not expressible.
-    #
     # To run unsampled (both sides, together): --param sampling_filter=true
     vars:
       sampling_filter: "bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0"
@@ -137,17 +132,12 @@ cases:
       - {label: Placement,     columns: [time_position_classes, supply_source_detail,
                                          sales_strategy, priority_tier]}
 
-    # Per-row investigation SQL, generated but NOT executed -- see
-    # drilldown.py for why running it is a separate step.
 
     drilldown:
       query_file: ../../sql/insight_plus/f_demand_portfolio_hourly_drilldown.sql
       bind:
         creative_id: "if(network_is_ad_owner, coalesce(advertisement__creative_id, -1), -1)"
       id_column: request__transaction_id
-      # The kinds left out are still counted in the report, so narrowing the
-      # filter is visible rather than something you have to know about.
-      # Widen it here when the question changes:
       #   kinds: [missing, added, changed]
       kinds: [missing]
       time:

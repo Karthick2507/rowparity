@@ -6,20 +6,8 @@ these two sources looked like just now, column by column and row by row.
 
 Same approach as the history report: a static template shipped with the package
 plus placeholder substitution, no templating engine.
-
-Two things this carries that the CSV and JSON reports do not:
-
-* **Errored cases.** A case that raises never produces a ComparisonResult, so
-  it never reaches ``results`` and is invisible to every other reporter -- the
-  CSV for a run where the only case blew up is an empty file with a header. A
-  report that silently omits the failure is worse than no report, so errors are
-  collected separately and rendered as first-class rows.
-* **The keyless caveat.** Without a key, ``MATCHED`` is a statement about
-  presence and type, not values -- there is no way to pair rows and so no
-  per-row attribution exists. Shown next to a million row differences and
-  unlabelled, that reads as "the columns are fine". The report says which mode
-  produced it.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,17 +21,10 @@ from .report import _fmt_key, to_column_rows
 
 _TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "run_report.html")
 
-# Example rows carry raw cell values from the compared tables. A 900-column row
-# rendered in full would dominate the page and tell nobody anything.
 MAX_VALUE_CHARS = 120
 
 
 def _short(value: Any) -> str:
-    # ASCII "..." rather than a single-character ellipsis: this text is embedded
-    # in the page's JSON and travels wherever the report is forwarded. The
-    # template declares utf-8, but a report that survives being emailed,
-    # re-saved, or piped through a tool that re-encodes should not sprout
-    # mojibake on the way.
     text = "NULL" if value is None else str(value)
     return text if len(text) <= MAX_VALUE_CHARS else text[: MAX_VALUE_CHARS - 3] + "..."
 
@@ -99,8 +80,6 @@ def _example_to_dict(diff, result, summary_groups: Sequence[dict]) -> Dict[str, 
         "summary": _row_summary(row, summary_groups),
         "all_columns": _all_columns(row),
     }
-    # The engineers' drill-down starts from creative_id, so it is pulled out
-    # rather than left somewhere in a list of 262.
     for name in ("sample_transaction_id", "request__transaction_id"):
         if row and name in row:
             out["transaction_id"] = _short(row[name])
@@ -142,10 +121,6 @@ def _delta_to_dict(delta) -> Dict[str, Any]:
         out["amount"] = _fmt_delta(constant)
     elif delta.numeric:
         lo, hi = _fmt_delta(delta.min_delta), _fmt_delta(delta.max_delta)
-        # "+0.07 to +0.07" is a range whose ends differ only below display
-        # precision -- true of almost any float delta without a tolerance set.
-        # Printing it as a range reads as a bug in the report; "~+0.07" says
-        # what is actually known without claiming the exactness of "constant".
         out["amount"] = lo if lo == hi else f"{lo} to {hi}"
         out["approx"] = lo == hi
     elif delta.top_pair is not None:
@@ -166,18 +141,12 @@ def _signature_to_dict(sig, changed_count: int) -> Dict[str, Any]:
         "columns": list(sig.columns),
         "count": sig.count,
         "example": example,
-        # A signature covering 6 of 9 changed rows is the pattern to chase; the
-        # same 6 out of 6,000 is noise, and the count alone cannot tell them
-        # apart without the reader doing the arithmetic.
         "share": sig.share_of(changed_count),
         "deltas": [_delta_to_dict(d) for d in sig.deltas.values()],
         "breakdown": [{"value": _short(k), "count": v} for k, v in sig.breakdown.items()],
     }
 
 
-# A high-cardinality breakdown column would render thousands of rows nobody
-# reads. Show the worst, then say how much was left out rather than silently
-# truncating.
 MAX_BREAKDOWN_GROUPS = 20
 
 
@@ -229,8 +198,6 @@ def _near_miss_to_dict(nm) -> Dict[str, Any]:
     }
 
 
-# A report is for reading. Past a few dozen values the IN-list stops informing
-# and starts padding; the full list is in the SQL below it either way.
 MAX_SHOWN_VALUES = 50
 
 
@@ -291,12 +258,6 @@ def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
                 "expected_type": row["expected_type"],
                 "actual_type": row["actual_type"],
                 "diff_rows": row["diff_rows"],
-                # Dimensions are the key, metrics are everything else. They
-                # answer different questions -- "is the key sound?" versus "do
-                # the numbers agree?" -- and merging them under one shared
-                # "diff rows" column is what made 262 flagged columns
-                # unreadable. Keyless cases have no key, so everything is a
-                # metric and the split collapses to today's single table.
                 "kind": "dimension" if row["column"] in key_set else "metric",
             }
             for row in columns
@@ -308,9 +269,7 @@ def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
         "near_miss": _near_miss_to_dict(result.near_miss)
         if getattr(result, "near_miss", None) and result.near_miss.columns
         else None,
-        "examples": [
-            _example_to_dict(d, result, summary_groups) for d in result.examples
-        ],
+        "examples": [_example_to_dict(d, result, summary_groups) for d in result.examples],
         "drilldown": _drilldown_to_dict(getattr(result, "drilldown", None)),
     }
 
@@ -368,12 +327,6 @@ def render_run_report(
         template = fh.read()
 
     payload = build_payload(results, errors, run_id=run_id, generated_at=generated_at)
-    # Cell values are arbitrary strings from the compared tables and could
-    # legitimately contain "</script>". Escaping it stops a value breaking out
-    # of the inline <script> block -- standard JSON-in-<script> practice, and
-    # here the values are genuinely untrusted warehouse content.
-    # default=str: example rows carry raw cells, so Decimal/date/datetime/bytes
-    # would otherwise raise mid-serialisation on exactly the failing runs.
     payload_json = json.dumps(payload, default=str).replace("</script", "<\\/script")
 
     html = template.replace("__ROWPARITY_RUN_JSON__", payload_json)

@@ -9,11 +9,6 @@ path here is a genuinely metadata-only mechanism for that engine — not a
 data on some engines. `table:` is preferred; `query:` stays available for a
 derived/hypothetical shape, but is always resolved through the same
 metadata-only path, never executed as written.
-
-One documented exception: Trino exposes no describe-without-execute API in
-its DBAPI, so a *derived* ``query:`` there falls back to a ``LIMIT 0`` probe
-(see ``_describe_trino``). A ``table:`` spec still uses a real ``DESCRIBE``,
-which is why ``table:`` is the preferred form for Trino sources.
 """
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Sanity check before running any real snowflake_pushdown.py case: confirms
 key-pair auth actually connects, and that the configured warehouse/database/
 schema are usable. Doesn't touch snowflake_pushdown.py at all -- this only
@@ -8,6 +7,7 @@ Usage:
     set -a; source .env.snowflake; set +a
     python scripts/snowflake_connectivity_check.py
 """
+
 import sys
 
 from rowparity.snowflake_auth import connect

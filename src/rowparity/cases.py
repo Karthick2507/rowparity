@@ -61,9 +61,6 @@ _COMPARE_KEYS = {
     "ignore_columns_table",
 }
 
-# Consumed while building CompareConfig and then dropped -- they resolve into
-# ignore_columns rather than being options of their own, so CompareConfig (and
-# every engine reading it) stays unaware that a file was involved.
 _EXCLUSION_KEYS = ("ignore_columns_file", "ignore_columns_table")
 
 
@@ -177,10 +174,6 @@ class Case:
         Generated, never executed: the two scans took long enough against the
         real cluster to dominate the parity run they annotate, and a drill-down
         is an aid to reading a result rather than part of producing one.
-
-        Failures here are reported and swallowed for the same reason -- losing
-        a whole parity run because a helper template has a typo would be
-        entirely the wrong trade.
         """
         if not self.drilldown or result.equivalent:
             return
@@ -210,10 +203,6 @@ class Case:
         whichever side the code read would be an arbitrary choice presented as
         a fact. Adding the column to `keys` fixes it and is usually what the
         author meant anyway.
-
-        *Default engine only.* Push-down engines count in SQL and never see a
-        row, so they would accept the option and silently produce nothing. Same
-        reasoning as null_equivalence above: refuse rather than quietly differ.
         """
         if not cfg.breakdown_by:
             return
@@ -252,14 +241,6 @@ class Case:
         succeeds, every row matches, and it reports EQUIVALENT with exit 0
         after however long the warehouse took. It is the ``_guard_empty``
         failure again in a new costume: a confident pass that verified nothing.
-
-        **Scoped to the shared-``query_file`` case on purpose.** Two sides
-        naming the same parquet path, or carrying two identical ``inline:``
-        blocks, are hand-written fixtures whose author can see both sides at
-        once; refusing those would reject a lot of legitimate cases to catch a
-        mistake nobody makes. Pointing both sides at one file, on the other
-        hand, has exactly one purpose -- to parameterise them differently -- so
-        a run where that produced no difference is a bug every time.
         """
         if cfg.allow_identical_sources:
             return
@@ -302,10 +283,6 @@ class Case:
         both sides empty because the batch had aged out of staging, and a green
         "1/1 equivalent" at the end. A verification tool that reports success
         for having verified nothing is worse than one that crashes.
-
-        Only row comparisons are guarded. schema_check and concept_check
-        legitimately report zero rows -- fetching none is the entire point of
-        them -- and they carry a different `kind`.
         """
         if cfg.allow_empty or result.kind != "rows":
             return
@@ -385,29 +362,15 @@ def _build_case(
     if "name" not in raw:
         raise ValueError(f"{source_file}: case is missing required field 'name': {raw!r}")
 
-    # Resolve ${name} placeholders once, over the whole raw case, before any
-    # shape dispatch -- so every case type gets it for free and no spec dict
-    # can reach an engine still holding an unsubstituted placeholder.
     raw = dict(raw)
     case_vars = raw.pop("vars", None) or {}
     raw.pop("param_queries", None)  # resolved once per file, see load_cases_from_file
-    # The drilldown block is substituted by drilldown.py, not here. Its time
-    # window is DERIVED from the batch parameter (20260827010000 -> the hour
-    # 2026-08-27 01:00:00), and that derivation has not happened yet. Leaving
-    # it in would also mean `rowparity list` could not enumerate a case without
-    # being handed a batch id, which listing has no business needing.
+
     drilldown_raw = raw.pop("drilldown", None)
     variables = params.resolve_variables(file_vars, case_vars, cli_params)
-    # Query-resolved values sit below --param/env (which short-circuit the
-    # query entirely) but above a vars: default.
     for name, value in (query_vars or {}).items():
         variables.setdefault(name, value)
     raw = params.substitute_spec(raw, variables, where=f"case '{raw['name']}' ({source_file})")
-    # Names whose query was skipped stood in for themselves just now, so that
-    # listing works. They must NOT survive onto the case: query_file contents
-    # are substituted at run time, and a literal "${batch_id}" reaching an
-    # engine is precisely the failure this design exists to prevent. Dropping
-    # them restores the clear "unresolved parameter" error instead.
     for name in deferred_names:
         variables.pop(name, None)
 
@@ -449,21 +412,10 @@ def load_cases_from_file(
     if not isinstance(doc, dict):
         raise ValueError(f"{path}: top level must be a mapping")
     defaults = doc.get("defaults", {}) or {}
-    # A file-level vars: block sits beside cases: and applies to all of them.
-    # For a single-case document it is part of the case itself, and _build_case
-    # picks it up there instead.
     multi = "cases" in doc
     file_vars = (doc.get("vars", {}) or {}) if multi else {}
-    # param_queries: sits at document level either way -- beside cases:, or as
-    # a key of the single case, which is the document.
     param_queries = doc.get("param_queries", {}) or {}
     raw_cases = doc["cases"] if multi else [doc]
-
-    # Resolve query-backed parameters ONCE per file, not per case. Two cases
-    # that both key off the latest batch must see the same batch: resolving
-    # per case would let a batch landing mid-run compare two different
-    # populations, which is exactly the kind of difference that looks like a
-    # data defect.
     query_vars: Dict[str, str] = {}
     deferred: frozenset = frozenset()
     if param_queries and resolve_queries:
@@ -474,11 +426,6 @@ def load_cases_from_file(
             param_queries, seed, base_dir=os.path.dirname(path) or "."
         )
     elif param_queries:
-        # Resolution is off (rowparity list), but these names are legitimately
-        # declared -- failing with "unresolved parameter" would be wrong and
-        # would stop listing cases at all. Substitute each to its own literal
-        # placeholder: a single pass, so the text is unchanged and visibly
-        # still-unresolved rather than a fabricated value.
         query_vars = {str(name).lower(): "${" + str(name) + "}" for name in param_queries}
         deferred = frozenset(query_vars)
 

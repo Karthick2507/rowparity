@@ -1,32 +1,3 @@
-"""One SQL file, parameterised per side -- and what still has to be checked.
-
-There were two copies of this query, ~2,000 lines each, differing in three
-lines. A test diffed them after normalising the catalog away, because at 185 KB
-"identical apart from the catalog" is a promise you cannot verify by eye. That
-test is gone, along with the file it was guarding: the query now reads
-``from ${facts}.ad`` and each side supplies ``facts``. A file cannot drift from
-itself, so the entire class of "someone edited one copy" is unrepresentable
-rather than merely tested for.
-
-That was never the only hazard, though, and collapsing to one file changes the
-shape of the remaining ones rather than removing them:
-
-* **The population guard.** Comparing a sampled side against an unsampled one
-  is not a comparison -- every sum is over a different number of rows. This
-  cost a 77-minute run to learn (2,719 rows vs 1,113,423, a ratio of 409). The
-  filter is now a single case-level var used by both sides, so "one side
-  sampled" is also unrepresentable; what these tests check is that it stayed
-  that way, i.e. that nobody moved it into a per-side ``vars:`` block.
-* **The substitution must reproduce the original queries exactly.** The
-  template was mechanically derived from the old Hoover file, and both renders
-  were verified byte-for-byte against the two originals before they were
-  deleted. The renders are pinned here so a future edit to the template cannot
-  quietly change what runs.
-* **The dimension catalog is shared.** ``d_network`` and ``d_ad_unit`` live in
-  ``db.default`` for both sides. Templating them would let a dimension
-  difference masquerade as a migration defect, so they stay literal -- and that
-  is now guaranteed by there being one file, not asserted by a test.
-"""
 import os
 import re
 
@@ -44,10 +15,10 @@ HOOVER_PLUS = "etl.public_test1"
 
 SAMPLING_MARKER = "--sampling filter"
 EXPECTED_SAMPLING_LINES = 3  # one per UNION ALL branch
-EXPECTED_FACT_REFS = 3       # ad, ack, ack
+EXPECTED_FACT_REFS = 3  # ad, ack, ack
 
 BATCH_PLACEHOLDER = "${arena.presto.var.process_batch_id}"
-EXPECTED_BATCH_REFS = 3      # one predicate per UNION ALL branch
+EXPECTED_BATCH_REFS = 3  # one predicate per UNION ALL branch
 
 
 @pytest.fixture(scope="module")

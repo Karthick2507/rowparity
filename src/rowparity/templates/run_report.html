@@ -479,7 +479,7 @@
     var table = el("table");
     var thead = el("thead");
     var hr = el("tr");
-    var headers = ["Column", "Status", "Expected type", "Actual type"];
+    var headers = ["Column", "Status", "Hoover type", "Hoover++ type"];
     if (showDiffRows) { headers.push("Diff rows"); }
     headers.forEach(function (h) { hr.appendChild(el("th", null, h)); });
     thead.appendChild(hr);
@@ -543,13 +543,13 @@
       "share of each group that differs - a small group that is badly wrong " +
       "outranks a large one that is slightly off."));
 
-    var A = c.expected_label || "expected";
-    var B = c.actual_label || "actual";
+    var A = c.expected_label || "Hoover";
+    var B = c.actual_label || "Hoover++";
     var scroll = el("div", "scroll tablewrap");
     var table = el("table");
     var hr = el("tr");
     [b.columns.join(" / "), "Rows in " + A, "Rows in " + B,
-     "Missing in " + B, "Added in " + B, "Changed", "Differing"]
+     "Missing in " + B, "Added in " + B, "Changed in Hoover++", "Differing"]
       .forEach(function (h) { hr.appendChild(el("th", null, h)); });
     var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
 

@@ -30,17 +30,6 @@ import os
 import re
 from typing import Any, Dict, Iterable, Mapping, Optional
 
-# Only identifier-shaped names are placeholders. Anything else containing a
-# '$' -- a shell snippet in a comment, a regex -- passes through untouched.
-#
-# Dots are allowed inside the name because real query files arrive already
-# templated by another system, and those names are namespaced:
-# ``${arena.presto.var.process_batch_id}``. Refusing to recognise them was
-# worse than it sounds -- the name did not match, so it was neither substituted
-# nor reported unresolved, and the literal text reached Presto inside quotes as
-# a valid string that matches no batch. Both sides then return zero rows and the
-# run reports EQUIVALENT: a clean pass proving nothing. Recognising the name
-# turns that into either a substitution or a loud error.
 _PLACEHOLDER = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_.]*)\}")
 
 ENV_PREFIX = "ROWPARITY_VAR_"
@@ -102,15 +91,6 @@ def merge_side_vars(
     copies of a 2,000-line file kept in step by a test. That works for one
     query and does not survive a hundred: the files drift, the run still
     succeeds, and it reports SQL differences as data differences.
-
-    **A side var outranks --param and the environment**, which inverts the
-    precedence everywhere else in this module. That is deliberate. A side var
-    is not a knob, it is half of what makes the two sides different; letting
-    ``--param facts=x`` reach both sides would point them at the same catalog
-    and produce a confident EQUIVALENT for comparing a table with itself. A
-    case that *wants* a side overridable can say so by templating the value
-    (``vars: {facts: "${old_catalog}"}``), which resolves normally and stays
-    fully controllable from the CLI.
     """
     merged = dict(variables or {})
     merged.update(_stringify(side_vars))

@@ -1,18 +1,3 @@
-"""schema_introspect._describe_trino coverage, without a live cluster.
-
-Uses the same fake-cursor approach as test_trino_pushdown.py: a stand-in
-connection records the SQL it is handed and replays canned answers, which is
-enough to pin down the two things that actually matter here —
-
-  1. WHICH mechanism is chosen (DESCRIBE for `table:`, LIMIT 0 probe for a
-     derived `query:`), since that is the module's metadata-only contract.
-  2. HOW the answer is shaped into {column: type}.
-
-What it deliberately cannot verify is whether a real Presto/Trino gateway
-returns the type strings we expect — that needs the live check in
-scripts/trino_connectivity_check.py.
-"""
-
 import pytest
 
 from rowparity import schema_introspect as si

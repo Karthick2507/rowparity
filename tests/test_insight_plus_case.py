@@ -1,18 +1,3 @@
-"""The shipped Hoover / Hoover++ parity case.
-
-Offline only -- no connection is made. These assert the wiring: that the case
-loads, that each side resolves to the right query against the right catalog,
-and that the batch parameter cannot be skipped.
-
-That last one carries the most weight. The query files are templated by another
-system and carry ``${arena.presto.var.process_batch_id}``. Until dotted names
-were recognised, that placeholder matched nothing, so it was neither
-substituted nor reported unresolved -- the literal text reached Presto inside
-quotes as a syntactically valid predicate matching no batch. Both sides
-returned zero rows, the multiset diff found nothing missing and nothing added,
-and the run reported EQUIVALENT. A green result proving nothing is the worst
-outcome available to a verification tool, so it gets tests.
-"""
 import os
 import re
 
@@ -195,9 +180,7 @@ class TestComparisonSettings:
 # --------------------------------------------------------------------------- #
 # Keys: the GROUP BY dimensions, kept in sync with the query
 # --------------------------------------------------------------------------- #
-HOOVER_SQL = os.path.join(
-    REPO, "sql", "insight_plus", "f_demand_portfolio_hourly.sql"
-)
+HOOVER_SQL = os.path.join(REPO, "sql", "insight_plus", "f_demand_portfolio_hourly.sql")
 
 
 def _strip_sql_comments(sql: str) -> str:
@@ -212,7 +195,7 @@ def _strip_sql_comments(sql: str) -> str:
 def _outer_select_items(sql: str):
     """The outer SELECT list, split on top-level commas."""
     body = _strip_sql_comments(sql).split("\nfrom (", 1)[0]
-    body = body[body.rfind("\nselect") + len("\nselect"):]
+    body = body[body.rfind("\nselect") + len("\nselect") :]
     items, depth, current = [], 0, []
     for ch in body:
         if ch == "(":

@@ -15,6 +15,7 @@ correctness one.
 Driven by a fake cursor. There is no cluster here, and the behaviour under test
 is the fetch loop rather than anything Trino does.
 """
+
 import pyarrow as pa
 import pytest
 
@@ -86,8 +87,6 @@ def _load(fake, columns, rows, **spec):
 
 class TestBatchSizing:
     def test_wide_results_get_smaller_batches(self):
-        # A cell budget, not a row count: a 262-column row is two orders of
-        # magnitude heavier than a 1-column row.
         assert _trino_batch_rows(262) < _trino_batch_rows(10)
 
     def test_narrow_results_are_capped(self):
@@ -152,8 +151,6 @@ class TestResultsAreUnchanged:
 
 class TestEmptyResults:
     def test_no_rows_still_carries_the_columns(self, fake_trino):
-        # Losing the schema turns "zero rows" into "no such columns", and the
-        # comparison then reports every column as missing on one side.
         table, _ = _load(fake_trino, ["a", "b", "c"], [])
         assert table.num_rows == 0
         assert table.column_names == ["a", "b", "c"]
@@ -164,14 +161,6 @@ class TestEmptyResults:
 
 
 class TestTypeUnificationAcrossBatches:
-    """The hazard batching introduces.
-
-    Types are inferred per batch. A column that is all-NULL in the first batch
-    infers as Arrow `null`; the same column with integers in a later batch
-    infers as int64. Concatenating those without promotion raises -- so batching
-    without this would trade a memory bug for a correctness bug.
-    """
-
     def test_a_column_null_in_the_first_batch_then_populated(self, fake_trino):
         rows = [(None,)] * 4 + [(7,)] * 4
         table, _ = _load(fake_trino, ["v"], rows, fetch_batch_rows=4)
@@ -191,20 +180,10 @@ class TestTypeUnificationAcrossBatches:
         assert table.column("v").to_pylist() == [1, 1, None, None, 3, 3]
 
     def test_a_column_null_in_every_batch_stays_null_typed(self, fake_trino):
-        # Documents the limitation rather than claiming it is fixed: with no
-        # value anywhere there is nothing to infer from, and only an explicit
-        # schema from cursor.description could resolve it.
         table, _ = _load(fake_trino, ["v"], [(None,)] * 8, fetch_batch_rows=4)
         assert pa.types.is_null(table.schema.field("v").type)
 
     def test_strings_and_numbers_in_separate_batches_do_not_silently_merge(self, fake_trino):
-        # Permissive promotion unifies null with a real type; it must not
-        # quietly reconcile two genuinely incompatible types, which would hide
-        # a real schema difference.
-        #
-        # Matched narrowly on purpose: pytest.raises(Exception) would also pass
-        # if this test raised for its own reasons -- a typo in the fixture, a
-        # bad column name -- and would then be asserting nothing.
         rows = [("text",)] * 2 + [(5,)] * 2
         with pytest.raises(pa.lib.ArrowTypeError, match="incompatible types"):
             _load(fake_trino, ["v"], rows, fetch_batch_rows=2)

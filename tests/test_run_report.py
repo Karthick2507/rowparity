@@ -1,14 +1,3 @@
-"""Single-run HTML report (``rowparity run --html``).
-
-The report is the deliverable a reader actually looks at, so the failures worth
-guarding are the ones that make it *confidently wrong* rather than broken:
-
-* a case that errored being silently absent, so the page implies everything ran
-* a keyless run's MATCHED columns reading as "values agree"
-* a value from the compared data breaking out of the inline <script> block
-* a Decimal or datetime in an example row raising mid-serialisation, on
-  precisely the runs that had something to report
-"""
 import json
 import os
 import re
@@ -25,9 +14,7 @@ from rowparity.run_report import (
     write_run_report,
 )
 
-DATA_RE = re.compile(
-    r'<script id="rowparity-data" type="application/json">(.*?)</script>', re.S
-)
+DATA_RE = re.compile(r'<script id="rowparity-data" type="application/json">(.*?)</script>', re.S)
 
 
 def _result(expected_rows, actual_rows, **cfg):
@@ -80,12 +67,19 @@ class TestPayload:
         assert case["change_signatures"][0]["count"] == 5
 
     def test_timing_is_carried_as_numbers_and_text(self):
-        case = build_payload([("c", Case(
-            name="t",
-            expected={"type": "inline", "rows": ROWS},
-            actual={"type": "inline", "rows": ROWS},
-            compare={"keys": ["id"]},
-        ).run())])["cases"][0]
+        case = build_payload(
+            [
+                (
+                    "c",
+                    Case(
+                        name="t",
+                        expected={"type": "inline", "rows": ROWS},
+                        actual={"type": "inline", "rows": ROWS},
+                        compare={"keys": ["id"]},
+                    ).run(),
+                )
+            ]
+        )["cases"][0]
         assert case["timing"]["total"] > 0
         assert case["timing"]["total_text"].endswith("s")
 
@@ -118,9 +112,7 @@ class TestErroredCasesAreVisible:
         assert "broken" in html
 
     def test_errors_come_after_real_results(self):
-        payload = build_payload(
-            [("ok", _result(ROWS, ROWS))], [("broken", RuntimeError("x"))]
-        )
+        payload = build_payload([("ok", _result(ROWS, ROWS))], [("broken", RuntimeError("x"))])
         assert [c["case"] for c in payload["cases"]] == ["ok", "broken"]
 
 
@@ -202,8 +194,8 @@ class TestCliIntegration:
         out = tmp_path / "nested" / "report.html"
 
         rc = cli_main(["run", str(case), "--quiet", "--html", str(out)])
-        assert rc == 1                      # the case differs
-        assert out.is_file()                # …and the report was still written
+        assert rc == 1  # the case differs
+        assert out.is_file()  # …and the report was still written
         assert "Wrote HTML report" in capsys.readouterr().out
 
         payload = _payload_from_html(out.read_text(encoding="utf-8"))
@@ -270,8 +262,10 @@ def test_write_run_report_returns_the_path(tmp_path):
     assert os.path.isfile(out)
 
 
-@pytest.mark.parametrize("status", ["MATCHED", "MATCHED - TYPE DIFF",
-                                    "MATCHED - VALUE DIFF", "MATCHED - EQUIVALENT", "DIFF"])
+@pytest.mark.parametrize(
+    "status",
+    ["MATCHED", "MATCHED - TYPE DIFF", "MATCHED - VALUE DIFF", "MATCHED - EQUIVALENT", "DIFF"],
+)
 def test_every_status_has_styling_in_the_template(status):
     # An unstyled status renders as a plain word and stops standing out, which
     # is the whole job of the column table.
@@ -312,8 +306,9 @@ class TestSideLabels:
         assert result.actual_label == "Hoover++"
 
     def test_labels_reach_the_payload(self):
-        case = build_payload([("c", self._labelled(
-            expected_label="Hoover", actual_label="Hoover++"))])["cases"][0]
+        case = build_payload(
+            [("c", self._labelled(expected_label="Hoover", actual_label="Hoover++"))]
+        )["cases"][0]
         assert case["expected_label"] == "Hoover"
         assert case["actual_label"] == "Hoover++"
 
@@ -349,7 +344,9 @@ class TestSideLabels:
 
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "scripts", "cases_insight_plus", "f_demand_portfolio_hourly.yaml",
+            "scripts",
+            "cases_insight_plus",
+            "f_demand_portfolio_hourly.yaml",
         )
         if not os.path.isfile(path):
             pytest.skip("insight_plus case not present")
@@ -377,7 +374,8 @@ class TestEncoding:
     def test_template_declares_a_charset_first(self, name):
         path = os.path.join(
             os.path.dirname(os.path.abspath(__import__("rowparity").__file__)),
-            "templates", name,
+            "templates",
+            name,
         )
         with open(path, encoding="utf-8") as fh:
             head = fh.read(200)
@@ -387,7 +385,8 @@ class TestEncoding:
     def test_template_text_is_ascii(self, name):
         path = os.path.join(
             os.path.dirname(os.path.abspath(__import__("rowparity").__file__)),
-            "templates", name,
+            "templates",
+            name,
         )
         with open(path, encoding="utf-8") as fh:
             content = fh.read()
@@ -408,8 +407,7 @@ class TestEncoding:
     def test_a_non_ascii_data_value_still_round_trips(self):
         # Data may legitimately be non-ASCII -- that is what the charset
         # declaration is for. Only the template's own text is held to ASCII.
-        result = _result([{"id": 1, "v": "café — ünïcode"}],
-                         [{"id": 1, "v": "plain"}], keys=["id"])
+        result = _result([{"id": 1, "v": "café — ünïcode"}], [{"id": 1, "v": "plain"}], keys=["id"])
         payload = _payload_from_html(render_run_report([("c", result)]))
         assert payload["cases"][0]["changed"] == 1
 
@@ -433,9 +431,9 @@ class TestErrorBlockRendering:
     MULTILINE = (
         'Binder Error: Referenced column "nope" not found in FROM clause!\n'
         'Candidate bindings: "group_id"\n'
-        '\n'
-        'LINE 1: SELECT nope FROM hoover\n'
-        '               ^'
+        "\n"
+        "LINE 1: SELECT nope FROM hoover\n"
+        "               ^"
     )
 
     def test_newlines_survive_into_the_payload(self):

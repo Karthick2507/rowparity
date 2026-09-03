@@ -54,44 +54,13 @@ class CompareConfig:
     trim_strings: bool = False
     case_insensitive: bool = False
     unordered_list_columns: List[str] = field(default_factory=list)
-    # Label differences that are only a different spelling of absence
-    # (null vs 0 vs [] vs false). CLASSIFICATION ONLY: it never changes a
-    # verdict, and never makes NULL equal to anything in hashing.py. Off by
-    # default -- turning it on trades detection power for tolerance, and that
-    # has to be a deliberate, reviewable line in a case file.
     null_equivalence: bool = False
-    # If True, a column present on one side only (or with a different logical type)
-    # fails the comparison. If False, we compare the intersection and just report.
     strict_columns: bool = False
     max_examples: int = 20
-    # Two empty tables are trivially equivalent, and that is the problem: a run
-    # over zero rows compares nothing and reports EQUIVALENT with exit 0. It is
-    # indistinguishable from a real pass and is almost always a batch that aged
-    # out, a mistyped parameter, or a filter that matched nothing. Set True only
-    # where an empty result is a legitimate expected outcome.
     allow_empty: bool = False
-    # The mirror image of allow_empty: both sides pointing at the same source
-    # compare a table with itself and report EQUIVALENT regardless of the data.
-    # Set True only where self-comparison is the actual intent.
     allow_identical_sources: bool = False
-    # Key column(s) to split the row differences by, so a comparison over a
-    # UNION of several branches can say which branch disagrees.
-    #
-    # Restricted to key columns because a key is the only thing guaranteed
-    # identical on both sides of a paired row. Break down by a non-key column
-    # and a *changed* row has two different group values -- one per side -- so
-    # there is no answer to which group it belongs to, and whichever side the
-    # code happened to read would be an arbitrary choice presented as a fact.
-    # Keyed comparisons only.
     breakdown_by: Optional[List[str]] = None
-    # Look for a single key column whose drift turned one logical row into a
-    # missing + added pair. Off by default: the analysis is O(columns x rows)
-    # and only means anything for a keyed case that has both.
     near_miss: bool = False
-    # Canonicalize whole columns at once (numpy / Arrow compute) instead of
-    # dispatching per cell, falling back to the row-wise path for nulls and
-    # types that don't vectorize (decimal, date, time, binary, nested). Same
-    # results, faster on large scalar-heavy tables. Opt-in since it's newer.
     vectorized: bool = False
 
     def canon(self) -> CanonConfig:
@@ -109,8 +78,6 @@ class ColumnDiff:
     column: str
     expected: Any
     actual: Any
-    # Set when null_equivalence is on and this difference is only a different
-    # spelling of absence. The values still differ; this only records why.
     equivalent: bool = False
 
 
@@ -136,9 +103,6 @@ class ColumnDelta:
 
     column: str
     rows: int = 0
-    # Direction tallies. Nulls are counted apart from value moves: "became
-    # null" is a different failure from "got smaller", and averaging them
-    # together would hide both.
     lower: int = 0  # actual < expected
     higher: int = 0  # actual > expected
     became_null: int = 0
@@ -146,8 +110,6 @@ class ColumnDelta:
     numeric: int = 0  # rows where a delta could actually be computed
     min_delta: Optional[float] = None
     max_delta: Optional[float] = None
-    # Non-numeric columns get the most common (expected -> actual) pair
-    # instead, which is the same idea in the only form strings support.
     top_pair: Optional[Tuple[Any, Any]] = None
     top_pair_count: int = 0
 
@@ -249,54 +211,22 @@ class ComparisonResult:
     duplicate_keys_actual: int = 0
     examples: List[RowDiff] = field(default_factory=list)
     change_signatures: Dict[Tuple[str, ...], ChangeSignature] = field(default_factory=dict)
-    # What was actually compared. "rows" for a data comparison, "schema" for a
-    # schema-only check -- summary() and the per-column CSV both need to tell
-    # them apart, and 0 rows is not a reliable signal (an empty table is also 0).
     kind: str = "rows"
-    # Column -> type, when the producer knows them. Populated by schema checks
-    # so a per-column report can name the type of a column that exists on only
-    # one side; left empty by row comparisons, which never introspect types.
     expected_schema: Dict[str, str] = field(default_factory=dict)
     actual_schema: Dict[str, str] = field(default_factory=dict)
-    # column -> how many changed rows whose difference in that column was
-    # classified as merely a different spelling of absence. Populated only
-    # when null_equivalence is on. Subtract from the per-column totals in
-    # change_signatures to get the count of genuine disagreements.
     equivalent_diff_columns: Dict[str, int] = field(default_factory=dict)
-    # How to name the two sides in reports. "expected"/"actual" is accurate but
-    # abstract; a reader looking at a migration wants "Hoover" and "Hoover++".
-    # Presentation, not comparison -- nothing here reads them.
     expected_label: str = "expected"
     actual_label: str = "actual"
-    # How to digest one row for a human: [{label, columns}]. Presentation only,
-    # like the two labels above -- nothing in the comparison reads it.
     row_summary: List[Dict[str, Any]] = field(default_factory=list)
-    # One drill-down per run: a single query per side covering every differing
-    # row, plus the transaction ids each returned. See drilldown.py.
     drilldown: Optional[Any] = None  # drilldown.DrilldownResult
-    # Keyless only: columns whose value multiset differs between the two sides.
-    # Keyed comparisons attribute differences per row via change_signatures and
-    # do not need this. See _compare_keyless for how it is computed.
     column_value_mismatch: List[str] = field(default_factory=list)
-    # Row differences split by cfg.breakdown_by, computed over every row rather
-    # than over the bounded `examples` list -- a breakdown derived from 50 of
-    # 366 differing rows would describe a sample while looking like the whole
-    # picture. Empty when no breakdown column is set.
     breakdown_columns: List[str] = field(default_factory=list)
     breakdown: Dict[Any, "BreakdownGroup"] = field(default_factory=dict)
-    # Key tuples of every unpaired row, kept so near_miss.analyse() can look
-    # for the column that broke the pairing. These are references to tuples the
-    # index already holds, so the cost is one pointer each, not a copy.
     missing_keys: List[Tuple] = field(default_factory=list)
     added_keys: List[Tuple] = field(default_factory=list)
     changed_keys: List[Tuple] = field(default_factory=list)
     near_miss: Optional[Any] = None  # near_miss.NearMissResult
 
-    # Wall-clock seconds, filled in by Case.run(). Kept as three numbers rather
-    # than one total because "the query was slow" and "the comparison was slow"
-    # have nothing in common: the first is a warehouse problem, the second is
-    # ours. Zero means "not measured" -- compare_tables() called directly does
-    # not set them.
     expected_load_seconds: float = 0.0
     actual_load_seconds: float = 0.0
     compare_seconds: float = 0.0
@@ -315,8 +245,6 @@ class ComparisonResult:
     def summary(self) -> str:
         head = "EQUIVALENT" if self.equivalent else "DIFFERENT"
         if self.kind == "schema":
-            # A schema check fetches no rows by design; reporting it as a
-            # keyless multiset comparison of 0 rows is actively misleading.
             return (
                 f"[{head}] schema-only | columns: {len(self.compared_columns)} compared, "
                 f"{len(self.columns_only_in_expected)} only in expected, "
@@ -367,11 +295,6 @@ def compare_tables(expected: pa.Table, actual: pa.Table, cfg: CompareConfig) -> 
         columns_only_in_expected=only_exp,
         columns_only_in_actual=only_act,
         type_mismatches=type_mismatches,
-        # Carry both schemas so reporters can show a column's type on each
-        # side. Only schema_check used to fill these, so a row comparison's
-        # per-column CSV printed empty type columns for every row -- including
-        # for the "present on one side only" rows, where the type is the single
-        # most useful thing to know about the missing column.
         expected_schema={f.name: str(f.type) for f in expected.schema},
         actual_schema={f.name: str(f.type) for f in actual.schema},
     )
@@ -470,13 +393,8 @@ def _compare_keyed(
 
     exp_keys, act_keys = set(exp_index), set(act_index)
 
-    # Positions of the breakdown columns within the key tuple. The tuple holds
-    # canonicalised *values*, not a hash, so this is a plain lookup -- which is
-    # the whole reason the breakdown is restricted to key columns.
     bd_columns = list(cfg.breakdown_by or [])
-    # Every breakdown column must be part of the key -- see CompareConfig for
-    # why. cases.py checks this before a row is fetched; this is the backstop
-    # for compare_tables() called directly.
+
     for c in bd_columns:
         if c not in keys:
             raise ValueError(
@@ -633,9 +551,7 @@ def _accumulate_deltas(stats: ChangeSignature, coldiffs, cfg: CompareConfig) -> 
         ev, av = _as_number(cd.expected), _as_number(cd.actual)
         if ev is not None and av is not None:
             diff = av - ev
-            # Quantise to the tolerance grid first. Without this no float
-            # column would ever report a constant delta -- the last bits would
-            # differ on every row and the most useful signal would never fire.
+
             if cfg.float_tolerance > 0:
                 diff = round(diff / cfg.float_tolerance) * cfg.float_tolerance
             delta.numeric += 1
@@ -648,8 +564,6 @@ def _accumulate_deltas(stats: ChangeSignature, coldiffs, cfg: CompareConfig) -> 
             scale = abs(ev) or 1.0
             worst = max(worst, abs(diff) / scale)
         else:
-            # Strings and everything else: the dominant (expected -> actual)
-            # pair is the closest thing to a delta that they support.
             pair = (cd.expected, cd.actual)
             try:
                 if delta.top_pair == pair:
@@ -712,27 +626,6 @@ def _compare_keyless(
     exp_counts: Counter = Counter()
     act_counts: Counter = Counter()
     sample: Dict[bytes, dict] = {}
-
-    # Per-column value fingerprints, so a keyless run can still say WHICH
-    # columns differ.
-    #
-    # Without a key there is no way to pair a missing row with the added row it
-    # corresponds to, so no per-row attribution exists -- and the report used to
-    # mark all 262 columns MATCHED beside a million row differences, which reads
-    # as "the columns are fine" when nothing of the sort was checked.
-    #
-    # Two columns hold the same multiset of values iff the sum of their value
-    # hashes matches (addition, not XOR, so multiplicity is preserved; order is
-    # irrelevant because addition commutes -- the same property the row
-    # comparison relies on). One integer per column instead of a Counter of a
-    # million values, which at 262 columns would not fit in memory.
-    #
-    # Costs about 16% on a 100k x 263 comparison, measured.
-    #
-    # These use Python's hash(), which is randomised per process for strings.
-    # That is fine because both sides are hashed inside one process and only
-    # ever compared with each other -- but it means the values are NOT stable
-    # across runs and must never be persisted or compared between processes.
     exp_col_hash = dict.fromkeys(cols, 0)
     act_col_hash = dict.fromkeys(cols, 0)
 
