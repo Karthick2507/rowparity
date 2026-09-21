@@ -1,6 +1,7 @@
 # PRISM
 
-**You write the parity SQL. PRISM writes the other four files.**
+**You write the parity SQL. PRISM writes three more files. A fourth --
+the wiring test -- you never write at all.**
 
 ```bash
 python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
@@ -11,15 +12,17 @@ python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
                                  │
                               PRISM
                                  │
-                                 │
                          prism/output/   ← never your source tree
-        ┌────────────────┬───────┴────────┬──────────────────────┐
+        ┌────────────────┬────────────────┬──────────────────────┐
         ▼                ▼                ▼                      ▼
-  scripts/             tests/           tests/           sql/insight_plus/
-  cases_insight_plus/  test_..._        test_..._        ..._drilldown.sql
-  ..._hourly.yaml      case.py          sql_sync.py
+  scripts/             tests/       sql/insight_plus/    sql/insight_plus/
+  cases_insight_plus/  test_..._    ..._drilldown.sql     f_supply..._.sql
+  ..._hourly.yaml      sql_sync.py                        (copy of yours)
 
                         review it, then  cp -r prism/output/* .
+                                 │
+                    tests/test_case_wiring.py already covers it --
+                    nothing to generate, nothing to copy for that part.
 ```
 
 ## Why this can work at all
@@ -47,10 +50,11 @@ step, and the drift with it.
 will not be. rowparity is the product; PRISM is an external utility that writes
 files for it. Run it with `python -m prism` from the repo root.
 
-**Not a dependency.** Nothing in `src/rowparity/` imports this package, and the
-files PRISM generates do not import it either — the SELECT-list parser is
-*inlined* into the generated test so your suite never depends on a code
-generator at run time.
+**Not a dependency.** Nothing in `src/rowparity/` imports this package, and
+neither do the files PRISM generates, nor `tests/test_case_wiring.py` — the
+SELECT-list parser is *inlined* there too, so your suite never depends on a
+code generator at run time. `prism/tests/test_roundtrip.py` guards that copy
+against drift from `prism/analyse.py`'s real one.
 
 **Not an owner.** Every generated file says it was generated, from what, and
 that it is meant to be edited. `generate` refuses to overwrite an existing file
@@ -67,7 +71,7 @@ not by PRISM itself.
 
 ```bash
 python -m prism inspect  <file.sql>     # what it read; writes nothing
-python -m prism generate <file.sql>     # write the four files into prism/output/
+python -m prism generate <file.sql>     # write the three files into prism/output/
 python -m prism verify   <file.sql>     # diff what it would write against the repo
 ```
 
@@ -80,11 +84,19 @@ You generate, read what came out, and copy it into place yourself.
 ```
 prism/output/
   scripts/cases_insight_plus/f_supply_portfolio_hourly.yaml
-  tests/test_f_supply_portfolio_hourly_case.py
   tests/test_f_supply_portfolio_hourly_sql_sync.py
   sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql
   sql/insight_plus/f_supply_portfolio_hourly.sql        ← your source, copied in
 ```
+
+**No `test_<name>_case.py`.** A generated one was identical in shape to every
+other case's -- eleven of the same tests, differing only in a constants block
+the `Case` object and its own SQL already carry. `tests/test_case_wiring.py`
+derives that block itself and is parametrized over every case
+`discover_cases()` finds under `scripts/cases_insight_plus/`, so a case dropped
+in beside this one is covered the moment PRISM finishes -- nothing to generate,
+nothing to copy, nothing to keep in sync by hand. See §"Why one shared wiring
+test" below.
 
 The output **mirrors the repo layout** rather than being a flat dump, and that
 is forced rather than chosen: the generated YAML carries
@@ -116,7 +128,7 @@ the ones you copied.
 | `--no-copy-source` | do not copy the parity `.sql` into the output (the copy is what makes the preview runnable) |
 | `--dry-run` | say what would be written |
 | `--force` | overwrite files that exist |
-| `--only case sql_sync_test case_test drilldown` | regenerate a subset |
+| `--only case sql_sync_test drilldown` | regenerate a subset |
 | `--expected-facts` / `--actual-facts` | the two catalogs (defaults are this project's) |
 | `--show-diff` | on `verify`, print the unified diff |
 
@@ -138,12 +150,13 @@ python -m prism verify sql/insight_plus/f_demand_portfolio_hourly.sql \
 
 | Output | Derivation | Certainty |
 |---|---|---|
-| dimensions / metrics | a `sum()` in the SELECT item makes it a metric | exact |
+| dimensions / metrics | outermost call is an aggregate → metric; else dimension | exact |
 | `keys` | every dimension, sorted | exact |
 | branch count | `UNION ALL` occurrences, comments stripped first | exact |
 | `breakdown_by` | the one dimension that is a distinct literal in every branch | exact |
 | `unordered_list_columns` | `array[...]` = constructed = ordered; anything else yielding an array = passed through = unordered | exact |
-| the three test counts | `${facts}.`, sampling markers, batch predicates | exact |
+| the sql_sync test counts | `${facts}.`, sampling markers, batch predicates | exact |
+| the wiring checks | not generated at all — `tests/test_case_wiring.py` derives them live from the `Case` object | exact, and automatic |
 | `row_summary` | **column-name rules** in `rules.py` | **a guess — review it** |
 
 That last row is the only one PRISM guesses at, and it always says so in the
@@ -183,13 +196,53 @@ that predates PRISM:
    expected/actual .type and .vars.facts
    drilldown .bind, .kinds, .time
 
-28/28 generated tests pass against the real 185 KB query
+11/11 generated sql_sync tests pass against the real 185 KB query
+18/18 tests/test_case_wiring.py tests pass against the real case -- the SAME
+      18, unmodified, that pass for every other case in the directory
 ```
 
 `row_summary` differs, as it is meant to: rules produce 8 groups where the human
 chose 7. `prism/tests/test_roundtrip.py` asserts the match on everything else and
 asserts the *difference* here, because a test that pretended otherwise would be
 lying about where the uncertainty lives.
+
+## Why one shared wiring test
+
+A generated `test_<name>_case.py` had eleven tests, and every one of them
+existed only because the `Case` object hadn't been asked directly: `CASE_NAME`
+is `case.name`, `EXPECTED_FACTS`/`ACTUAL_FACTS` are `case.expected["vars"]`/
+`case.actual["vars"]`, `BATCH_PARAM` is `case.drilldown["time"]["param"]`,
+`EXPECTED_DIMENSIONS`/`METRICS` are one SQL parse away. Nothing in that
+constants block was a judgement call PRISM made -- it was a restatement of
+facts already sitting on the case, retyped once per case.
+
+`tests/test_case_wiring.py` asks the `Case` object instead of restating it. A
+generated `test_<name>_case.py` had 17 tests; the shared file has 18 -- one
+more (`test_both_sides_sample_identically`), because deriving from the case
+rather than a hand-typed constant made a check worth adding cheap.
+
+It discovers every case under `scripts/cases_insight_plus/` at collection time
+and parametrizes over the result, so it is proven twice over in this repo:
+against `f_demand_portfolio_hourly` (18/18) and, during development, against a
+second case cloned from it under a different name -- same 18 tests, `[36
+passed]` for the pair, and when one clone's `keys:` was deliberately broken,
+exactly one test failed, named to the clone, with the original untouched.
+(`pytest tests/test_case_wiring.py -q` collects 19 items, not 18 -- the 18
+per-case tests plus one always-collected guard, `test_the_case_directory_loads_at_all`,
+described below.)
+
+Dropping a new case's `.yaml`/`.sql` in beside an existing one is enough. There
+is no fifth file to generate, copy, or keep in sync by hand.
+
+Parametrizing at module scope carries a hazard: computing the parametrize list
+by calling `discover_cases()` at import time means a broken case YAML raises
+*during collection*, and pytest's default reaction to a collection error is to
+abort the whole session -- every unrelated test file, not just this one. Fixed
+by catching the exception at module scope, storing it, and leaving the
+parametrize list empty on failure (zero test items, not an error) while a
+dedicated, always-collected test -- `test_the_case_directory_loads_at_all` --
+re-raises it as an ordinary failure. A broken case YAML now fails exactly that
+one test; the rest of the suite runs normally.
 
 ## Layout
 
@@ -198,17 +251,23 @@ prism/
   __main__.py      python -m prism
   analyse.py       .sql → QueryProfile.  Deterministic. Stdlib only.
   rules.py         the ONE judgement call, isolated so it is swappable
-  generate.py      QueryProfile → four files.  Pure templating.
+  generate.py      QueryProfile → three files.  Pure templating.
   cli.py           inspect | generate | verify
   tests/
     test_analyse.py    the parser, against known-correct numbers
-    test_roundtrip.py  PRISM vs the hand-written case
+    test_roundtrip.py  PRISM vs the hand-written case, and the drift guard
+                       on tests/test_case_wiring.py's inlined parser
+
+tests/
+  test_case_wiring.py   shared, parametrized wiring test -- NOT generated,
+                        NOT per-case. Covers every case PRISM writes for.
 ```
 
 `QueryProfile` is the seam. All the risk is on the analysis side of it — a
-mis-parsed SELECT list makes all four files wrong — so analysis is separately
+mis-parsed SELECT list makes every output wrong — so analysis is separately
 testable, and rendering that reads a dataclass is hard to get subtly wrong. A
-fifth output would cost one function.
+fourth generated output would cost one function; a case that needs nothing
+generated at all — the wiring test — cost removing one instead.
 
 ## Where a model would go later
 
@@ -246,8 +305,8 @@ rowparity list prism/output/scripts/cases_insight_plus --check \
 
 # 5. install, then the checks that cost nothing
 cp -r prism/output/* .
-pytest tests/test_f_supply_portfolio_hourly_case.py \
-       tests/test_f_supply_portfolio_hourly_sql_sync.py -q
+pytest tests/test_f_supply_portfolio_hourly_sql_sync.py -q   # this case's SQL checks
+pytest tests/test_case_wiring.py -q                          # every case, incl. this one
 
 # 6. finish the drill-down's TODO(you) branch predicates, then run it
 rowparity run scripts/cases_insight_plus --select f_supply_portfolio_hourly \
