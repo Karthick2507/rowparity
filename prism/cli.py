@@ -129,7 +129,8 @@ def _generate(args) -> int:
         print(f"    rowparity list {cases} --check --param {p.batch_param}=<batch>")
     print("\n  Then install into the repo:")
     print(f"    cp -r {os.path.join(root, '')}* {repo_root()}/")
-    print(f"    pytest tests/test_{p.name}_case.py tests/test_{p.name}_sql_sync.py -q")
+    print(f"    pytest tests/test_{p.name}_sql_sync.py -q       # this case's SQL-specific checks")
+    print("    pytest tests/test_case_wiring.py -q             # every case's wiring, this one included")
     print("\n  PRISM never writes into your source tree. Copying is your decision.")
     return 0
 
@@ -194,7 +195,7 @@ def main(argv=None) -> int:
         sp.add_argument("--expected-label", default="Hoover")
         sp.add_argument("--actual-label", default="Hoover++")
         sp.add_argument("--only", nargs="*",
-                        choices=["case", "sql_sync_test", "case_test", "drilldown"],
+                        choices=["case", "sql_sync_test", "drilldown"],
                         help="restrict to these outputs")
 
     ins = sub.add_parser("inspect", help="show what PRISM read; write nothing")

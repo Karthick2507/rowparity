@@ -18,7 +18,7 @@ import datetime
 import os
 from typing import Dict, List
 
-from .analyse import AGGREGATE_FUNCTIONS, QueryProfile
+from .analyse import QueryProfile
 
 # Where the four files land, relative to whatever root they are written under.
 # These mirror the layout the existing case uses; PRISM does not invent a new one.
@@ -387,278 +387,7 @@ class TestBothSidesSampleIdentically:
 
 
 # --------------------------------------------------------------------------- #
-# 3. the wiring test
-# --------------------------------------------------------------------------- #
-def render_case_test(profile: QueryProfile, *,
-                     expected_facts: str = DEFAULT_EXPECTED_FACTS,
-                     actual_facts: str = DEFAULT_ACTUAL_FACTS) -> str:
-    p = profile
-    unordered = repr(p.unordered_arrays)
-    aggregates = "{\n    " + ",\n    ".join(
-        ", ".join(repr(a) for a in sorted(AGGREGATE_FUNCTIONS)[i:i + 5])
-        for i in range(0, len(AGGREGATE_FUNCTIONS), 5)
-    ) + ",\n}"
-    return f'''"""{_banner(p, "test")}
-
-Offline only -- no connection is made. These assert the wiring: that the case
-loads, that each side resolves to the right query against the right catalog, and
-that the batch parameter cannot be skipped.
-
-That last one carries the most weight. An unsubstituted placeholder reaches the
-engine inside quotes as a syntactically valid predicate matching no batch. Both
-sides return zero rows, the diff finds nothing, and the run reports EQUIVALENT.
-A green result proving nothing is the worst outcome available to a verification
-tool, so it gets tests.
-"""
-import os
-import re
-
-import pytest
-import yaml
-
-from rowparity.cases import Case, discover_cases
-from rowparity.params import ParamError, merge_side_vars
-from rowparity.sources import resolve_query
-
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CASES_DIR = os.path.join(REPO, "scripts", "cases_insight_plus")
-CASE_FILE = os.path.join(CASES_DIR, "{p.name}.yaml")
-SQL_FILE = os.path.join(REPO, "sql", "insight_plus", "{p.name}.sql")
-
-CASE_NAME = "{p.name}"
-BATCH = "20260812010000"
-BATCH_PARAM = "{p.batch_param}"
-BATCH_PLACEHOLDER = "${{{p.batch_param}}}"
-PARAMS = {{BATCH_PARAM: BATCH}}
-
-EXPECTED_FACTS = "{expected_facts}"
-ACTUAL_FACTS = "{actual_facts}"
-
-EXPECTED_DIMENSIONS = {len(p.dimensions)}
-EXPECTED_METRICS = {len(p.metrics)}
-EXPECTED_OUTPUT_COLUMNS = {p.output_columns}
-UNORDERED_ARRAYS = {unordered}
-
-
-def _case(params=PARAMS) -> Case:
-    for case in discover_cases(CASES_DIR, params):
-        if case.name == CASE_NAME:
-            return case
-    raise AssertionError(f"case {{CASE_NAME!r}} not found in {{CASES_DIR}}")
-
-
-def _sql(case: Case, side: str) -> str:
-    """Render one side exactly as load_source would.
-
-    Both sides read the same file, so the side's own vars: block is what makes
-    them different queries. Resolving with case.variables alone would leave
-    ${{facts}} unresolved and raise -- which is the point of merging here.
-    """
-    spec = case.expected if side == "expected" else case.actual
-    variables = merge_side_vars(spec.get("vars"), case.variables)
-    return resolve_query(spec, os.path.dirname(case.source_file), variables)
-
-
-@pytest.fixture(scope="module")
-def sql_files_present():
-    if not os.path.isfile(SQL_FILE):
-        pytest.skip(f"{{SQL_FILE}} not present")
-
-
-class TestWiring:
-    def test_case_loads(self, sql_files_present):
-        assert _case().name == CASE_NAME
-
-    def test_it_is_a_row_case(self, sql_files_present):
-        case = _case()
-        assert isinstance(case, Case)
-        assert case.expected["type"] == "trino"
-        assert case.actual["type"] == "trino"
-
-    def test_default_engine_not_pushdown(self, sql_files_present):
-        # breakdown_by and near_miss are computed per row by the default engine;
-        # a push-down engine aggregates in-warehouse and never sees one.
-        assert _case().engine is None
-
-    def test_the_two_sides_share_one_query_file(self, sql_files_present):
-        case = _case()
-        assert case.expected["query_file"] == case.actual["query_file"]
-
-    def test_the_sides_differ_only_in_the_fact_catalog(self, sql_files_present):
-        case = _case()
-        assert case.expected["vars"]["facts"] == EXPECTED_FACTS
-        assert case.actual["vars"]["facts"] == ACTUAL_FACTS
-
-    def test_side_vars_carry_no_placeholder(self, sql_files_present):
-        # A ${{name}} surviving into a side var could never resolve.
-        for side in ("expected", "actual"):
-            for value in (getattr(_case(), side).get("vars") or {{}}).values():
-                assert "${{" not in str(value)
-
-    def test_listing_works_without_the_batch_parameter(self, sql_files_present):
-        # Spec dicts substitute at LOAD time; a run-time value in a load-time
-        # slot breaks `rowparity list`.
-        assert discover_cases(CASES_DIR, {{}}, resolve_queries=False)
-
-    def test_each_side_reads_its_own_catalog(self, sql_files_present):
-        case = _case()
-        a, b = _sql(case, "expected"), _sql(case, "actual")
-        assert EXPECTED_FACTS in a and ACTUAL_FACTS not in a
-        assert ACTUAL_FACTS in b and EXPECTED_FACTS not in b
-
-
-class TestBatchParameter:
-    def test_it_substitutes_on_both_sides(self, sql_files_present):
-        case = _case()
-        for side in ("expected", "actual"):
-            sql = _sql(case, side)
-            assert BATCH in sql, side
-            # The PLACEHOLDER form, not the bare name. A .sql header comment
-            # legitimately lists its parameter names in prose -- writing them
-            # bare is the whole point, since ${{...}} inside a comment is a real
-            # substitution site. What must not survive is an unsubstituted one.
-            assert BATCH_PLACEHOLDER not in sql, f"{{side}} still carries the placeholder"
-
-    def test_omitting_it_raises_rather_than_running(self, sql_files_present):
-        # The false-pass guard. Silence here is what produces a green run over
-        # zero rows.
-        with pytest.raises(ParamError) as exc:
-            _sql(_case(params={{}}), "expected")
-        assert BATCH_PARAM in str(exc.value)
-
-    def test_the_yaml_ships_no_default_batch(self, sql_files_present):
-        # A literal default names a batch that ages out, and an aged-out batch
-        # returns zero rows on both sides -- equivalent, and meaningless.
-        with open(CASE_FILE, encoding="utf-8") as fh:
-            doc = yaml.safe_load(fh)
-        assert BATCH_PARAM not in (doc.get("vars") or {{}})
-        for case in doc["cases"]:
-            assert BATCH_PARAM not in (case.get("vars") or {{}})
-
-
-# --------------------------------------------------------------------------- #
-# The SELECT-list parser, INLINED on purpose.
-#
-# PRISM generated this file and then got out of the way. Importing PRISM here
-# would make your test suite depend on a code-generation tool at run time, so
-# that CI could not run without it and a change to PRISM could turn a test red
-# in a repository that never asked for PRISM at all. Thirty lines duplicated is
-# the cheaper trade.
-# --------------------------------------------------------------------------- #
-def _strip_sql_comments(sql):
-    # Before splitting, never after: a comment like "-- no use, could be
-    # removed" contains a comma, and splitting first tears the SELECT item in
-    # half. Commented-out columns would also be read as real ones.
-    sql = re.sub(r"/\\*.*?\\*/", "", sql, flags=re.S)
-    return "\\n".join(re.sub(r"--.*$", "", line) for line in sql.splitlines())
-
-
-def _outer_select_items(sql):
-    """The outer SELECT list, split on top-level commas only."""
-    body = _strip_sql_comments(sql).split("\\nfrom (", 1)[0]
-    body = body[body.rfind("\\nselect") + len("\\nselect"):]
-    items, depth, current = [], 0, []
-    for ch in body:
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-        if ch == "," and depth == 0:
-            items.append("".join(current))
-            current = []
-        else:
-            current.append(ch)
-    items.append("".join(current))
-    return [i.strip() for i in items if i.strip()]
-
-
-def _output_name(item):
-    m = re.search(r"\\bas\\s+([a-z_][a-z0-9_]*)\\s*$", item, re.I | re.S)
-    if m:
-        return m.group(1)
-    m = re.fullmatch(r"(?:[a-z_][a-z0-9_]*\\.)?([a-z_][a-z0-9_]*)", item.strip(), re.I)
-    return m.group(1) if m else None
-
-
-# Presto/Trino aggregates. An output column whose OUTERMOST call is one of these
-# is a measure; anything else is a dimension, and every dimension is a key.
-_AGGREGATES = {aggregates}
-
-
-def _outermost_function(item):
-    """The OUTERMOST call, not "an aggregate appears somewhere".
-
-    The difference is load-bearing: reduce(set_agg(x), ...) as stage yields one
-    scalar per group and IS a dimension. Searching the whole expression for an
-    aggregate would demote it and silently drop a real key.
-    """
-    expr = re.sub(r"\\s+as\\s+[a-z_][a-z0-9_]*\\s*$", "", item.strip(), flags=re.I | re.S)
-    m = re.match(r"^([a-z_][a-z0-9_]*)\\s*\\(", expr, re.I)
-    return m.group(1).lower() if m else None
-
-
-def _is_metric(item):
-    return _outermost_function(item) in _AGGREGATES
-
-
-class TestKeysMatchTheQueryDimensions:
-    """The keys are the GROUP BY dimensions.
-
-    The risk keys introduce is silent rot: add a column to the SELECT, forget
-    this list, and "the same row" quietly means something else.
-    """
-
-    @staticmethod
-    def _dimensions_and_metrics():
-        with open(SQL_FILE, encoding="utf-8") as fh:
-            sql = fh.read()
-        dims, metrics, unparsed = [], [], []
-        for item in _outer_select_items(sql):
-            name = _output_name(item)
-            if name is None:
-                unparsed.append(item.strip()[:80])
-                continue
-            (metrics if _is_metric(item) else dims).append(name)
-        return dims, metrics, unparsed
-
-    def test_the_parser_accounts_for_every_output_column(self, sql_files_present):
-        # If this fails, every assertion below is measuring the wrong thing.
-        dims, metrics, unparsed = self._dimensions_and_metrics()
-        assert unparsed == [], f"could not parse: {{unparsed[:3]}}"
-        assert len(dims) == EXPECTED_DIMENSIONS
-        assert len(metrics) == EXPECTED_METRICS
-        assert len(dims) + len(metrics) == EXPECTED_OUTPUT_COLUMNS
-
-    def test_keys_are_exactly_the_dimensions(self, sql_files_present):
-        dims, _, _ = self._dimensions_and_metrics()
-        assert sorted(_case().config().keys) == sorted(dims)
-
-    def test_no_metric_is_used_as_a_key(self, sql_files_present):
-        # Keying on a sum() makes the key change whenever the data does, which
-        # pairs nothing and turns every drift into missing + added.
-        _, metrics, _ = self._dimensions_and_metrics()
-        assert set(_case().config().keys).isdisjoint(metrics)
-
-    def test_keys_are_unique_names(self, sql_files_present):
-        keys = _case().config().keys
-        assert len(keys) == len(set(keys))
-
-    def test_the_case_is_keyed_not_keyless(self, sql_files_present):
-        assert _case().config().keys, "keys were dropped; the report loses attribution"
-
-    @pytest.mark.skipif(not UNORDERED_ARRAYS, reason="no source-order arrays in this query")
-    def test_source_ordered_arrays_are_compared_unordered(self, sql_files_present):
-        # These are in the key, so their canonical form decides which rows pair.
-        # A different element order on the two sides makes one group look like two.
-        cfg = _case().config()
-        for column in UNORDERED_ARRAYS:
-            assert column in cfg.keys
-            assert column in set(cfg.unordered_list_columns)
-'''
-
-
-# --------------------------------------------------------------------------- #
-# 4. the drill-down SQL
+# 3. the drill-down SQL
 # --------------------------------------------------------------------------- #
 def render_drilldown_sql(profile: QueryProfile) -> str:
     p = profile
@@ -720,12 +449,20 @@ order by 1
 # Writing them out
 # --------------------------------------------------------------------------- #
 def planned_outputs(profile: QueryProfile, root: str = ".") -> Dict[str, str]:
-    """{kind: path} for everything PRISM would write."""
+    """{kind: path} for everything PRISM would write.
+
+    No "case_test" entry, on purpose. A generated test_<name>_case.py was
+    identical in shape to every other case's, differing only in a constants
+    block that the Case object and its own SQL already carry -- CASE_NAME is
+    case.name, EXPECTED_FACTS is case.expected["vars"]["facts"], and so on.
+    tests/test_case_wiring.py now derives all of it and is parametrized over
+    every case discover_cases() finds, so a new case is covered the moment
+    this call finishes -- nothing to generate, copy, or keep in sync.
+    """
     p = profile
     return {
         "case": os.path.join(root, CASE_DIR, f"{p.name}.yaml"),
         "sql_sync_test": os.path.join(root, TEST_DIR, f"test_{p.name}_sql_sync.py"),
-        "case_test": os.path.join(root, TEST_DIR, f"test_{p.name}_case.py"),
         "drilldown": os.path.join(root, SQL_DIR, f"{p.name}_drilldown.sql"),
     }
 
@@ -735,8 +472,6 @@ def render_all(profile: QueryProfile, **kw) -> Dict[str, str]:
     return {
         "case": render_case_yaml(profile, **kw),
         "sql_sync_test": render_sql_sync_test(profile, **{
-            k: v for k, v in kw.items() if k in ("expected_facts", "actual_facts")}),
-        "case_test": render_case_test(profile, **{
             k: v for k, v in kw.items() if k in ("expected_facts", "actual_facts")}),
         "drilldown": render_drilldown_sql(profile),
     }
