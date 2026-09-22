@@ -344,6 +344,13 @@ select
     , 0 as slot_err_adstor_linear_creative_unavailable
 FROM db.troubleshooting_log.fw_ads_demand_troubleshooting_log
 cross join unnest (outbound_exchange_listing_selection_info) as t
+-- This table is partitioned on dt, not process_batch_id -- process_batch_id
+-- above (line 4) is DERIVED from dt via date_format(date_parse(dt, ...)),
+-- so it cannot be filtered on directly here (an output alias is not visible
+-- to its own SELECT's WHERE clause). This predicate runs the same
+-- date_format/date_parse round trip in reverse: it scopes dt to the same
+-- batch hour every other branch filters process_batch_id to, it is just
+-- expressed against this table's own partition column instead.
 where
     dt = date_format(date_parse('${arena.presto.var.process_batch_id}', '%Y%m%d%H0000'), '%Y-%m-%d-%H')
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
@@ -557,7 +564,7 @@ where process_batch_id = '${arena.presto.var.process_batch_id}'
   and nw.entity_source = 'auction_upstream'
   and nw.sales_channel = 6
   and (BITWISE_AND(candidate__flags, 131072)>0 OR BITWISE_AND(candidate__bid_status, 1)>0) -- PRE_BID_FILTERED OR RECEIVED_BID
-  --and coalesce(request__demand_log_magnifier, 0) > 0  -- Sampled by Demand Log
+  and coalesce(request__demand_log_magnifier, 0) > 0  -- Sampled by Demand Log
   --and coalesce(candidate__error, '') in ('AD_PENDING_APPROVAL','COMPLIANCE_NOT_APPROVED','COMPETITION_FAILURE','GLOBAL_ADVERTISER_RESTRICTED_BY_LISTING','GLOBAL_BRAND_RESTRICTED_BY_LISTING','INDUSTRY_RESTRICTED_BY_LISTING','RESTRICTED_SEAT_BY_MKPL_EXCHANGE','LISTING_CREATIVE_DURATION_CHECK','EXTERNAL_CREATIVE_PROFILE_CHECK_FAILED','PROFILE_CHECK_FAILED','MKPL_EXCHANGE_ADVERTISER_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_BRAND_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_INDUSTRY_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_SEAT_FLOOR_PRICE_NOT_MET','DSP_BLOCKED_BY_PROFILE', 'LAT_UNSUPPORTED', 'US_PRIVACY_UNSUPPORTED', 'COPPA_UNSUPPORTED', 'ATTS_UNSUPPORTED', 'KV_OPT_OUT', 'GDPR_UNSUPPORTED', 'GPP_UNSUPPORTED', 'GPP_SPI_UNSUPPORTED')
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
 
@@ -1061,7 +1068,7 @@ where process_batch_id = '${arena.presto.var.process_batch_id}'
   and auction__integration_type IN ('NORMAL', 'PG_TD')
   and nw.sales_channel = 6
   --and bitwise_and(auction__auction_status, 1) > 0     -- Pre-filtered stage
-  --and coalesce(request__demand_log_magnifier, 0) > 0  -- Sampled by Demand Log
+  and coalesce(request__demand_log_magnifier, 0) > 0  -- Sampled by Demand Log
   --and coalesce(auction__error, '') in ('AD_PENDING_APPROVAL','COMPLIANCE_NOT_APPROVED','COMPETITION_FAILURE','GLOBAL_ADVERTISER_RESTRICTED_BY_LISTING','GLOBAL_BRAND_RESTRICTED_BY_LISTING','INDUSTRY_RESTRICTED_BY_LISTING','RESTRICTED_SEAT_BY_MKPL_EXCHANGE','LISTING_CREATIVE_DURATION_CHECK','EXTERNAL_CREATIVE_PROFILE_CHECK_FAILED','PROFILE_CHECK_FAILED','MKPL_EXCHANGE_ADVERTISER_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_BRAND_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_INDUSTRY_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_SEAT_FLOOR_PRICE_NOT_MET','DSP_BLOCKED_BY_PROFILE', 'LAT_UNSUPPORTED', 'US_PRIVACY_UNSUPPORTED', 'COPPA_UNSUPPORTED', 'ATTS_UNSUPPORTED', 'KV_OPT_OUT', 'GDPR_UNSUPPORTED', 'GPP_UNSUPPORTED', 'GPP_SPI_UNSUPPORTED')
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
 
@@ -1280,7 +1287,7 @@ sub_err (
 where process_batch_id = '${arena.presto.var.process_batch_id}'
   and nw.entity_source = 'auction_upstream'
   and nw.sales_channel = 6
-  --and coalesce(request__demand_log_magnifier, 0) > 0  -- Sampled by Demand Log
+  and coalesce(request__demand_log_magnifier, 0) > 0  -- Sampled by Demand Log
   and sub_err.error_category = candidate__error
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
 
