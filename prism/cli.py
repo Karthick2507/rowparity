@@ -3,7 +3,7 @@
 Three subcommands:
 
     prism inspect  <file.sql>          what PRISM read, and what it could not decide
-    prism generate <file.sql>          write the four files (refuses to clobber)
+    prism generate <file.sql>          write the two files (refuses to clobber)
     prism verify   <file.sql>          regenerate in memory and diff against what is on disk
 
 ``verify`` is the one that keeps PRISM honest. Run it against a case a human has
@@ -129,8 +129,7 @@ def _generate(args) -> int:
         print(f"    rowparity list {cases} --check --param {p.batch_param}=<batch>")
     print("\n  Then install into the repo:")
     print(f"    cp -r {os.path.join(root, '')}* {repo_root()}/")
-    print(f"    pytest tests/test_{p.name}_sql_sync.py -q       # this case's SQL-specific checks")
-    print("    pytest tests/test_case_wiring.py -q             # every case's wiring, this one included")
+    print("    pytest tests/test_insight_plus_sql_sync.py -q   # every case, this one included")
     print("\n  PRISM never writes into your source tree. Copying is your decision.")
     return 0
 
@@ -195,14 +194,14 @@ def main(argv=None) -> int:
         sp.add_argument("--expected-label", default="Hoover")
         sp.add_argument("--actual-label", default="Hoover++")
         sp.add_argument("--only", nargs="*",
-                        choices=["case", "sql_sync_test", "drilldown"],
+                        choices=["case", "drilldown"],
                         help="restrict to these outputs")
 
     ins = sub.add_parser("inspect", help="show what PRISM read; write nothing")
     ins.add_argument("sql")
     ins.set_defaults(func=_inspect)
 
-    gen = sub.add_parser("generate", help="write the four files")
+    gen = sub.add_parser("generate", help="write the two files")
     common(gen)
     gen.add_argument("--force", action="store_true", help="overwrite existing files")
     gen.add_argument("--dry-run", action="store_true", help="say what would be written")

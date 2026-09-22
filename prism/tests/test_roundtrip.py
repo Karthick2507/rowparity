@@ -143,32 +143,33 @@ class TestWhereTheUncertaintyLives:
                 seen.add(column)
 
 
-class TestTheSharedWiringTestDoesNotDrift:
-    """tests/test_case_wiring.py carries its OWN copy of the SELECT-list parser.
+class TestTheSharedSqlSyncTestDoesNotDrift:
+    """tests/test_insight_plus_sql_sync.py carries its OWN copy of the
+    SELECT-list parser.
 
     That is deliberate -- importing PRISM would make the repo's test suite
     depend on a code generator at run time -- but a copy can drift from the
-    original, and when it does the shared wiring test disagrees with the YAML
-    PRISM generates for every case it covers. That already happened once, in
-    an earlier shape of this file: analyse.py learned to recognise aggregates
+    original, and when it does the shared test disagrees with the YAML PRISM
+    generates for every case it covers. That already happened once, in an
+    earlier shape of this file: analyse.py learned to recognise aggregates
     beyond sum() and a generated test's inlined copy did not, so a case
     listed 83 keys while its own test computed a different set.
 
-    Unlike that earlier version, tests/test_case_wiring.py is not regenerated
-    per case -- it is a permanent file, parametrized over every case in
-    scripts/cases_insight_plus/ -- so this guard now targets the real thing
+    tests/test_insight_plus_sql_sync.py is not regenerated per case -- it is
+    a permanent file, parametrized over every case in
+    scripts/cases_insight_plus/ -- so this guard targets the real thing
     directly rather than a throwaway generated string, and stays meaningful
     for as long as that file exists.
     """
 
     @staticmethod
-    def _load_wiring_module():
+    def _load_sql_sync_module():
         import importlib.util
 
-        path = os.path.join(REPO, "tests", "test_case_wiring.py")
+        path = os.path.join(REPO, "tests", "test_insight_plus_sql_sync.py")
         if not os.path.isfile(path):
             pytest.skip(f"{path} not present")
-        spec = importlib.util.spec_from_file_location("_case_wiring_under_test", path)
+        spec = importlib.util.spec_from_file_location("_insight_plus_sql_sync_under_test", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
@@ -178,21 +179,25 @@ class TestTheSharedWiringTestDoesNotDrift:
 
         if not os.path.isfile(SQL):
             pytest.skip(f"{SQL} not present")
-        wiring = self._load_wiring_module()
+        shared = self._load_sql_sync_module()
 
         with open(SQL, encoding="utf-8") as fh:
             sql = fh.read()
-        theirs_dims, theirs_metrics, _ = wiring._dimensions_and_metrics(sql)
+        theirs_dims, theirs_metrics, _ = shared._dimensions_and_metrics(sql)
         ours_dims, ours_metrics, _ = split_dimensions_and_metrics(sql)
-        assert theirs_dims == ours_dims, "test_case_wiring.py's parser has drifted on dimensions"
-        assert theirs_metrics == ours_metrics, "test_case_wiring.py's parser has drifted on metrics"
+        assert theirs_dims == ours_dims, (
+            "test_insight_plus_sql_sync.py's parser has drifted on dimensions"
+        )
+        assert theirs_metrics == ours_metrics, (
+            "test_insight_plus_sql_sync.py's parser has drifted on metrics"
+        )
 
     def test_the_copy_knows_the_same_aggregates(self):
         from prism.analyse import AGGREGATE_FUNCTIONS
 
-        wiring = self._load_wiring_module()
-        assert wiring._AGGREGATES == AGGREGATE_FUNCTIONS, (
-            "test_case_wiring.py's _AGGREGATES has drifted from "
+        shared = self._load_sql_sync_module()
+        assert shared._AGGREGATES == AGGREGATE_FUNCTIONS, (
+            "test_insight_plus_sql_sync.py's _AGGREGATES has drifted from "
             "prism.analyse.AGGREGATE_FUNCTIONS"
         )
 

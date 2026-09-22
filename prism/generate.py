@@ -1,4 +1,4 @@
-"""Render a QueryProfile into the four files a parity case needs.
+"""Render a QueryProfile into the two files a parity case needs.
 
 Split from ``analyse.py`` on purpose. Analysis is where the risk lives -- a
 mis-parsed SELECT list makes every output wrong -- so it is separately testable
@@ -20,11 +20,10 @@ from typing import Dict, List
 
 from .analyse import QueryProfile
 
-# Where the four files land, relative to whatever root they are written under.
+# Where the two files land, relative to whatever root they are written under.
 # These mirror the layout the existing case uses; PRISM does not invent a new one.
 SQL_DIR = os.path.join("sql", "insight_plus")
 CASE_DIR = os.path.join("scripts", "cases_insight_plus")
-TEST_DIR = "tests"
 
 # PRISM writes into its own folder by default, never into your source tree. You
 # generate, read what came out, and copy it into place yourself -- a code
@@ -250,144 +249,7 @@ def render_case_yaml(
 
 
 # --------------------------------------------------------------------------- #
-# 2. the SQL-template test
-# --------------------------------------------------------------------------- #
-def render_sql_sync_test(profile: QueryProfile, *,
-                         expected_facts: str = DEFAULT_EXPECTED_FACTS,
-                         actual_facts: str = DEFAULT_ACTUAL_FACTS) -> str:
-    p = profile
-    body = f'''"""{_banner(p, "test")}
-
-What these guard, and why each is a COUNT rather than a presence check:
-
-* A *set* of placeholder names cannot see a half-converted template. Hardcode
-  the catalog or the batch in one of {p.branches} branches and the set is unchanged,
-  because the other branches still supply the name. One branch pinned to a stale
-  batch reads a different window than the others ON BOTH SIDES, so the totals
-  stay plausible, nothing errors, and the drift reads as a migration defect.
-* The sampling filter must reach every branch. An unsampled branch contributes
-  unsampled rows and skews the aggregate -- and because the other branches are
-  still sampled, the total still looks reasonable.
-"""
-import os
-import re
-
-import pytest
-import yaml
-
-from rowparity.params import _PLACEHOLDER, substitute
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SQL = os.path.join(ROOT, "sql", "insight_plus", "{p.name}.sql")
-CASE = os.path.join(ROOT, "scripts", "cases_insight_plus", "{p.name}.yaml")
-
-EXPECTED_FACTS = "{expected_facts}"
-ACTUAL_FACTS = "{actual_facts}"
-
-SAMPLING_MARKER = "--sampling filter"
-EXPECTED_SAMPLING_LINES = {p.sampling_markers}   # one per UNION ALL branch
-EXPECTED_FACT_REFS = {p.fact_refs}               # {", ".join(p.fact_tables) or "none"}
-BATCH_PLACEHOLDER = "${{{p.batch_param}}}"
-EXPECTED_BATCH_REFS = {p.batch_refs}             # one predicate per branch
-EXPECTED_PLACEHOLDERS = {sorted(p.placeholders)!r}
-
-
-@pytest.fixture(scope="module")
-def sql():
-    if not os.path.isfile(SQL):
-        pytest.skip(f"{{SQL}} not present")
-    with open(SQL, encoding="utf-8") as fh:
-        return fh.read()
-
-
-@pytest.fixture(scope="module")
-def case():
-    with open(CASE, encoding="utf-8") as fh:
-        return yaml.safe_load(fh)["cases"][0]
-
-
-@pytest.fixture(scope="module")
-def variables(case):
-    """Exactly what a run resolves, minus the batch id, which has no default."""
-    base = dict(case.get("vars") or {{}})
-    base["{p.batch_param}"] = "20260812010000"
-    return base
-
-
-def _render(sql_text, variables, facts):
-    return substitute(sql_text, {{**variables, "facts": facts}})
-
-
-class TestTheTemplate:
-    def test_it_has_exactly_the_placeholders_we_expect(self, sql):
-        # A new placeholder nothing supplies fails at substitution time, which is
-        # loud but late -- after credentials are exported and someone is waiting.
-        assert sorted(set(_PLACEHOLDER.findall(sql))) == EXPECTED_PLACEHOLDERS
-
-    def test_every_fact_table_goes_through_the_placeholder(self, sql):
-        # The highest-value assertion here. One missed reference makes that branch
-        # read the same catalog on both sides and silently agree.
-        assert sql.count("${{facts}}.") == EXPECTED_FACT_REFS
-
-    def test_every_batch_predicate_goes_through_the_placeholder(self, sql):
-        assert sql.count(BATCH_PLACEHOLDER) == EXPECTED_BATCH_REFS
-
-    def test_no_batch_id_is_hardcoded(self, sql):
-        literals = re.findall(r"process_batch_id\\s*=\\s*'(\\d{{8,14}})'", sql)
-        assert literals == [], f"hardcoded batch id(s): {{literals}}"
-
-    def test_no_catalog_is_hardcoded(self, sql):
-        assert EXPECTED_FACTS not in sql
-        assert ACTUAL_FACTS not in sql
-
-
-class TestRenderingBothSides:
-    def test_each_side_reads_only_its_own_catalog(self, sql, variables):
-        a = _render(sql, variables, EXPECTED_FACTS)
-        b = _render(sql, variables, ACTUAL_FACTS)
-        assert EXPECTED_FACTS in a and ACTUAL_FACTS not in a
-        assert ACTUAL_FACTS in b and EXPECTED_FACTS not in b
-
-    def test_the_two_renders_differ_only_in_the_catalog(self, sql, variables):
-        a = _render(sql, variables, EXPECTED_FACTS).replace(EXPECTED_FACTS, "@FACTS@")
-        b = _render(sql, variables, ACTUAL_FACTS).replace(ACTUAL_FACTS, "@FACTS@")
-        assert a == b
-
-    def test_a_render_leaves_no_placeholder_behind(self, sql, variables):
-        assert not _PLACEHOLDER.search(_render(sql, variables, EXPECTED_FACTS))
-'''
-    if "sampling_filter" in p.placeholders:
-        body += '''
-
-class TestBothSidesSampleIdentically:
-    """The population guard. A 409x row-count ratio once cost a 77-minute run to
-    diagnose: one side sampled, the other not, so every sum was over a different
-    number of underlying rows and the run measured the sampling."""
-
-    def test_the_filter_is_case_level_not_per_side(self, case):
-        assert "sampling_filter" in (case.get("vars") or {})
-        for side in ("expected", "actual"):
-            assert "sampling_filter" not in (case[side].get("vars") or {}), (
-                f"{side} overrides the sampling filter, so the two sides sample "
-                f"differently and the run measures the sampling ratio."
-            )
-
-    def test_every_union_branch_is_sampled(self, sql):
-        count = sql.count(SAMPLING_MARKER)
-        assert count == EXPECTED_SAMPLING_LINES, (
-            f"expected {EXPECTED_SAMPLING_LINES} sampling filters (one per UNION ALL "
-            f"branch), found {count}."
-        )
-
-    def test_the_filter_reaches_every_branch_when_rendered(self, sql, variables):
-        rendered = _render(sql, variables, EXPECTED_FACTS)
-        assert rendered.count(variables["sampling_filter"]) == EXPECTED_SAMPLING_LINES
-'''
-    return body
-
-
-# --------------------------------------------------------------------------- #
-# 3. the drill-down SQL
+# 2. the drill-down SQL
 # --------------------------------------------------------------------------- #
 def render_drilldown_sql(profile: QueryProfile) -> str:
     p = profile
@@ -451,18 +313,20 @@ order by 1
 def planned_outputs(profile: QueryProfile, root: str = ".") -> Dict[str, str]:
     """{kind: path} for everything PRISM would write.
 
-    No "case_test" entry, on purpose. A generated test_<name>_case.py was
-    identical in shape to every other case's, differing only in a constants
-    block that the Case object and its own SQL already carry -- CASE_NAME is
-    case.name, EXPECTED_FACTS is case.expected["vars"]["facts"], and so on.
-    tests/test_case_wiring.py now derives all of it and is parametrized over
-    every case discover_cases() finds, so a new case is covered the moment
-    this call finishes -- nothing to generate, copy, or keep in sync.
+    No "case_test" entry and no "sql_sync_test" entry, on purpose. Both used
+    to be a file generated per case, identical in shape to every other
+    case's, differing only in constants -- CASE_NAME, EXPECTED_FACTS,
+    EXPECTED_FACT_REFS, and so on -- that the Case object and its own SQL
+    already carry or that a UNION-branch count already derives.
+    tests/test_insight_plus_sql_sync.py is the one file that covers both
+    concerns for every case: it discovers every YAML under
+    scripts/cases_insight_plus/ and parametrizes over the result, so a new
+    case is covered the moment this call finishes -- nothing to generate,
+    copy, or keep in sync.
     """
     p = profile
     return {
         "case": os.path.join(root, CASE_DIR, f"{p.name}.yaml"),
-        "sql_sync_test": os.path.join(root, TEST_DIR, f"test_{p.name}_sql_sync.py"),
         "drilldown": os.path.join(root, SQL_DIR, f"{p.name}_drilldown.sql"),
     }
 
@@ -471,7 +335,5 @@ def render_all(profile: QueryProfile, **kw) -> Dict[str, str]:
     """{kind: file contents}."""
     return {
         "case": render_case_yaml(profile, **kw),
-        "sql_sync_test": render_sql_sync_test(profile, **{
-            k: v for k, v in kw.items() if k in ("expected_facts", "actual_facts")}),
         "drilldown": render_drilldown_sql(profile),
     }

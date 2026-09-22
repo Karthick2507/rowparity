@@ -944,15 +944,20 @@ the alias, is what must appear in a predicate against the raw table.
 Key on every `GROUP BY` dimension. See §4.4 for why, and §4.3 for the measured
 consequence of not doing it.
 
-### 9.4 The validation tests — one file you write, one you never do
+### 9.4 The validation tests — one file, and you never write it
 
-**The wiring assertions are not something you write.** They used to be —
-copy a `tests/test_<name>_case.py`, retype a constants block — but every one
-of those constants (the case's name, its two catalogs, its batch parameter,
-its dimension count) is something the `Case` object and its own SQL already
-know. `tests/test_case_wiring.py` asks them directly instead of restating
-them, and it is **parametrized over every case** `discover_cases()` finds
-under `scripts/cases_insight_plus/`:
+**None of the validation assertions are something you write.** They used to
+be split two ways -- copy a `tests/test_<name>_case.py` and retype a
+constants block, then hand-write or copy a `tests/test_<name>_sql_sync.py`
+and count placeholders out of the SQL yourself -- but every one of those
+numbers (the case's name, its two catalogs, its batch parameter, its
+dimension count, how many `${facts}.` references the SQL has) is something
+the `Case` object and its own SQL text already know.
+`tests/test_insight_plus_sql_sync.py` asks them directly instead of
+restating them, and it is **parametrized over every case**
+`discover_cases()` finds under `scripts/cases_insight_plus/`. It is the
+**only** test file for this case directory — nothing per case, nothing to
+copy, nothing to rename.
 
 | Assertion | Catches |
 |---|---|
@@ -966,25 +971,22 @@ under `scripts/cases_insight_plus/`:
 | the batch parameter substitutes on both sides | a half-templated query |
 | omitting the batch **raises** | a green run over zero rows |
 | the YAML ships no default batch | the same, from the other side |
+| **every UNION branch** references the batch parameter | one branch, among several, silently reverted to a stale literal -- a whole-document check cannot see this; only a per-branch split can |
+| the batch parameter is never a hardcoded literal | the same mistake, caught by pattern instead of by count |
 | `keys` == exactly the query's dimensions | a column added to the SELECT without updating `keys` |
 | no metric is used as a key | an aggregate in the key |
 | arrays that may reorder are declared unordered | an ordering difference read as data |
+| every placeholder in the SQL is one this case's `vars:` declares | a typo'd or orphaned `${...}` |
+| neither side's catalog is hardcoded anywhere in the raw template | the same "one branch reverted" defect, for the catalog instead of the batch |
+| the two sides render identically except for the catalog string | a stray `${facts}`-guarded branch a presence check alone would miss |
+| a render leaves no `${...}` behind | any variable, not just the batch one, left unsubstituted |
 
-Your new case is covered by that file the moment its `.yaml` exists — nothing
-to run except `pytest tests/test_case_wiring.py`, nothing to copy, nothing to
-rename. §13 and §16 have the full story of why, and what it replaced.
-
-What genuinely differs per case, and still needs a small file you write
-yourself, is the **SQL-specific** test:
-
-| Assertion | Catches |
-|---|---|
-| the template has exactly the expected placeholders | a stray or missing `${...}` |
-| **every** fact-table reference goes through `${facts}` | one hardcoded catalog in 2,000 lines |
-
-That last one is the highest-value test in that file. A single missed
-`from mrm_log_flat.default.ad` makes one side read the wrong catalog for one
-branch of a union, and nothing in the output would say so.
+The per-branch rows above are not redundant with the whole-document ones,
+proven rather than assumed: with one of a 7-branch query's batch predicates
+reverted to a stale literal, every whole-document check still passed --
+16 passed, 2 skipped, no failures -- while the per-branch checks caught it
+immediately, naming the branch and the literal. §13 and §16 have the full
+story of why, and what this replaced.
 
 ### 9.5 The loop
 
@@ -992,8 +994,7 @@ branch of a union, and nothing in the output would say so.
 rowparity list scripts/cases_insight_plus          # 1. does the YAML parse? no warehouse
 rowparity list scripts/cases_insight_plus --check \
     --param arena.presto.var.process_batch_id=...  # 2. does the SQL resolve? local files only
-pytest tests/test_case_wiring.py \                 # 3. is EVERY case wired right? no warehouse
-       tests/test_my_case_sql_sync.py -xvs
+pytest tests/test_insight_plus_sql_sync.py -xvs    # 3. is EVERY case wired right? no warehouse
 python scripts/trino_connectivity_check.py         # 4. can we connect?
 rowparity run scripts/cases_insight_plus \         # 5. run it
     --param arena.presto.var.process_batch_id=20260827010000 \
@@ -2152,7 +2153,7 @@ parity case alongside `f_demand_portfolio_hourly`.
 
 ### 13.0 What already exists, and what a second case adds
 
-`f_demand_portfolio_hourly` is five files. Three belong to it; two are shared
+`f_demand_portfolio_hourly` is three files. Two belong to it; one is shared
 by every case in the directory, including ones that do not exist yet.
 
 ```
@@ -2164,11 +2165,10 @@ scripts/cases_insight_plus/
 scripts/
     trino_connectivity_check.py                ← SHARED, no change needed
 tests/
-    test_insight_plus_sql_sync.py              ← SQL template assertions, THIS query's own
-    test_case_wiring.py                        ← SHARED, no change needed -- see below
+    test_insight_plus_sql_sync.py              ← SHARED, no change needed -- see below
 ```
 
-**The headline: you write three files, not five, and edit nothing.**
+**The headline: you write two files, not five, and edit nothing else.**
 
 `cases.discover_cases()` globs `**/*.yaml` recursively and sorts, so dropping a
 YAML into `scripts/cases_insight_plus/` registers it — there is no manifest, no
@@ -2180,24 +2180,28 @@ f_supply_portfolio_hourly [insight_plus]  (scripts/cases_insight_plus/f_supply_p
 f_demand_portfolio_hourly [insight_plus, hoover]  (scripts/cases_insight_plus/f_demand_portfolio_hourly.yaml)
 ```
 
-**There used to be a fourth file per case — a wiring test — and it is gone.**
-`tests/test_insight_plus_case.py` had 23 tests, every one of them pinned to the
-demand case by a constants block (`CASE_FILE`, `BATCH`, `EXPECTED_FACTS`, ...)
-that restated facts the `Case` object already carries: `CASE_FILE` is
-`case.source_file`, `EXPECTED_FACTS` is `case.expected["vars"]["facts"]`,
-`BATCH_PARAM` is `case.drilldown["time"]["param"]`. Nothing in that block was a
-judgement call — it was the same eleven-to-twenty-odd tests, retyped once per
-case, purely because nobody had asked the `Case` object directly.
+**There used to be a third and fourth file per case — a wiring test and a
+SQL-template test — and both are gone.** `tests/test_insight_plus_case.py`
+had 23 tests, every one of them pinned to the demand case by a constants block
+(`CASE_FILE`, `BATCH`, `EXPECTED_FACTS`, ...) that restated facts the `Case`
+object already carries: `CASE_FILE` is `case.source_file`, `EXPECTED_FACTS` is
+`case.expected["vars"]["facts"]`, `BATCH_PARAM` is
+`case.drilldown["time"]["param"]`. A `test_<name>_sql_sync.py` had a different
+kind of restatement -- `EXPECTED_FACT_REFS = 3`, `EXPECTED_BATCH_REFS = 3` --
+counted out of that case's own SQL once, by hand, and frozen. Neither block
+was a judgement call — both were the same handful of tests, retyped or
+recounted once per case, purely because nobody had asked the `Case` object and
+the SQL text directly.
 
-`tests/test_case_wiring.py` asks it directly. It discovers every case under
-`scripts/cases_insight_plus/` at collection time and parametrizes over the
-result — `@pytest.mark.parametrize("case_name", CASE_NAMES, ids=CASE_NAMES)` —
-deriving everything it checks from each `Case` and its own SQL. Drop
-`f_supply_portfolio_hourly`'s `.yaml`/`.sql` in beside the demand case's and
-this file covers it the moment pytest collects, with zero new lines.
-
-Only `tests/test_supply_sql_sync.py` is still copied per case, because it holds
-things no parser can derive — see Step 3.
+`tests/test_insight_plus_sql_sync.py` asks them directly, for both concerns
+at once. It discovers every case under `scripts/cases_insight_plus/` at
+collection time and parametrizes over the result —
+`@pytest.mark.parametrize("case_name", CASE_NAMES, ids=CASE_NAMES)` —
+deriving everything it checks from each `Case`, and from that case's SQL split
+on `UNION ALL` where a per-branch check is what catches the defect a
+whole-document one would miss. Drop `f_supply_portfolio_hourly`'s `.yaml`/
+`.sql` in beside the demand case's and this file covers it the moment pytest
+collects, with zero new lines, zero copies.
 
 ### 13.1 The build order, and why it is this order
 
@@ -2205,16 +2209,16 @@ things no parser can derive — see Step 3.
 |---|---|---|---|
 | 1 | `sql/insight_plus/f_supply_portfolio_hourly.sql` | **new** | everything downstream is built on it |
 | 2 | `scripts/cases_insight_plus/f_supply_portfolio_hourly.yaml` | **new** | the case cannot load |
-| 3 | `tests/test_supply_sql_sync.py` | **new** | a bad placeholder is found by a live run, not a test |
-| 4 | *(nothing — `tests/test_case_wiring.py` already covers it)* | — | — |
-| 5 | `sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql` | **new** | no transaction ids; the parity result still works |
+| 3 | *(nothing — `tests/test_insight_plus_sql_sync.py` already covers it)* | — | — |
+| 4 | `sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql` | **new** | no transaction ids; the parity result still works |
 
-Order matters for one reason: **step 3, plus the shared wiring test that
-already exists, are the only offline checks that a run is worth starting.**
-Writing step 3 after the first live run means paying warehouse time to learn
-what a millisecond of pytest would have told you.
+Order matters for one reason: **the shared test file that already covers
+step 3 is the only offline check that a run is worth starting.** Nothing to
+write means nothing stands between finishing step 2 and running
+`pytest tests/test_insight_plus_sql_sync.py -q` to find out whether the query
+you just wrote is safe to point at a warehouse.
 
-Step 5 is deliberately last. The drill-down is an aid to *reading* a result. You
+Step 4 is deliberately last. The drill-down is an aid to *reading* a result. You
 cannot design it until you have seen which dimensions differ, and the case runs
 fine without a `drilldown:` block.
 
@@ -2385,63 +2389,15 @@ anyone remembering to type `--check`.
 
 ---
 
-### Step 3 — the SQL template test
+### Step 3 — the SQL-template and wiring tests (retired: there is nothing to do)
 
-`tests/test_supply_sql_sync.py` — copy `tests/test_insight_plus_sql_sync.py` and
-change the constants at the top:
-
-```python
-SQL  = os.path.join(ROOT, "sql", "insight_plus", "f_supply_portfolio_hourly.sql")
-CASE = os.path.join(ROOT, "scripts", "cases_insight_plus", "f_supply_portfolio_hourly.yaml")
-
-HOOVER      = "mrm_log_flat.default"
-HOOVER_PLUS = "etl.public_test1"
-
-SAMPLING_MARKER       = "--sampling filter"
-EXPECTED_SAMPLING_LINES = <how many UNION ALL branches your query has>
-EXPECTED_FACT_REFS      = <how many ${facts}. references it should have>
-EXPECTED_BATCH_REFS     = <how many batch predicates it should have>
-```
-
-**Three counts, and they are counts on purpose.** A *set* of placeholder names
-cannot see a template that is half converted: hardcode the batch in one of three
-branches and the set still contains `arena.presto.var.process_batch_id`, because
-the other two branches supply it. One branch pinned to a stale batch reads a
-different hour than the other two, **on both sides**, so the totals stay
-plausible, nothing errors, and the drift reads as a migration defect.
-
-The assertions you inherit, and what each one catches:
-
-| Test | Catches |
-|---|---|
-| `test_it_has_exactly_the_placeholders_we_expect` | **Trap A above** — a placeholder nothing supplies, offline |
-| `test_every_fact_table_goes_through_the_placeholder` | **step 1a missed one** — the highest-value test in the file |
-| `test_every_batch_predicate_goes_through_the_placeholder` | **step 1d missed one branch** — a *count*, because the placeholder-set test is blind to a partially converted file |
-| `test_no_batch_id_is_hardcoded` | a batch predicate written with a literal in the first place |
-| `test_no_catalog_is_hardcoded_any_more` | a literal `mrm_log_flat.default` left in the template |
-| `test_the_dimension_catalog_stays_literal` | step 1b templated by accident |
-| `test_each_side_reads_only_its_own_catalog` | cross-contamination between the two renders |
-| `test_the_two_renders_differ_only_in_the_catalog` | any other difference between the sides |
-| `test_a_render_leaves_no_placeholder_behind` | an unrecognised `${...}` surviving substitution |
-| `test_the_filter_is_case_level_not_per_side` | someone moving the sampling filter into a side's `vars:` |
-| `test_every_union_branch_is_sampled` | **step 1c missed a branch** |
-| `test_the_filter_reaches_every_branch_when_rendered` | the same, after substitution |
-
-Only two numbers need changing: the branch count and the fact-reference count.
-
-```bash
-pytest tests/test_supply_sql_sync.py -q      # no warehouse, milliseconds
-```
-
----
-
-### Step 4 — the wiring test (retired: there is nothing to do)
-
-There was a `tests/test_supply_case.py` here, copied from
-`tests/test_insight_plus_case.py`. It is gone, and so is the file it would have
-been copied from — see §13.0. `tests/test_case_wiring.py` already runs, for
-`f_supply_portfolio_hourly` as much as for the demand case, the moment its YAML
-exists:
+There used to be two files here: a `tests/test_supply_sql_sync.py` copied and
+hand-edited for the SQL-specific checks, and a `tests/test_supply_case.py`
+copied from `tests/test_insight_plus_case.py` for the wiring checks. Both are
+gone, and so are the files they would have been copied from — see §13.0.
+`tests/test_insight_plus_sql_sync.py` already runs, for
+`f_supply_portfolio_hourly` as much as for the demand case, the moment its
+YAML exists:
 
 | Test (one file, every case) | Catches |
 |---|---|
@@ -2457,40 +2413,57 @@ exists:
 | `test_it_substitutes_on_both_sides` | a half-templated query |
 | `test_omitting_it_raises_rather_than_running` | **a green run over zero rows** |
 | `test_the_yaml_ships_no_default_batch` | the same, from the other direction |
+| `test_every_union_branch_references_it` | **step 1a/1d missed one branch** — a per-branch split, because a whole-document check is blind to a partially converted file |
+| `test_it_is_never_a_hardcoded_literal` | a batch predicate written with a literal in the first place |
 | `test_the_parser_accounts_for_every_output_column` | the parser guard: if this fails, everything below it is measuring the wrong thing |
 | `test_keys_are_exactly_the_dimensions` | a column added to the SELECT without updating `keys` |
 | `test_no_metric_is_used_as_a_key` | a metric in the key |
 | `test_keys_are_unique_names` | a duplicated dimension |
 | `test_the_case_is_keyed_not_keyless` | someone deleting `keys:` |
 | `test_source_ordered_arrays_are_compared_unordered` | an array reaching the output from a source column, missing from `unordered_list_columns` |
+| `test_every_placeholder_is_one_this_case_declares` | a stray or typo'd `${...}` nothing supplies |
+| `test_neither_catalog_is_hardcoded_in_the_template` | a literal `mrm_log_flat.default` left in the template |
+| `test_the_two_sides_render_identically_except_for_the_catalog` | any other difference between the sides |
+| `test_a_render_leaves_no_placeholder_behind` | an unrecognised `${...}` surviving substitution |
 
 Every column of that table is derived from `f_supply_portfolio_hourly`'s own
 `Case` object and its own SQL — `EXPECTED_DIMENSIONS`, `BATCH_PARAM`,
-`EXPECTED_FACTS`, none of it is typed anywhere for this case. Run it:
+`EXPECTED_FACTS`, `EXPECTED_FACT_REFS`, none of it is typed anywhere for this
+case. Run it:
 
 ```bash
-pytest tests/test_case_wiring.py tests/test_supply_sql_sync.py -q
+pytest tests/test_insight_plus_sql_sync.py -q      # no warehouse, milliseconds
 ```
 
+The per-branch tests (`test_every_union_branch_references_it`, and
+`test_neither_catalog_is_hardcoded_in_the_template` for the catalog side of
+the same defect) exist because a whole-document check genuinely cannot see a
+single reverted branch among several. Verified, not assumed: with one of a
+7-branch query's batch predicates reverted to a stale literal, every
+whole-document check in this file still passed — 16 passed, 2 skipped, no
+failures — while the per-branch checks caught it immediately, naming the
+branch and the literal.
+
 > **Trap, verified — and it was worse than it first looked.**
-> `tests/test_case_wiring.py` discovers **every** YAML in `CASES_DIR` at
-> collection time, so `CASE_NAMES` can be computed before pytest parametrizes
-> on it. The first version of this file let a bad discovery raise straight out
-> of that module-level call — which is a pytest **collection error**, and
-> pytest's default reaction to a collection error is to abort the **entire
-> session**: `!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection`,
-> every unrelated file included, `test_engine.py` and `test_hashing.py` too.
-> One malformed case YAML would have stopped the whole suite from running at
-> all, which is a bigger blast radius than the old per-file failures ever had.
+> `tests/test_insight_plus_sql_sync.py` discovers **every** YAML in
+> `CASES_DIR` at collection time, so `CASE_NAMES` can be computed before
+> pytest parametrizes on it. The first version of this file let a bad
+> discovery raise straight out of that module-level call — which is a pytest
+> **collection error**, and pytest's default reaction to a collection error
+> is to abort the **entire session**:
+> `!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection`, every
+> unrelated file included, `test_engine.py` and `test_hashing.py` too. One
+> malformed case YAML would have stopped the whole suite from running at all,
+> which is a bigger blast radius than the old per-file failures ever had.
 >
-> The fix is in `tests/test_case_wiring.py` itself: discovery is wrapped, the
-> exception is stored rather than raised, `CASE_NAMES` becomes empty so the
-> parametrized tests simply do not exist for this collection (not an error —
-> zero items), and one ordinary test surfaces the stored exception as a normal
-> failure:
+> The fix is in `tests/test_insight_plus_sql_sync.py` itself: discovery is
+> wrapped, the exception is stored rather than raised, `CASE_NAMES` becomes
+> empty so the parametrized tests simply do not exist for this collection
+> (not an error — zero items), and one ordinary test surfaces the stored
+> exception as a normal failure:
 >
 > ```
-> FAILED tests/test_case_wiring.py::test_the_case_directory_loads_at_all
+> FAILED tests/test_insight_plus_sql_sync.py::test_the_case_directory_loads_at_all
 >   /home/user/rowparity/scripts/cases_insight_plus/_broken.yaml: case is
 >   missing required field 'expected': {'name': 'broken_supply'}
 > ```
@@ -2506,7 +2479,7 @@ pytest tests/test_case_wiring.py tests/test_supply_sql_sync.py -q
 
 ---
 
-### Step 5 — the drill-down SQL (optional, and last)
+### Step 4 — the drill-down SQL (optional, and last)
 
 `sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql`
 
@@ -2603,7 +2576,7 @@ rowparity list scripts/cases_insight_plus --check \
     --param arena.presto.var.process_batch_id=20260827010000
 
 # 2. is it wired right?                   no warehouse, milliseconds
-pytest tests/test_case_wiring.py tests/test_supply_sql_sync.py -q
+pytest tests/test_insight_plus_sql_sync.py -q
 
 # 3. can we connect?                      one trivial query
 python scripts/trino_connectivity_check.py
@@ -2637,7 +2610,7 @@ Once it is stable, drop `--select` to run the pair in CI.
 | `ParamError: unresolved parameter(s)` on the run, 0.0s | placeholder in the `.sql` nothing supplies | add it to `vars:`; `rowparity list --check` and step 3 both catch this offline |
 | `IdenticalSourcesError` | both sides resolved to the same catalog | a copy-pasted side `vars:` where one value was never changed |
 | `EmptyComparisonError` | both sides returned zero rows | the batch does not exist on both sides, or a predicate matched nothing |
-| `test_the_case_directory_loads_at_all` fails | your new YAML is malformed | **the trap in step 4** — run `rowparity list` for the real error |
+| `test_the_case_directory_loads_at_all` fails | your new YAML is malformed | **the trap in step 3** — run `rowparity list` for the real error |
 | Row counts differ by a large ratio | the two sides sample differently | the filter must be case-level, not per-side |
 | `duplicate_keys_expected > 0` | the keys are not unique | a `GROUP BY` dimension is missing from `keys` |
 | Every column flagged | the case is running keyless | `keys:` is missing or empty |
@@ -2656,10 +2629,8 @@ Once it is stable, drop `--select` to run the pair in CI.
        ── rowparity list ──────────► both cases listed, no --param
        ── rowparity list --check ──► the SQL's placeholders all resolve
                      │
- 3. tests/test_supply_sql_sync.py                             NEW  (copy)
-       placeholders · fact refs · one sampling marker per branch
-    tests/test_case_wiring.py                    ALREADY COVERS THIS CASE
-       wiring · batch cannot be skipped · keys == dimensions
+ 3. tests/test_insight_plus_sql_sync.py        ALREADY COVERS THIS CASE
+       wiring · SQL-template checks, per UNION branch · keys == dimensions
        -- shared, parametrized, zero new lines for a new case
                      │
        ── pytest ──────────────────► green, in milliseconds
@@ -2671,8 +2642,9 @@ Once it is stable, drop `--select` to run the pair in CI.
  4. sql/insight_plus/f_supply_portfolio_hourly_drilldown.sql  NEW  (last)
        + a drilldown: block in the YAML from step 2
 
-    THREE FILES ARE NEW. NOTHING ELSE IS EDITED, AND NOTHING ELSE IS
-    GENERATED EITHER -- THE FOURTH FILE A CASE USED TO NEED IS RETIRED.
+    TWO FILES ARE NEW. NOTHING ELSE IS EDITED, AND NOTHING ELSE IS
+    GENERATED EITHER -- THE THIRD AND FOURTH FILE A CASE USED TO NEED
+    ARE BOTH RETIRED, COLLAPSED INTO ONE FILE THAT NEEDS NOTHING FROM YOU.
 ```
 
 ---
@@ -3407,11 +3379,11 @@ them as "roughly here", and if one is wrong, re-run the fifteen-line tracer in
 
 ## 16. PRISM — the case generator beside the repo
 
-§13 walks you through writing a new parity case by hand: three files you
-author (the SQL, the YAML, the SQL-specific test) and a fourth that used to
-exist per case and no longer needs writing at all, for any case, because
-`tests/test_case_wiring.py` covers it generically (§16.6). PRISM writes the
-first three of those for you, from the SQL.
+§13 walks you through writing a new parity case by hand: two files you author
+(the SQL, the YAML) and a third and fourth that used to exist per case and no
+longer need writing at all, for any case, because
+`tests/test_insight_plus_sql_sync.py` covers both generically (§16.6). PRISM
+writes the first two of those for you, from the SQL.
 
 ```bash
 python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
@@ -3423,12 +3395,13 @@ python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
 rowparity/
   src/rowparity/       the product
   tests/
-    test_case_wiring.py  shared, parametrized, covers every case -- not
-                         generated, not per-case, never touched by PRISM
+    test_insight_plus_sql_sync.py  shared, parametrized, covers every case
+                         -- not generated, not per-case, never touched by
+                         PRISM, and the ONLY test file for this case directory
   prism/               a tool that writes files FOR the product
     analyse.py           .sql → QueryProfile.  Deterministic, stdlib only.
     rules.py             the ONE judgement call, isolated
-    generate.py          QueryProfile → three files
+    generate.py          QueryProfile → two files
     cli.py               inspect | generate | verify
     __main__.py          python -m prism
     tests/               its own suite, kept with the tool
@@ -3460,8 +3433,7 @@ A case is not *authored* so much as *implied* by the query it compares:
 | `keys: [83 columns]` | the query's GROUP BY dimensions |
 | `breakdown_by: slot_user_drop_off` | the one dimension that is a distinct literal per UNION branch |
 | `unordered_list_columns: [...]` | which arrays come from a source column vs are built inline |
-| `EXPECTED_FACT_REFS = 3` | count of `${facts}.` in the file |
-| `EXPECTED_SAMPLING_LINES = 3` | count of the sampling marker |
+| every branch references `${facts}` or its batch parameter | a per-branch scan, not a count typed once |
 | `assert len(dims) == 83` | the SELECT list |
 
 None of those is a judgement call. Today a human transcribes them, and every
@@ -3491,7 +3463,7 @@ Position is not used.
 | | |
 |---|---|
 | `prism inspect <f.sql>` | what it read, and what it could not decide. Writes nothing |
-| `prism generate <f.sql>` | the three files into `prism/output/`. Refuses to clobber |
+| `prism generate <f.sql>` | the two files into `prism/output/`. Refuses to clobber |
 | `prism verify <f.sql>` | regenerate in memory, diff against the repo. Exit 1 on any difference |
 
 `verify` is the one that matters. Point it at a case a human already wrote and
@@ -3522,33 +3494,41 @@ Where PRISM cannot derive at all, it writes `TODO(you)`: the drill-down's branch
 predicates must be copied verbatim from the parity query, and no parser knows
 which branch you mean.
 
-### 16.6 The fourth file, retired: one shared wiring test
+### 16.6 The third and fourth file, retired: one shared test
 
-PRISM used to generate a `test_<name>_case.py` per case — eleven-plus tests,
-none of them a judgement call, every one of them a restatement of something the
-`Case` object and its own SQL already carry: `CASE_NAME` is `case.name`,
-`EXPECTED_FACTS` is `case.expected["vars"]["facts"]`, `BATCH_PARAM` is
-`case.drilldown["time"]["param"]`. It is gone, and PRISM no longer produces it
-— `planned_outputs()` has three entries, not four.
+PRISM used to generate two files per case beyond the YAML: a `test_<name>_
+case.py` -- eleven-plus tests, none of them a judgement call, every one of
+them a restatement of something the `Case` object and its own SQL already
+carry (`CASE_NAME` is `case.name`, `EXPECTED_FACTS` is
+`case.expected["vars"]["facts"]`, `BATCH_PARAM` is
+`case.drilldown["time"]["param"]`) -- and a `test_<name>_sql_sync.py` whose
+constants were a different kind of restatement: `EXPECTED_FACT_REFS = 6`,
+`EXPECTED_BATCH_REFS = 7`, counted out of that case's own SQL once, by hand,
+and frozen. Both are gone, and PRISM no longer produces either --
+`planned_outputs()` has two entries, not four.
 
-`tests/test_case_wiring.py` replaces it, once, for every case. It discovers
-every YAML under `scripts/cases_insight_plus/` at collection time and
-parametrizes over the result, deriving what it checks from each `Case` rather
-than from a constant written for one of them. The full mechanism lives in
-`prism/README.md`'s "Why one shared wiring test" — the short version, proven
-in this repo rather than asserted:
+`tests/test_insight_plus_sql_sync.py` replaces both, once, for every case. It
+discovers every YAML under `scripts/cases_insight_plus/` at collection time
+and parametrizes over the result, deriving what it checks from each `Case`
+AND from that case's own SQL text -- split on `UNION ALL` where a per-branch
+check is what a frozen whole-document count cannot be. The full mechanism
+lives in `prism/README.md`'s "Why one shared test" — the short version,
+proven in this repo rather than asserted:
 
 ```
-18/18 passes against f_demand_portfolio_hourly
-36/36 when a second case, cloned from the first under a different name, sat
-      beside it -- the SAME 18 tests, run twice, zero new lines
-1 failure, correctly attributed to the clone, when the clone's keys: was
-      deliberately broken -- the original untouched
+49 items collected across both cases (24 tests × 2 + 1 always-collected
+   guard test), 47 passed, 2 skipped -- the SAME 24 tests, unmodified,
+   run against f_demand_portfolio_hourly and f_demand_mpe_hourly alike
 ```
 
-(`pytest tests/test_case_wiring.py -q` itself collects 19 items, not 18: the
-18 per-case tests above plus one always-collected guard test,
-`test_the_case_directory_loads_at_all`, covered next.)
+And the reason the per-branch checks exist at all, proven rather than
+asserted: with one of a 7-branch query's batch predicates reverted to a
+stale literal, every whole-document, case-shape check still passed -- 16
+passed, 2 skipped, no failures -- while the per-branch checks
+(`test_every_union_branch_references_it`, `test_it_is_never_a_hardcoded_
+literal`) caught it immediately, naming the branch and the literal. A count
+frozen at generation time cannot see a regression that keeps the count the
+same shape; a check that re-splits the SQL on every run can.
 
 A collection-time hazard came with parametrizing at module scope: a broken
 case YAML raised inside the module-level `discover_cases()` call used to be a
@@ -3557,7 +3537,7 @@ the *entire* session — every unrelated test file, not just this one. Fixed by
 storing the exception instead of raising it and surfacing it through one
 ordinary test, `test_the_case_directory_loads_at_all`: a broken case YAML now
 fails exactly that one test, everything else in the suite runs normally.
-Verified both ways (§13's Step 4 trap callout has the before/after).
+Verified both ways (§13's Step 3 trap callout has the before/after).
 
 ### 16.7 Verified against the hand-written case
 
@@ -3571,8 +3551,7 @@ cluster, which makes it a known-correct answer that predates PRISM:
    expected/actual .type and .vars.facts
    drilldown .bind, .kinds, .time
 
-11/11 generated sql_sync tests pass against the real 185 KB query
-18/18 tests/test_case_wiring.py tests pass -- see §16.6
+24/24 tests/test_insight_plus_sql_sync.py tests pass -- see §16.6
 ```
 
 `row_summary` differs — 8 rules-derived groups against the human's 7 — and
