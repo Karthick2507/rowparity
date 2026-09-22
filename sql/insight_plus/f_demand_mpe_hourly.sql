@@ -566,6 +566,7 @@ where process_batch_id = '${arena.presto.var.process_batch_id}'
   and (BITWISE_AND(candidate__flags, 131072)>0 OR BITWISE_AND(candidate__bid_status, 1)>0) -- PRE_BID_FILTERED OR RECEIVED_BID
   and coalesce(request__demand_log_magnifier, 0) > 0  -- Sampled by Demand Log
   --and coalesce(candidate__error, '') in ('AD_PENDING_APPROVAL','COMPLIANCE_NOT_APPROVED','COMPETITION_FAILURE','GLOBAL_ADVERTISER_RESTRICTED_BY_LISTING','GLOBAL_BRAND_RESTRICTED_BY_LISTING','INDUSTRY_RESTRICTED_BY_LISTING','RESTRICTED_SEAT_BY_MKPL_EXCHANGE','LISTING_CREATIVE_DURATION_CHECK','EXTERNAL_CREATIVE_PROFILE_CHECK_FAILED','PROFILE_CHECK_FAILED','MKPL_EXCHANGE_ADVERTISER_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_BRAND_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_INDUSTRY_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_SEAT_FLOOR_PRICE_NOT_MET','DSP_BLOCKED_BY_PROFILE', 'LAT_UNSUPPORTED', 'US_PRIVACY_UNSUPPORTED', 'COPPA_UNSUPPORTED', 'ATTS_UNSUPPORTED', 'KV_OPT_OUT', 'GDPR_UNSUPPORTED', 'GPP_UNSUPPORTED', 'GPP_SPI_UNSUPPORTED')
+  and ${sampling_filter} --sampling filter
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
 
 union all
@@ -1069,6 +1070,7 @@ where process_batch_id = '${arena.presto.var.process_batch_id}'
   and nw.sales_channel = 6
   --and bitwise_and(auction__auction_status, 1) > 0     -- Pre-filtered stage
   and coalesce(request__demand_log_magnifier, 0) > 0  -- Sampled by Demand Log
+  and ${sampling_filter} --sampling filter
   --and coalesce(auction__error, '') in ('AD_PENDING_APPROVAL','COMPLIANCE_NOT_APPROVED','COMPETITION_FAILURE','GLOBAL_ADVERTISER_RESTRICTED_BY_LISTING','GLOBAL_BRAND_RESTRICTED_BY_LISTING','INDUSTRY_RESTRICTED_BY_LISTING','RESTRICTED_SEAT_BY_MKPL_EXCHANGE','LISTING_CREATIVE_DURATION_CHECK','EXTERNAL_CREATIVE_PROFILE_CHECK_FAILED','PROFILE_CHECK_FAILED','MKPL_EXCHANGE_ADVERTISER_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_BRAND_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_INDUSTRY_FLOOR_PRICE_NOT_MET','MKPL_EXCHANGE_SEAT_FLOOR_PRICE_NOT_MET','DSP_BLOCKED_BY_PROFILE', 'LAT_UNSUPPORTED', 'US_PRIVACY_UNSUPPORTED', 'COPPA_UNSUPPORTED', 'ATTS_UNSUPPORTED', 'KV_OPT_OUT', 'GDPR_UNSUPPORTED', 'GPP_UNSUPPORTED', 'GPP_SPI_UNSUPPORTED')
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
 
@@ -1289,6 +1291,7 @@ where process_batch_id = '${arena.presto.var.process_batch_id}'
   and nw.sales_channel = 6
   and coalesce(request__demand_log_magnifier, 0) > 0  -- Sampled by Demand Log
   and sub_err.error_category = candidate__error
+  and ${sampling_filter} --sampling filter
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
 
 union all
@@ -1512,6 +1515,7 @@ where
     and bitwise_and(slot__flags, 64) = 0                                                    -- No Parent Slot
     and coalesce(nw.nw_role, '') in ('CRO', 'R')                                            -- Only for Reseller
     and coalesce(outbound.opportunity, 0) > 0
+    and ${sampling_filter} --sampling filter
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
 
 union all
@@ -1741,6 +1745,7 @@ where
     and coalesce(ack__ack_entity_type, '') = 'slot'
     and coalesce(ack__metrics__slot_impression, 0) > 0                                      -- Has Slot Callback
     and coalesce(outbound.opportunity, 0) > 0
+    and ${sampling_filter} --sampling filter
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
 
 union all
@@ -2012,5 +2017,6 @@ where
     and COALESCE(advertisement__is_bumper, false) = false                          -- Remove Bumper Ad
     and COALESCE(ack__ack_entity_type, '') = 'slot'
     and COALESCE(ack__metrics__slot_impression, 0) > 0                             -- Has Slot Callback
+    and ${sampling_filter} --sampling filter
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33) f
 GROUP BY 2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,84,85,86,87,88,89,96,97,143,144,145,147

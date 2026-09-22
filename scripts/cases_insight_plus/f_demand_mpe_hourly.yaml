@@ -20,6 +20,9 @@ cases:
       from the Hoover layout or the Hoover++ layout. Both
       sides are queries; neither is materialised.
 
+    vars:
+      sampling_filter: "bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0"
+
     # The only difference between the two runs. These outrank --param
     # deliberately: a --param reaching both sides would point them at the
     # same catalog, and a comparison of a table with itself always passes.
