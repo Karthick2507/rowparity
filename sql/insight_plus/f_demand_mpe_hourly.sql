@@ -526,11 +526,11 @@ select
 FROM ${facts}.candidate
 cross join unnest(
     partners__network_id,
-    partners__network_is_extra_item_owner,
+    --partners__network_is_extra_item_owner,
     partners__supply_source,
     partners__sales_channel,
     partners__entity_source,
-    partners__role,
+    --partners__role,
     partners__content_owner_network_id,
     partners__inbound_order_id,
     partners__site_section_id,
@@ -544,11 +544,11 @@ cross join unnest(
     partners__standard_channel_visibility__report_aggregate)
 nw (
   network_id,
-  extra_item_owner,
+  --extra_item_owner,
   supply_source,
   sales_channel,
   entity_source,
-  role,
+  --role,
   content_owner_network_id,
   inbound_order_id,
   site_section_id,
@@ -1029,14 +1029,14 @@ imp (
 )
 cross join unnest(
     partners__network_id,
-    partners__network_is_extra_item_owner,
+    --partners__network_is_extra_item_owner,
     partners__supply_source,
     partners__content_owner_network_id,
     partners__inbound_order_id,
     partners__site_section_id,
     partners__sales_channel,
     partners__entity_source,
-    partners__role,
+    --partners__role,
     partners__outbound_listing_id,
     partners__geo_country_visibility__report_aggregate,
     partners__user_agent_visibility__report_aggregate,
@@ -1047,14 +1047,14 @@ cross join unnest(
     partners__standard_channel_visibility__report_aggregate)
 nw (
   network_id,
-  extra_item_owner,
+  --extra_item_owner,
   supply_source,
   content_owner_network_id,
   inbound_order_id,
   site_section_id,
   sales_channel,
   entity_source,
-  role,
+  --role,
   outbound_listing_id,
   country_visibility,
   user_agent_visibility,
@@ -1245,14 +1245,14 @@ select
 FROM ${facts}.candidate
 cross join unnest(
     partners__network_id,
-    partners__network_is_extra_item_owner,
+    --partners__network_is_extra_item_owner,
     partners__supply_source,
     partners__content_owner_network_id,
     partners__inbound_order_id,
     partners__site_section_id,
     partners__sales_channel,
     partners__entity_source,
-    partners__role,
+    --partners__role,
     partners__outbound_listing_id,
     partners__geo_country_visibility__report_aggregate,
     partners__user_agent_visibility__report_aggregate,
@@ -1263,14 +1263,14 @@ cross join unnest(
     partners__standard_channel_visibility__report_aggregate)
 nw (
   network_id,
-  extra_item_owner,
+  --extra_item_owner,
   supply_source,
   content_owner_network_id,
   inbound_order_id,
   site_section_id,
   sales_channel,
   entity_source,
-  role,
+  --role,
   outbound_listing_id,
   country_visibility,
   user_agent_visibility,
@@ -1467,7 +1467,7 @@ FROM ${facts}.slot
 cross join unnest (
         partners__network_id,
         partners__bit_flags,
-        partners__role,
+        --partners__role,
         partners__supply_source,
         partners__content_owner_network_id,
         partners__inbound_order_id,
@@ -1486,7 +1486,7 @@ cross join unnest (
     ) as nw (
         nw_id,
         bit_flags,
-        nw_role,
+        --nw_role,
         supply_source,
         content_owner_network_id,
         inbound_order_id,
@@ -1513,7 +1513,7 @@ where
     process_batch_id = '${arena.presto.var.process_batch_id}'
     and (request__delivery_method is null or request__delivery_method != 'CASUCPSU')        -- Remove Log Translator Traffic
     and bitwise_and(slot__flags, 64) = 0                                                    -- No Parent Slot
-    and coalesce(nw.nw_role, '') in ('CRO', 'R')                                            -- Only for Reseller
+    --and coalesce(nw.nw_role, '') in ('CRO', 'R')                                            -- Only for Reseller
     and coalesce(outbound.opportunity, 0) > 0
     and ${sampling_filter} --sampling filter
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33
@@ -1692,7 +1692,7 @@ FROM ${facts}.ack
 cross join unnest (
         partners__network_id,
         partners__bit_flags,
-        partners__role,
+        --partners__role,
         partners__supply_source,
         partners__content_owner_network_id,
         partners__inbound_order_id,
@@ -1712,7 +1712,7 @@ cross join unnest (
     ) as nw (
         nw_id,
         bit_flags,
-        nw_role,
+        --nw_role,
         supply_source,
         content_owner_network_id,
         inbound_order_id,
@@ -1741,7 +1741,7 @@ where
     process_batch_id = '${arena.presto.var.process_batch_id}'
     and (request__delivery_method is null or request__delivery_method != 'CASUCPSU')        -- Remove Log Translator Traffic
     and bitwise_and(slot__flags, 64) = 0                                                    -- No Parent Slot
-    and coalesce(nw.nw_role, '') in ('CRO', 'R')                                            -- Only for Reseller
+    --and coalesce(nw.nw_role, '') in ('CRO', 'R')                                            -- Only for Reseller
     and coalesce(ack__ack_entity_type, '') = 'slot'
     and coalesce(ack__metrics__slot_impression, 0) > 0                                      -- Has Slot Callback
     and coalesce(outbound.opportunity, 0) > 0
