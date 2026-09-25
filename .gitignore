@@ -76,3 +76,7 @@ secrets/
 
 # PRISM generates here; regenerable, copy into the tree yourself
 prism/output/
+
+# PRISM batch input -- your local drop folder for source SQL/conf.yml
+# batches, never something the repo itself should carry
+prism/input/
