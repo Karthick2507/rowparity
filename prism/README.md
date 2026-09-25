@@ -5,8 +5,13 @@ used to be a third and fourth generated file -- the SQL-template checks and
 the wiring checks -- lives in one file you never touch:
 `tests/test_insight_plus_sql_sync.py`.**
 
+`inspect` / `generate` / `verify` all take a **folder**, not a single file --
+pass `sql/insight_plus` to batch-run every case there, or `prism/input` to
+pick up every biz_service batch dropped underneath it (see
+[biz_service batches](#biz_service-batches) below):
+
 ```bash
-python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
+python -m prism generate sql/insight_plus
 ```
 
 ```
@@ -70,11 +75,21 @@ not by PRISM itself.
 
 ## Commands
 
+**Folder-only.** A single `.sql` file is no longer accepted directly -- pass
+the folder it lives in, and PRISM analyses every case it finds there:
+
 ```bash
-python -m prism inspect  <file.sql>     # what it read; writes nothing
-python -m prism generate <file.sql>     # write the two files into prism/output/
-python -m prism verify   <file.sql>     # diff what it would write against the repo
+python -m prism inspect  <folder>     # what it read; writes nothing
+python -m prism generate <folder>     # write the case file(s) into prism/output/
+python -m prism verify   <folder>     # diff what it would write against the repo
 ```
+
+`<folder>` is routed per subfolder: a subfolder holding a `conf.yml`/
+`conf.yaml` is a **biz_service batch** (below); a `.sql` file directly in the
+folder, with no conf.yml beside it, is read by the pipeline described in the
+rest of this document -- one case per file. A file that fails to analyse is
+reported and skipped; every other file in the folder still runs, and the exit
+code reflects whether anything failed.
 
 ### Where the files land
 
@@ -256,24 +271,94 @@ dedicated, always-collected test -- `test_the_case_directory_loads_at_all` --
 re-raises it as an ordinary failure. A broken case YAML now fails exactly that
 one test; the rest of the suite runs normally.
 
+## biz_service batches
+
+A second, separate pipeline for a different shape of input: instead of one
+parity SQL you write yourself, a **biz_service batch** is a folder your BI
+system already produces -- one `conf.yml`/`conf.yaml` plus the 1+ `.sql`
+files it owns:
+
+```
+prism/input/ab_test/
+  conf.yaml              -- dimensions:, metrics:, batch_id_filter: -- shared
+  ab_test_request.sql    -- each .sql file becomes its OWN separate case,
+  ab_test_ack.sql           never merged with its siblings
+  ab_test_perf_phase.sql
+```
+
+`conf.yml` already states, once per batch, which output columns are
+dimensions and which are metrics -- PRISM does not re-derive that split with
+an aggregate-function scan the way it does for insight_plus; a column is a
+key unless `metrics:` (its `:type` suffix stripped) names it.
+
+Two placeholder conventions PRISM finds by pattern, because the exact name
+varies per file:
+
+* `${DATA_FILTER_<SUFFIX>}` -- e.g. `${DATA_FILTER_REQUEST}`,
+  `${DATA_FILTER_ACK}`. Replaced with `conf.yml`'s own `batch_id_filter`
+  entry for that file (translating its `${PROCESS_BATCH_ID}` to rowparity's
+  `${arena.presto.var.process_batch_id}`), or, when that entry is empty, the
+  default `process_batch_id = '${arena.presto.var.process_batch_id}'`.
+* `${sampling_filter}` -- inserted at the same spot, `AND`-ed into the same
+  WHERE clause the DATA_FILTER token already sat in, which is what makes the
+  insertion syntax-safe without PRISM knowing anything else about the
+  query's shape (flat, or a CTE ahead of the final `select`).
+
+A file is **skipped**, not generated, when either signal is missing: no
+`mrm_log_flat.default` reference (nothing for `${facts}` to point at -- e.g.
+`ab_test_perf_phase.sql`, which reads an unrelated troubleshooting-log table
+through nested struct access), or no `${DATA_FILTER_*}` token at all (no
+anchor for the batch predicate and the sampling filter that must sit beside
+it). Skipped files are reported by name and reason, never silently dropped.
+
+Batches arrive incrementally, one `generate` run at a time, so the output is
+**additive**: one merged `scripts/cases_biz_service.yaml` covers every batch
+generated so far, and re-running PRISM on one batch replaces only that
+batch's own cases in the file, in place -- every other batch's cases are
+left untouched.
+
+```bash
+python -m prism inspect  prism/input              # every batch found underneath
+python -m prism generate prism/input --root prism/output
+python -m prism verify   prism/input --root prism/output --show-diff
+```
+
+```
+prism/output/
+  scripts/cases_biz_service.yaml            -- one file, every batch, additive
+  sql/biz_service/ab_test/ab_test_request.sql   -- transformed copy; original
+  sql/biz_service/ab_test/ab_test_ack.sql          in prism/input/ untouched
+  tests/test_biz_service_sql_sync.py        -- one shared test file, mirrors
+                                                tests/test_insight_plus_sql_sync.py
+```
+
+No drilldown is generated for a biz_service case. `prism/input/` and
+`prism/output/` are both gitignored -- your local drop folder and PRISM's
+regenerable output, neither ever committed. Same install step as
+insight_plus: review the output tree, then `cp -r prism/output/* .`.
+
 ## Layout
 
 ```
 prism/
   __main__.py      python -m prism
-  analyse.py       .sql → QueryProfile.  Deterministic. Stdlib only.
+  analyse.py       .sql → QueryProfile (insight_plus).  Deterministic. Stdlib only.
+  biz_service.py   conf.yml + .sql folder → per-file cases (biz_service pipeline)
   rules.py         the ONE judgement call, isolated so it is swappable
   generate.py      QueryProfile → two files.  Pure templating.
-  cli.py           inspect | generate | verify
+  cli.py           inspect | generate | verify -- folder-only, routes per
+                   subfolder between the insight_plus and biz_service pipelines
+  input/           your local drop folder for biz_service batches (gitignored)
+  output/          PRISM's regenerable output (gitignored)
   tests/
     test_analyse.py    the parser, against known-correct numbers
     test_roundtrip.py  PRISM vs the hand-written case, and the drift guard
                        on tests/test_insight_plus_sql_sync.py's inlined parser
 
 tests/
-  test_insight_plus_sql_sync.py   the ONLY test file for this case directory
-                        -- NOT generated, NOT per-case. Covers wiring and
-                        SQL-template checks for every case PRISM writes for.
+  test_insight_plus_sql_sync.py   the ONLY test file for the insight_plus case
+                        directory -- NOT generated, NOT per-case. Covers wiring
+                        and SQL-template checks for every case PRISM writes for.
 ```
 
 `QueryProfile` is the seam. All the risk is on the analysis side of it — a
@@ -307,11 +392,11 @@ redefines "the same row".
 #    ${sampling_filter} per branch, the batch predicate
 vim sql/insight_plus/f_supply_portfolio_hourly.sql
 
-# 2. look before you leap
-python -m prism inspect sql/insight_plus/f_supply_portfolio_hourly.sql
+# 2. look before you leap -- the whole folder, not just the new file
+python -m prism inspect sql/insight_plus
 
 # 3. generate — lands in prism/output/, touches nothing else
-python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
+python -m prism generate sql/insight_plus
 
 # 4. review it where it stands; the output tree is runnable
 rowparity list prism/output/scripts/cases_insight_plus

@@ -169,7 +169,7 @@ Beside `src/`, and importing nothing from it:
 
 | | Lines | |
 |---|---|---|
-| `prism/` | 1,988 | **PRISM** — derives a case from the query it compares. §16 |
+| `prism/` | 2,387 | **PRISM** — derives cases from the queries they compare, across two pipelines. §16 |
 | `tests/` | 19 files | rowparity's own suite |
 | `prism/tests/` | 2 files | PRISM's, kept with the tool |
 
@@ -3386,8 +3386,15 @@ longer need writing at all, for any case, because
 writes the first two of those for you, from the SQL.
 
 ```bash
-python -m prism generate sql/insight_plus/f_supply_portfolio_hourly.sql
+python -m prism generate sql/insight_plus
 ```
+
+`inspect`/`generate`/`verify` are **folder-only** — a single `.sql` file is
+no longer accepted directly. Point at a folder and PRISM routes each
+subfolder: one holding a `conf.yml`/`conf.yaml` is a **biz_service batch**
+(§16.9); a `.sql` file directly in the folder, with no conf.yml beside it,
+goes through the pipeline this section describes. A file that fails to
+analyse is reported and skipped rather than aborting the whole run.
 
 ### 16.1 Where it sits, and what it is not
 
@@ -3399,14 +3406,18 @@ rowparity/
                          -- not generated, not per-case, never touched by
                          PRISM, and the ONLY test file for this case directory
   prism/               a tool that writes files FOR the product
-    analyse.py           .sql → QueryProfile.  Deterministic, stdlib only.
-    rules.py             the ONE judgement call, isolated
-    generate.py          QueryProfile → two files
-    cli.py               inspect | generate | verify
-    __main__.py          python -m prism
-    tests/               its own suite, kept with the tool
-    output/               where generated files land.  Gitignored.
-    README.md             the full reference
+    analyse.py           .sql → QueryProfile (insight_plus).  Stdlib only.
+    biz_service.py        conf.yml + .sql folder → per-file cases (§16.9)
+    rules.py              the ONE judgement call, isolated
+    generate.py           QueryProfile → two files
+    cli.py                inspect | generate | verify -- folder-only, routes
+                          per subfolder between the two pipelines
+    __main__.py           python -m prism
+    tests/                its own suite, kept with the tool
+    input/                 your local drop folder for biz_service batches.
+                          Gitignored.
+    output/                where generated files land.  Gitignored.
+    README.md              the full reference
 ```
 
 Three boundaries, all enforced rather than intended:
@@ -3462,9 +3473,9 @@ Position is not used.
 
 | | |
 |---|---|
-| `prism inspect <f.sql>` | what it read, and what it could not decide. Writes nothing |
-| `prism generate <f.sql>` | the two files into `prism/output/`. Refuses to clobber |
-| `prism verify <f.sql>` | regenerate in memory, diff against the repo. Exit 1 on any difference |
+| `prism inspect <folder>` | what it read, and what it could not decide. Writes nothing |
+| `prism generate <folder>` | the case file(s) into `prism/output/`. Refuses to clobber SQL |
+| `prism verify <folder>` | regenerate in memory, diff against the repo. Exit 1 on any difference |
 
 `verify` is the one that matters. Point it at a case a human already wrote and
 the diff shows where PRISM's derivation disagrees with judgement — a PRISM bug,
@@ -3574,7 +3585,65 @@ regardless — **nothing that decides what "equal" means (`keys`, `breakdown_by`
 `unordered_list_columns`, the test counts) will ever be model-derived.** A wrong
 `row_summary` label is cosmetic. A wrong key silently redefines "the same row".
 
-`prism/README.md` is the full reference.
+### 16.9 biz_service batches: a second pipeline, same tool
+
+§16.1–16.8 describe PRISM's original input: one parity SQL a person writes,
+already carrying `${facts}` and `${sampling_filter}`. A **biz_service
+batch** is a different shape entirely — a folder the BI system already
+produces, one `conf.yml`/`conf.yaml` shared by the 1+ `.sql` files beside
+it:
+
+```
+prism/input/ab_test/
+  conf.yaml              dimensions:, metrics:, batch_id_filter: -- shared
+  ab_test_request.sql    each file its OWN case, never merged with siblings
+  ab_test_ack.sql
+  ab_test_perf_phase.sql
+```
+
+`conf.yml` already states which output columns are dimensions and which are
+metrics, so `biz_service.py` does not re-derive that split the way
+`analyse.py` does — a column is a key unless `metrics:` (its `:type` suffix
+stripped) names it.
+
+Two placeholder conventions, found by pattern because the exact name varies
+per file: `${DATA_FILTER_<SUFFIX>}` (`${DATA_FILTER_REQUEST}`,
+`${DATA_FILTER_ACK}`, ...) is replaced by `conf.yml`'s own `batch_id_filter`
+entry for that file — translating its `${PROCESS_BATCH_ID}` to rowparity's
+`${arena.presto.var.process_batch_id}` — or, when that entry is empty, the
+default `process_batch_id = '${arena.presto.var.process_batch_id}'`.
+`${sampling_filter}` is `AND`-ed in at that same spot, which is what makes
+the insertion syntax-safe without knowing whether the query is flat or has a
+CTE ahead of its final `select`.
+
+A file is **skipped**, not generated, when either signal is missing: no
+`mrm_log_flat.default` reference (`ab_test_perf_phase.sql` above — it reads
+an unrelated troubleshooting-log table through nested struct access), or no
+`${DATA_FILTER_*}` token at all (no anchor for the batch predicate and the
+sampling filter). Reported by name and reason, never silently dropped.
+
+Batches arrive incrementally, so the output is additive: one merged
+`scripts/cases_biz_service.yaml` covers every batch generated so far, and
+re-running PRISM on one batch replaces only that batch's own cases in the
+file, in place. `tests/test_biz_service_sql_sync.py` mirrors
+`test_insight_plus_sql_sync.py`'s shape and reasons — discovers every case
+in that one file, parametrizes over the result, no drilldown block (this
+pipeline never generates one).
+
+```bash
+python -m prism generate prism/input --root prism/output
+```
+
+```
+prism/output/
+  scripts/cases_biz_service.yaml                  one file, every batch
+  sql/biz_service/ab_test/ab_test_request.sql     transformed copy
+  sql/biz_service/ab_test/ab_test_ack.sql         (original in prism/input/
+                                                    untouched)
+  tests/test_biz_service_sql_sync.py
+```
+
+`prism/README.md`'s "biz_service batches" section is the full reference.
 
 ---
 
