@@ -1,4 +1,5 @@
-<title>rowparity — Verification Report</title>
+<meta charset="utf-8">
+<title>rowparity - Verification Report</title>
 <style>
   :root {
     --canvas: #FFFFFF;
@@ -540,7 +541,7 @@
   </section>
 
   <p class="footnote">
-    Fingerprints are computed with <code>hashlib.blake2b</code> over a type-aware canonical form of each row — floats quantized to tolerance, decimals stripped of trailing zeros, timestamps normalized to UTC, so an <code>int32</code> from one engine and an <code>int64</code> from another still fingerprint identically when the value is the same. Two tables are equivalent exactly when their multisets of fingerprints match; row order never enters into it. This report reads directly off the same <code>rowparity_run_summary</code> / <code>rowparity_run_diffs</code> tables any query engine can query — nothing here is computed specially for display.
+    Fingerprints are computed with <code>hashlib.blake2b</code> over a type-aware canonical form of each row - floats quantized to tolerance, decimals stripped of trailing zeros, timestamps normalized to UTC, so an <code>int32</code> from one engine and an <code>int64</code> from another still fingerprint identically when the value is the same. Two tables are equivalent exactly when their multisets of fingerprints match; row order never enters into it. This report reads directly off the same <code>rowparity_run_summary</code> / <code>rowparity_run_diffs</code> tables any query engine can query - nothing here is computed specially for display.
   </p>
 
 </div>
@@ -572,7 +573,7 @@
 
   document.getElementById("generated-at").textContent = GENERATED_AT;
   document.getElementById("window-summary").textContent =
-    WINDOW_DAYS + "-day window · " + CASES.length + " case" + (CASES.length === 1 ? "" : "s") + " tracked";
+    WINDOW_DAYS + "-day window | " + CASES.length + " case" + (CASES.length === 1 ? "" : "s") + " tracked";
   document.getElementById("trend-title").textContent = "Pass rate, last " + WINDOW_DAYS + " days";
 
   /* ---------------------------------------------------------------- */
@@ -613,7 +614,7 @@
     '<span class="status-icon ' + (allGood ? "good" : "bad") + '">' + (allGood ? ICON_CHECK : ICON_X) + '</span>' +
     '<div>' +
       '<h2>' + (allGood ? "All checks have passed" : failingToday + " of " + CASES.length + " checks failing") + '</h2>' +
-      '<p>Every case reduces <em>expected</em> and <em>actual</em> to a canonical Blake2b fingerprint and compares the full multiset — no row sampled, no row assumed.</p>' +
+      '<p>Every case reduces <em>expected</em> and <em>actual</em> to a canonical Blake2b fingerprint and compares the full multiset - no row sampled, no row assumed.</p>' +
     '</div>';
 
   var statRow = document.getElementById("stat-row");
@@ -633,7 +634,7 @@
   });
 
   /* ---------------------------------------------------------------- */
-  /* Trend chart (SVG, hand-built from data — line + area + hover)     */
+  /* Trend chart (SVG, hand-built from data - line + area + hover)     */
   /* ---------------------------------------------------------------- */
 
   (function renderTrendChart() {
@@ -714,7 +715,7 @@
       tooltip.style.opacity = 1;
       tooltip.innerHTML =
         '<span class="t-date">' + d.date + '</span><br>' +
-        '<span class="t-rate">' + d.passing + ' / ' + d.total + ' passing</span> · ' + Math.round(d.rate * 100) + '%';
+        '<span class="t-rate">' + d.passing + ' / ' + d.total + ' passing</span> | ' + Math.round(d.rate * 100) + '%';
     });
     hitRect.addEventListener("mouseleave", function () {
       hoverX.style.opacity = 0;
@@ -790,7 +791,7 @@
     var typeMismatchHtml = s.typeMismatches.length
       ? '<div class="schema-col-list">' + s.typeMismatches.map(function (tm) {
           return '<div class="schema-col-item type"><span class="col-badge">type</span>' + tm[0] +
-            ' <span class="type-change">' + tm[1] + ' → ' + tm[2] + '</span></div>';
+            ' <span class="type-change">' + tm[1] + ' -> ' + tm[2] + '</span></div>';
         }).join("") + '</div>'
       : '';
 
@@ -884,7 +885,7 @@
         '</div>';
     }).join("");
 
-    var keyLabel = c.keys ? c.keys.join(", ") : "none — keyless / multiset";
+    var keyLabel = c.keys ? c.keys.join(", ") : "none - keyless / multiset";
 
     return '<div class="detail-inner">' +
       '<p class="detail-summary"><strong>' + fmtInt(c.signatures.reduce(function (s, x) { return s + x.count; }, 0)) + ' row(s) differ</strong> on the latest run, grouped by which columns changed. Key: <code>' + keyLabel + '</code></p>' +

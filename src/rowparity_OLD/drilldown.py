@@ -10,6 +10,7 @@ run::
 
 The queries are **generated, not executed**.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -31,13 +32,14 @@ class DrilldownError(RuntimeError):
 @dataclass
 class SideDrilldown:
     """One side's ready-to-run query."""
+
     label: str
     sql: str
 
 
 @dataclass
 class DrilldownResult:
-    column: str                       # the bound column, e.g. creative_id
+    column: str  # the bound column, e.g. creative_id
     values: List[Any] = field(default_factory=list)
     id_column: str = "request__transaction_id"
     sides: List[SideDrilldown] = field(default_factory=list)
@@ -128,6 +130,7 @@ class DrilldownConfig:
             hours_after=int(self.time.get("hours_after", HOURS_AFTER)),
         )
 
+
 BATCH_FORMAT = "%Y%m%d%H%M%S"
 
 HOURS_BEFORE = 1
@@ -140,7 +143,6 @@ def derive_time_vars(
     hours_before: int = HOURS_BEFORE,
     hours_after: int = HOURS_AFTER,
 ) -> Dict[str, str]:
-
     from datetime import datetime, timedelta
 
     text = str(batch_value).strip()
@@ -284,8 +286,11 @@ def generate(
     rows = sum(per_rows[k] for k in cfg.kinds)
 
     out = DrilldownResult(
-        column=column, values=values, id_column=cfg.id_column,
-        complete=complete and not truncated, rows_covered=rows,
+        column=column,
+        values=values,
+        id_column=cfg.id_column,
+        complete=complete and not truncated,
+        rows_covered=rows,
         kinds=list(cfg.kinds),
         kind_values={k: len(per_kind[k]) for k in KINDS},
         kind_rows=dict(per_rows),

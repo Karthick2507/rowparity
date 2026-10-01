@@ -5,6 +5,7 @@ pair is destroyed: the row cannot match, so it is reported as **one missing row
 plus one added row** -- the same logical row, counted twice, as a structural
 difference. Nothing in the output says the two are related.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -30,6 +31,7 @@ def _unwrap(value: Any) -> Any:
 @dataclass
 class NearMissPair:
     """One missing row and one added row that differ in a single key column."""
+
     column: str
     expected_value: Any
     actual_value: Any
@@ -38,13 +40,11 @@ class NearMissPair:
 @dataclass
 class NearMissColumn:
     """What dropping one column from the key achieved."""
+
     column: str
     pairs: int = 0
     ambiguous_groups: int = 0
     examples: List[NearMissPair] = field(default_factory=list)
-    # (missing key, added key) for every pair, so a reader can take these rows
-    # out of the "only on one side" counts instead of reporting them twice.
-    paired_keys: List[Tuple[Tuple, Tuple]] = field(default_factory=list)
 
     def share_of(self, missing_count: int) -> float:
         return (self.pairs / missing_count) if missing_count else 0.0
@@ -63,6 +63,7 @@ class NearMissResult:
 
     def explained(self, missing_count: int) -> float:
         return self.best.share_of(missing_count) if self.best else 0.0
+
 
 MAX_ROWS = 20_000
 MAX_EXAMPLES = 5
@@ -88,10 +89,10 @@ def analyse(
         stats = NearMissColumn(column=column)
         added_by_rest: Dict[Tuple, List[Tuple]] = defaultdict(list)
         for key in added_keys:
-            added_by_rest[key[:position] + key[position + 1:]].append(key)
+            added_by_rest[key[:position] + key[position + 1 :]].append(key)
 
         for key in missing_keys:
-            rest = key[:position] + key[position + 1:]
+            rest = key[:position] + key[position + 1 :]
             candidates = added_by_rest.get(rest)
             if not candidates:
                 continue
@@ -99,7 +100,6 @@ def analyse(
                 stats.ambiguous_groups += 1
                 continue
             stats.pairs += 1
-            stats.paired_keys.append((key, candidates[0]))
             if len(stats.examples) < max_examples:
                 stats.examples.append(
                     NearMissPair(

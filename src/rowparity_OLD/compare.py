@@ -24,10 +24,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import pyarrow as pa
 
 from .hashing import CanonConfig, canon_columns_vectorized, canon_row, canon_value, row_digest
-from .pairing import within_tolerance
-
-# Every differing row is kept for publishing, up to this many per comparison.
-MAX_DIFF_ROWS = 1_000_000
 
 
 class IdenticalSourcesError(RuntimeError):
@@ -66,9 +62,6 @@ class CompareConfig:
     breakdown_by: Optional[List[str]] = None
     near_miss: bool = False
     vectorized: bool = False
-    # Largest share of rows allowed to differ while the case still passes.
-    # 0.0 keeps the strict default: any difference fails.
-    max_diff_ratio: float = 0.0
 
     def canon(self) -> CanonConfig:
         return CanonConfig(
@@ -214,8 +207,6 @@ class ComparisonResult:
     columns_only_in_expected: List[str] = field(default_factory=list)
     columns_only_in_actual: List[str] = field(default_factory=list)
     type_mismatches: List[Tuple[str, str, str]] = field(default_factory=list)
-    exp_cols: Dict[str, str] = field(default_factory=dict)
-    act_cols: Dict[str, str] = field(default_factory=dict)
     duplicate_keys_expected: int = 0
     duplicate_keys_actual: int = 0
     examples: List[RowDiff] = field(default_factory=list)
@@ -235,19 +226,6 @@ class ComparisonResult:
     added_keys: List[Tuple] = field(default_factory=list)
     changed_keys: List[Tuple] = field(default_factory=list)
     near_miss: Optional[Any] = None  # near_miss.NearMissResult
-    # Keyless runs: `keys` holds a key inferred for pairing unmatched rows.
-    keys_inferred: bool = False
-    pairing_note: Optional[str] = None
-    # Pairs whose only differences were floats within float_tolerance.
-    equal_within_tolerance: int = 0
-    # Every differing row (not just `examples`), for publishing row-level diffs.
-    # Push-down engines never see rows and leave this empty.
-    diff_rows: List[RowDiff] = field(default_factory=list)
-    diff_rows_truncated: bool = False
-    max_diff_ratio: float = 0.0
-    # strict_columns tripped: a column-set or type problem failed the case on
-    # its own, which no row tolerance can excuse.
-    strict_column_failure: bool = False
 
     expected_load_seconds: float = 0.0
     actual_load_seconds: float = 0.0
@@ -261,49 +239,6 @@ class ComparisonResult:
     def total_differences(self) -> int:
         return self.missing_count + self.added_count + self.changed_count
 
-    @property
-    def diff_ratio(self) -> float:
-        """Differing rows as a share of the larger side."""
-        base = max(self.expected_rows, self.actual_rows)
-        return (self.total_differences / base) if base else 0.0
-
-    @property
-    def has_blockers(self) -> bool:
-        """Problems that make the row counts themselves untrustworthy.
-
-        Duplicate keys mean only the first row per key was compared, so a
-        difference ratio computed over them can be arbitrarily wrong -- a
-        tolerance must not turn that into a pass.
-        """
-        return bool(
-            self.duplicate_keys_expected or self.duplicate_keys_actual or self.strict_column_failure
-        )
-
-    @property
-    def status(self) -> str:
-        """EQUIVALENT, WITHIN_TOLERANCE or DIFFERENT.
-
-        ``equivalent`` keeps meaning "no differences found"; this is the
-        verdict, which also honours ``max_diff_ratio``. Blockers are checked
-        first: with duplicate keys only the first row per key was compared, so
-        "no differences found" is not evidence of equivalence.
-        """
-        if self.has_blockers:
-            return "DIFFERENT"
-        if self.equivalent:
-            return "EQUIVALENT"
-        if (
-            self.kind == "rows"
-            and self.total_differences
-            and self.diff_ratio <= self.max_diff_ratio
-        ):
-            return "WITHIN_TOLERANCE"
-        return "DIFFERENT"
-
-    @property
-    def passed(self) -> bool:
-        return self.status != "DIFFERENT"
-
     def signatures_by_count(self) -> List[ChangeSignature]:
         return sorted(self.change_signatures.values(), key=lambda s: s.count, reverse=True)
 
@@ -316,10 +251,7 @@ class ComparisonResult:
                 f"{len(self.columns_only_in_actual)} only in actual, "
                 f"{len(self.type_mismatches)} type mismatch(es)"
             )
-        if self.keys_inferred:
-            mode = f"keyless, rows paired on inferred {self.keys}"
-        else:
-            mode = f"keyed on {self.keys}" if self.keys else "keyless (multiset)"
+        mode = f"keyed on {self.keys}" if self.keys else "keyless (multiset)"
         return (
             f"[{head}] {mode} | expected={self.expected_rows} actual={self.actual_rows} "
             f"| missing={self.missing_count} added={self.added_count} changed={self.changed_count}"
@@ -365,13 +297,11 @@ def compare_tables(expected: pa.Table, actual: pa.Table, cfg: CompareConfig) -> 
         type_mismatches=type_mismatches,
         expected_schema={f.name: str(f.type) for f in expected.schema},
         actual_schema={f.name: str(f.type) for f in actual.schema},
-        max_diff_ratio=cfg.max_diff_ratio,
     )
 
     # Column-set / type problems only *fail* the run in strict mode, but are always reported.
     if cfg.strict_columns and (only_exp or only_act or type_mismatches):
         result.equivalent = False
-        result.strict_column_failure = True
 
     exp_rows = expected.to_pylist()
     act_rows = actual.to_pylist()
@@ -396,7 +326,7 @@ def compare_tables(expected: pa.Table, actual: pa.Table, cfg: CompareConfig) -> 
             act_canon,
         )
     else:
-        missing, added = _compare_keyless(
+        _compare_keyless(
             exp_rows,
             act_rows,
             expected.schema,
@@ -408,13 +338,11 @@ def compare_tables(expected: pa.Table, actual: pa.Table, cfg: CompareConfig) -> 
             exp_canon,
             act_canon,
         )
-        _apply_pairing(result, expected, actual, sorted_cols, cfg, canon_cfg, missing, added)
 
-    near_miss_on = cfg.near_miss or result.keys_inferred
-    if near_miss_on and result.keys and result.missing_keys and result.added_keys:
+    if cfg.near_miss and cfg.keys and result.missing_keys and result.added_keys:
         from . import near_miss as _near_miss
 
-        result.near_miss = _near_miss.analyse(result.missing_keys, result.added_keys, result.keys)
+        result.near_miss = _near_miss.analyse(result.missing_keys, result.added_keys, cfg.keys)
 
     if result.total_differences > 0:
         result.equivalent = False
@@ -521,8 +449,6 @@ def _compare_keyed(
     for key in missing:
         idxs = exp_index[key]
         result.missing_count += len(idxs)
-        for i in idxs:
-            _keep_diff(result, RowDiff(kind="missing", key=key, expected_row=exp_rows[i]))
         group = _group(key, exp_rows[idxs[0]])
         if group is not None:
             group.missing += len(idxs)
@@ -533,8 +459,6 @@ def _compare_keyed(
     for key in added:
         idxs = act_index[key]
         result.added_count += len(idxs)
-        for i in idxs:
-            _keep_diff(result, RowDiff(kind="added", key=key, actual_row=act_rows[i]))
         group = _group(key, act_rows[idxs[0]])
         if group is not None:
             group.added += len(idxs)
@@ -552,87 +476,39 @@ def _compare_keyed(
         e_digest = row_digest(e_canon_row)
         a_digest = row_digest(a_canon_row)
         if e_digest != a_digest:
+            result.changed_count += 1
             coldiffs = _column_diffs(
                 e, a, exp_schema, act_schema, cols, cfg, canon_cfg, exp_canon, act_canon, ei, ai
             )
-            if not coldiffs:
-                continue  # every difference was a float within tolerance
+            diff = RowDiff(kind="changed", key=key, columns=coldiffs, expected_row=e, actual_row=a)
 
+            for cd in coldiffs:
+                if cd.equivalent:
+                    result.equivalent_diff_columns[cd.column] = (
+                        result.equivalent_diff_columns.get(cd.column, 0) + 1
+                    )
+
+            result.changed_keys.append(key)
             group = _group(key, e)
             if group is not None:
                 group.changed += 1
-            _record_change(result, cfg, key, coldiffs, e, a, _bd(e) if bd_columns else None)
 
+            sig = tuple(sorted(c.column for c in coldiffs))
+            stats = result.change_signatures.setdefault(sig, ChangeSignature(columns=sig))
+            stats.count += 1
+            if bd_columns:
+                label = _bd(e)
+                stats.breakdown[label] = stats.breakdown.get(label, 0) + 1
 
-def _record_change(result, cfg, key, coldiffs, e, a, group_label=None) -> None:
-    """Count one changed row into the totals and its change signature."""
-    result.changed_count += 1
-    result.changed_keys.append(key)
-    diff = RowDiff(kind="changed", key=key, columns=coldiffs, expected_row=e, actual_row=a)
-    _keep_diff(result, diff)
+            score = _accumulate_deltas(stats, coldiffs, cfg)
+            # Keep the most extreme row rather than whichever arrived first.
+            # An arbitrary example is a fine illustration and a poor lead; the
+            # largest movement is the one worth looking at.
+            if stats.example is None or score > stats._example_score:
+                stats.example = diff
+                stats._example_score = score
 
-    for cd in coldiffs:
-        if cd.equivalent:
-            result.equivalent_diff_columns[cd.column] = (
-                result.equivalent_diff_columns.get(cd.column, 0) + 1
-            )
-
-    sig = tuple(sorted(c.column for c in coldiffs))
-    stats = result.change_signatures.setdefault(sig, ChangeSignature(columns=sig))
-    stats.count += 1
-    if group_label is not None:
-        stats.breakdown[group_label] = stats.breakdown.get(group_label, 0) + 1
-
-    score = _accumulate_deltas(stats, coldiffs, cfg)
-    # Keep the most extreme row rather than whichever arrived first. An
-    # arbitrary example is a fine illustration and a poor lead; the largest
-    # movement is the one worth looking at.
-    if stats.example is None or score > stats._example_score:
-        stats.example = diff
-        stats._example_score = score
-
-    _maybe_example(result, cfg, diff)
-
-
-def _apply_pairing(result, expected, actual, cols, cfg, canon_cfg, missing, added) -> None:
-    """Turn a keyless result's leftover rows into changed rows where they pair."""
-    from . import pairing
-
-    outcome = pairing.pair_rows(
-        expected, actual, cols, canon_cfg, missing, added, cfg.float_tolerance
-    )
-    if outcome is None:
-        return
-    if "skipped" in outcome:
-        result.pairing_note = (
-            f"Unmatched rows were not paired ({outcome['skipped']}, limit "
-            f"{pairing.MAX_UNMATCHED:,} per side); set compare.keys for column-level findings."
-        )
-        return
-
-    result.keys = outcome["key"]
-    result.keys_inferred = True
-    result.equal_within_tolerance = outcome["equal_within_tolerance"]
-    result.examples = []
-    result.diff_rows = []
-    result.diff_rows_truncated = False
-    result.missing_count = sum(n for _, _, n in outcome["unpaired_missing"])
-    result.added_count = sum(n for _, _, n in outcome["unpaired_added"])
-    result.missing_keys = [k for k, _, _ in outcome["unpaired_missing"]]
-    result.added_keys = [k for k, _, _ in outcome["unpaired_added"]]
-    for k, row, n in outcome["unpaired_missing"]:
-        diff = RowDiff(kind="missing", key=k, expected_row=row)
-        _maybe_example(result, cfg, diff)
-        for _ in range(n):
-            _keep_diff(result, diff)
-    for k, row, n in outcome["unpaired_added"]:
-        diff = RowDiff(kind="added", key=k, actual_row=row)
-        _maybe_example(result, cfg, diff)
-        for _ in range(n):
-            _keep_diff(result, diff)
-    for k, e, a, diffs in outcome["changed"]:
-        coldiffs = [ColumnDiff(column=c, expected=ev, actual=av) for c, ev, av in diffs]
-        _record_change(result, cfg, k, coldiffs, e, a)
+            _maybe_example(result, cfg, diff)
 
 
 def _as_number(value) -> Optional[float]:
@@ -727,10 +603,6 @@ def _column_diffs(
             )
         if ce != ca:
             ev, av = e.get(c), a.get(c)
-            et, at = exp_schema.field(c).type, act_schema.field(c).type
-            tol = cfg.float_tolerance
-            if within_tolerance(et, ev, av, tol) and within_tolerance(at, ev, av, tol):
-                continue
             equivalent = False
             diffs.append(ColumnDiff(column=c, expected=ev, actual=av, equivalent=equivalent))
     return diffs
@@ -782,31 +654,14 @@ def _compare_keyless(
 
     result.column_value_mismatch = [c for c in cols if exp_col_hash[c] != act_col_hash[c]]
 
-    missing, added = [], []
     for d in set(exp_counts) | set(act_counts):
         delta = exp_counts[d] - act_counts[d]
         if delta > 0:  # more copies in expected -> missing from actual
             result.missing_count += delta
-            missing.append((sample[d], delta))
-            diff = RowDiff(kind="missing", expected_row=sample[d])
-            _maybe_example(result, cfg, diff)
-            for _ in range(delta):
-                _keep_diff(result, diff)
+            _maybe_example(result, cfg, RowDiff(kind="missing", expected_row=sample[d]))
         elif delta < 0:  # more copies in actual -> added
             result.added_count += -delta
-            added.append((sample[d], -delta))
-            diff = RowDiff(kind="added", actual_row=sample[d])
-            _maybe_example(result, cfg, diff)
-            for _ in range(-delta):
-                _keep_diff(result, diff)
-    return missing, added
-
-
-def _keep_diff(result: ComparisonResult, diff: RowDiff) -> None:
-    if len(result.diff_rows) < MAX_DIFF_ROWS:
-        result.diff_rows.append(diff)
-    else:
-        result.diff_rows_truncated = True
+            _maybe_example(result, cfg, RowDiff(kind="added", actual_row=sample[d]))
 
 
 def _maybe_example(result: ComparisonResult, cfg: CompareConfig, diff: RowDiff):

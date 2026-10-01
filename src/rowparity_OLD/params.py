@@ -30,7 +30,6 @@ import os
 import re
 from typing import Any, Dict, Iterable, Mapping, Optional
 
-
 _PLACEHOLDER = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_.]*)\}")
 
 ENV_PREFIX = "ROWPARITY_VAR_"
@@ -98,17 +97,8 @@ def merge_side_vars(
     return merged
 
 
-MAX_SUBSTITUTION_DEPTH = 10
-
-
 def substitute(text: str, variables: Mapping[str, str], *, where: str = "") -> str:
-    """Replace every ``${name}`` in *text*; raise if any cannot be resolved.
-
-    A value may itself contain placeholders, so substitution repeats until the
-    text stops changing. That is what lets one variable be written in terms of
-    another -- binding a table name to a sliced subquery that still refers to
-    ``${batch_id}``, say -- instead of every value having to be pre-expanded.
-    """
+    """Replace every ``${name}`` in *text*; raise if any cannot be resolved."""
     missing: list = []
 
     def _replace(match: "re.Match") -> str:
@@ -120,20 +110,7 @@ def substitute(text: str, variables: Mapping[str, str], *, where: str = "") -> s
             missing.append(name)
         return match.group(0)
 
-    out = text
-    for _ in range(MAX_SUBSTITUTION_DEPTH):
-        expanded = _PLACEHOLDER.sub(_replace, out)
-        if expanded == out:
-            break
-        out = expanded
-        missing.clear()  # a name unresolved in one pass may be produced by the next
-    else:
-        location = f" in {where}" if where else ""
-        raise ParamError(
-            f"parameter substitution did not settle after {MAX_SUBSTITUTION_DEPTH} passes"
-            f"{location}. A value most likely refers to itself, directly or through "
-            f"another variable."
-        )
+    out = _PLACEHOLDER.sub(_replace, text)
     if missing:
         known = sorted(variables) or ["(none)"]
         location = f" in {where}" if where else ""

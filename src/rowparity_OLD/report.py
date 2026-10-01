@@ -5,13 +5,13 @@ fails: the headline counts plus a handful of concrete example rows showing
 exactly what differs. ``render_markdown`` / ``to_dict`` produce the CI artifacts
 (a diff report you can publish from Jenkins, and a JSON summary for dashboards).
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 
 from .compare import ChangeSignature, ComparisonResult, RowDiff
-from .report_excel import write_excel_report
 
 
 def _short(value: Any, limit: int = 80) -> str:
@@ -117,9 +117,7 @@ def _render_breakdown(result: ComparisonResult) -> List[str]:
     """
     name = ", ".join(result.breakdown_columns)
     lines = [f"  row differences by {name}:"]
-    groups = sorted(
-        result.breakdown.values(), key=lambda g: (-g.differing_share, -g.differences)
-    )
+    groups = sorted(result.breakdown.values(), key=lambda g: (-g.differing_share, -g.differences))
     width = max((len(str(g.value)) for g in groups), default=1)
     for g in groups:
         lines.append(
@@ -161,7 +159,9 @@ def render_console(result: ComparisonResult, case_name: str = "") -> str:
         )
 
     if result.columns_only_in_expected:
-        lines.append(_render_column_list("columns only in expected", result.columns_only_in_expected))
+        lines.append(
+            _render_column_list("columns only in expected", result.columns_only_in_expected)
+        )
     if result.columns_only_in_actual:
         lines.append(_render_column_list("columns only in actual", result.columns_only_in_actual))
     if result.type_mismatches:
@@ -369,25 +369,39 @@ def to_column_rows(result: ComparisonResult, case_name: str = "") -> List[Dict[s
                 status = STATUS_VALUE_DIFF
             expected_type = exp_schema.get(column, "")
             actual_type = act_schema.get(column, "")
-        rows.append({
-            "case": case_name,
-            "status": status,
-            "column": column,
-            "expected_type": expected_type,
-            "actual_type": actual_type,
-            "diff_rows": diff_counts.get(column, ""),
-        })
+        rows.append(
+            {
+                "case": case_name,
+                "status": status,
+                "column": column,
+                "expected_type": expected_type,
+                "actual_type": actual_type,
+                "diff_rows": diff_counts.get(column, ""),
+            }
+        )
 
     for column in result.columns_only_in_expected:
-        rows.append({
-            "case": case_name, "status": STATUS_DIFF, "column": column,
-            "expected_type": exp_schema.get(column, ""), "actual_type": "", "diff_rows": "",
-        })
+        rows.append(
+            {
+                "case": case_name,
+                "status": STATUS_DIFF,
+                "column": column,
+                "expected_type": exp_schema.get(column, ""),
+                "actual_type": "",
+                "diff_rows": "",
+            }
+        )
     for column in result.columns_only_in_actual:
-        rows.append({
-            "case": case_name, "status": STATUS_DIFF, "column": column,
-            "expected_type": "", "actual_type": act_schema.get(column, ""), "diff_rows": "",
-        })
+        rows.append(
+            {
+                "case": case_name,
+                "status": STATUS_DIFF,
+                "column": column,
+                "expected_type": "",
+                "actual_type": act_schema.get(column, ""),
+                "diff_rows": "",
+            }
+        )
     return rows
 
 
@@ -411,7 +425,9 @@ def write_csv_reports(results: List[Tuple[str, ComparisonResult]], out_dir: str)
     return written
 
 
-def write_reports(results: List[Tuple[str, ComparisonResult]], *, json_path: str = None, md_path: str = None, xlsx_path: Optional[str] = None):
+def write_reports(
+    results: List[Tuple[str, ComparisonResult]], *, json_path: str = None, md_path: str = None
+):
     if md_path:
         with open(md_path, "w", encoding="utf-8") as fh:
             fh.write(render_markdown(results))
@@ -419,5 +435,3 @@ def write_reports(results: List[Tuple[str, ComparisonResult]], *, json_path: str
         payload = [to_dict(r, name) for name, r in results]
         with open(json_path, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2, default=str)
-    if xlsx_path:
-        write_excel_report(results, xlsx_path)

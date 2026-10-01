@@ -629,7 +629,6 @@ def trino_keyed_compare(
     )
     if cfg.strict_columns and (only_exp or only_act or type_mismatches):
         result.equivalent = False
-        result.strict_column_failure = True
 
     if example_keys:
         sub = _compare_example_subset(
@@ -691,7 +690,6 @@ def trino_keyless_compare(
     )
     if cfg.strict_columns and (only_exp or only_act or type_mismatches):
         result.equivalent = False
-        result.strict_column_failure = True
 
     if cfg.max_examples > 0 and (missing or added):
         mismatched_sql = f"""

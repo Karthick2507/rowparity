@@ -1,0 +1,873 @@
+<meta charset="utf-8">
+<title>rowparity - Run Report</title>
+<style>
+  :root {
+    --canvas: #FFFFFF;
+    --canvas-subtle: #F6F8FA;
+    --canvas-inset: #F6F8FA;
+    --border: #D0D7DE;
+    --border-muted: #D8DEE4;
+    --fg: #1F2328;
+    --fg-muted: #656D76;
+    --fg-subtle: #6E7781;
+    --accent-fg: #0969DA;
+    --accent-subtle: #DDF4FF;
+    --success-fg: #1A7F37;
+    --success-emphasis: #2DA44E;
+    --success-subtle: #DAFBE1;
+    --danger-fg: #D1242F;
+    --danger-emphasis: #CF222E;
+    --danger-subtle: #FFEBE9;
+    --attention-fg: #9A6700;
+    --attention-emphasis: #BF8700;
+    --attention-subtle: #FFF8C5;
+    --done-fg: #8250DF;
+    --done-subtle: #FBEFFF;
+    --radius: 6px;
+    --shadow: 0 1px 0 rgba(31, 35, 40, 0.04);
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  /* Light only, deliberately. A report that follows the reader's OS theme
+     looks different to every person it is forwarded to, and the dark rendering
+     was the thing people asked about rather than the data. color-scheme is
+     pinned so form controls and scrollbars stay light too. */
+  html { color-scheme: light; }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 24px 64px;
+    background: var(--canvas);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 16px; font-weight: 600; margin: 0; }
+  h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--fg-muted);
+       text-transform: uppercase; letter-spacing: 0.04em; }
+  .sub { color: var(--fg-muted); font-size: 13px; margin: 0 0 24px; }
+  .mono { font-family: var(--font-mono); font-size: 12px; }
+
+  /* ---- summary strip ---- */
+  .summary {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px; margin-bottom: 28px;
+  }
+  .stat {
+    background: var(--canvas-subtle); border: 1px solid var(--border-muted);
+    border-radius: var(--radius); padding: 14px 16px;
+  }
+  .stat .n { font-size: 24px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+  .stat.ok  .n { color: var(--success-fg); }
+  .stat.bad .n { color: var(--danger-fg); }
+  .stat.err .n { color: var(--attention-fg); }
+
+  /* ---- case card ---- */
+  .case {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    margin-bottom: 20px; overflow: hidden; box-shadow: var(--shadow);
+  }
+  .case > header {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 14px 16px; background: var(--canvas-subtle);
+    border-bottom: 1px solid var(--border-muted);
+  }
+  .case > .body { padding: 16px; }
+
+  .badge {
+    display: inline-block; padding: 2px 9px; border-radius: 2em;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .badge.EQUIVALENT { background: var(--success-subtle); color: var(--success-fg); }
+  .badge.DIFFERENT  { background: var(--danger-subtle);  color: var(--danger-fg); }
+  .badge.ERROR      { background: var(--attention-subtle); color: var(--attention-fg); }
+  .badge.mode       { background: var(--accent-subtle); color: var(--accent-fg); font-weight: 500; }
+
+  .spacer { flex: 1 1 auto; }
+  .timing { color: var(--fg-muted); font-size: 12px; font-family: var(--font-mono); }
+
+  /* ---- metric row ---- */
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+             gap: 10px; margin-bottom: 18px; }
+  .metric { background: var(--canvas-inset); border: 1px solid var(--border-muted);
+            border-radius: var(--radius); padding: 10px 12px; }
+  .metric .n { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .metric .l { font-size: 11px; color: var(--fg-muted); text-transform: uppercase;
+               letter-spacing: 0.04em; margin-top: 1px; }
+  .metric.warn { border-color: var(--danger-emphasis); }
+  .metric.warn .n { color: var(--danger-fg); }
+
+  /* ---- notes ---- */
+  .note {
+    display: flex; gap: 8px; align-items: flex-start;
+    background: var(--attention-subtle); border: 1px solid var(--attention-emphasis);
+    border-radius: var(--radius); padding: 10px 12px; margin-bottom: 16px;
+    font-size: 13px; color: var(--fg);
+  }
+  .note.info { background: var(--accent-subtle); border-color: var(--accent-fg); }
+  .note b { font-weight: 600; }
+
+  /* ---- filters ---- */
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .chip {
+    border: 1px solid var(--border); background: var(--canvas);
+    color: var(--fg-muted); border-radius: 2em; padding: 3px 11px;
+    font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .chip:hover { background: var(--canvas-subtle); }
+  .chip[aria-pressed="true"] { background: var(--accent-fg); border-color: var(--accent-fg); color: #fff; }
+  input[type="search"] {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--canvas); color: var(--fg);
+    padding: 4px 10px; font-size: 13px; font-family: inherit; min-width: 200px;
+  }
+  input[type="search"]:focus { outline: 2px solid var(--accent-fg); outline-offset: -1px; }
+
+  /* ---- tables ---- */
+  .scroll { overflow-x: auto; border: 1px solid var(--border-muted); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--border-muted); }
+  th { background: var(--canvas-subtle); font-weight: 600; font-size: 12px;
+       color: var(--fg-muted); position: sticky; top: 0; }
+  tr:last-child td { border-bottom: none; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tablewrap { max-height: 460px; overflow-y: auto; }
+
+  .st { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 2em; white-space: nowrap; }
+  .st.matched   { background: var(--success-subtle); color: var(--success-fg); }
+  .st.typediff  { background: var(--done-subtle);    color: var(--done-fg); }
+  .st.valuediff { background: var(--attention-subtle); color: var(--attention-fg); }
+  .st.equiv     { background: var(--accent-subtle);  color: var(--accent-fg); }
+  .st.diff      { background: var(--danger-subtle);  color: var(--danger-fg); }
+
+  .kind { font-weight: 600; font-size: 12px; }
+  .kind.missing { color: var(--danger-fg); }
+  .kind.added   { color: var(--success-fg); }
+  .kind.changed { color: var(--attention-fg); }
+
+  /* ---- error block ---- */
+  .errhead { font-size: 13px; margin-bottom: 10px; }
+  .errhead b { font-weight: 600; }
+  pre.err {
+    margin: 0; padding: 12px 14px;
+    background: var(--canvas-inset); border: 1px solid var(--border-muted);
+    border-radius: var(--radius);
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.45;
+    color: var(--fg);
+    /* pre, not pre-wrap: driver errors point at the offending token with a
+       caret on the next line, and wrapping moves the caret away from what it
+       points at. Scroll sideways instead of destroying the alignment. */
+    white-space: pre;
+    overflow-x: auto;
+    max-height: 320px; overflow-y: auto;
+  }
+
+  .empty { color: var(--fg-subtle); font-size: 13px; padding: 12px; }
+
+  /* --- row differences by group --- */
+  .bar { display: inline-block; width: 70px; height: 6px; margin-left: 8px;
+         background: var(--canvas-inset); border-radius: 3px; overflow: hidden;
+         vertical-align: middle; }
+  .barfill { display: block; height: 100%; background: var(--danger-emphasis); }
+  td .ok { color: var(--success-fg); }
+  tfoot td { font-weight: 600; border-top: 2px solid var(--border);
+             background: var(--canvas-subtle); }
+
+  /* --- change signatures --- */
+  .sig { border: 1px solid var(--border-muted); border-radius: var(--radius);
+         padding: 12px 14px; margin-top: 12px; background: var(--canvas-subtle); }
+  .sighead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .sigcount { font-weight: 600; font-size: 15px; color: var(--danger-fg);
+              font-family: var(--font-mono); }
+  .share { font-size: 12px; color: var(--fg-muted); }
+  .sigbd { font-size: 12px; color: var(--fg-muted); margin-top: 4px;
+           font-family: var(--font-mono); }
+  .sigex { font-size: 12px; color: var(--fg-subtle); margin-top: 8px;
+           font-family: var(--font-mono); }
+  table.deltas { margin-top: 10px; }
+  table.deltas th, table.deltas td { font-size: 12px; padding: 4px 10px; }
+  .constantnote { margin-top: 10px; font-size: 12px; color: var(--attention-fg);
+                  background: var(--attention-subtle); border-radius: 4px;
+                  padding: 6px 10px; }
+
+  /* --- row examples --- */
+  .txn { font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+         color: var(--accent-fg); background: var(--accent-subtle);
+         border: 1px solid #9EC7F3; border-radius: 4px; padding: 1px 6px;
+         display: inline-block; margin-bottom: 6px; }
+  dl.summary { display: grid; grid-template-columns: max-content 1fr;
+               gap: 1px 14px; font-size: 12px; margin: 0; }
+  dl.summary dt { color: var(--fg-muted); font-weight: 600; }
+  dl.summary dd { margin: 0; font-family: var(--font-mono); }
+  table.changed { width: auto; margin-top: 8px; }
+  table.changed th, table.changed td { font-size: 12px; padding: 3px 10px; }
+  td.old { color: var(--danger-fg); }
+  td.new { color: var(--success-fg); }
+  details.more { margin-top: 6px; }
+  details.more > summary { font-size: 11px; color: var(--accent-fg); font-weight: 400; }
+  .idlist { font-family: var(--font-mono); font-size: 11px; white-space: pre;
+            background: var(--canvas-inset); border: 1px solid var(--border-muted);
+            border-radius: 4px; padding: 8px 10px; margin-top: 6px;
+            max-height: 260px; overflow: auto; columns: 3; column-gap: 20px; }
+  .sqlbox { font-family: var(--font-mono); font-size: 11px; background: var(--canvas-inset);
+            border: 1px solid var(--border-muted); border-radius: 4px; padding: 10px;
+            max-height: 400px; overflow: auto; white-space: pre; margin-top: 6px; }
+  .allcols { font-family: var(--font-mono); font-size: 11px; color: var(--fg-muted);
+             margin-top: 6px; max-height: 320px; overflow-y: auto;
+             columns: 2; column-gap: 24px; }
+  details { margin-top: 16px; }
+  summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--fg-muted); }
+  summary:hover { color: var(--accent-fg); }
+  footer { margin-top: 32px; color: var(--fg-subtle); font-size: 12px;
+           border-top: 1px solid var(--border-muted); padding-top: 14px; }
+  code { font-family: var(--font-mono); font-size: 12px;
+         background: var(--canvas-inset); padding: 1px 5px; border-radius: 3px; }
+</style>
+
+<div class="wrap">
+  <h1>rowparity run report</h1>
+  <p class="sub">Generated __ROWPARITY_GENERATED_AT__ | <span id="runid"></span></p>
+  <div class="summary" id="summary"></div>
+  <div id="cases"></div>
+  <footer>
+    One run, not a trend. For pass-rate history across runs use
+    <code>rowparity report --result-sink ... --html</code>.
+  </footer>
+</div>
+
+<script id="rowparity-data" type="application/json">__ROWPARITY_RUN_JSON__</script>
+<script>
+(function () {
+  var DATA = JSON.parse(document.getElementById("rowparity-data").textContent);
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+  function num(n) { return (n === null || n === undefined) ? "" : Number(n).toLocaleString(); }
+
+  // Status -> css class. Kept as a lookup so an unknown status still renders
+  // rather than silently losing its styling and looking like a plain row.
+  var STATUS_CLASS = {
+    "MATCHED": "matched",
+    "MATCHED - TYPE DIFF": "typediff",
+    "MATCHED - VALUE DIFF": "valuediff",
+    "MATCHED - EQUIVALENT": "equiv",
+    "DIFF": "diff"
+  };
+
+  /* ---------------- summary ---------------- */
+  var s = DATA.summary;
+  var summary = document.getElementById("summary");
+  [
+    ["", s.total, s.total === 1 ? "case" : "cases"],
+    ["ok", s.equivalent, "equivalent"],
+    ["bad", s.different, "different"],
+    ["err", s.errored, "errored"],
+    ["", s.total_text, "total time"]
+  ].forEach(function (row) {
+    var box = el("div", "stat " + row[0]);
+    box.appendChild(el("div", "n", row[1]));
+    box.appendChild(el("div", "l", row[2]));
+    summary.appendChild(box);
+  });
+  document.getElementById("runid").textContent = DATA.run_id ? "run " + DATA.run_id : "";
+
+  /* ---------------- cases ---------------- */
+  var host = document.getElementById("cases");
+  DATA.cases.forEach(function (c, idx) { host.appendChild(renderCase(c, idx)); });
+
+  function renderCase(c, idx) {
+    var card = el("div", "case");
+    var head = el("header");
+    head.appendChild(el("span", "badge " + c.status, c.status));
+    head.appendChild(el("h2", null, c.case));
+    if (c.status !== "ERROR") {
+      head.appendChild(el("span", "badge mode",
+        c.keys ? "keyed on " + c.keys.length + " column" + (c.keys.length === 1 ? "" : "s")
+               : "keyless (multiset)"));
+    }
+    head.appendChild(el("div", "spacer"));
+    if (c.timing) {
+      head.appendChild(el("span", "timing",
+        "expected " + c.timing.expected_text +
+        " | actual " + c.timing.actual_text +
+        " | compare " + c.timing.compare_text +
+        " | total " + c.timing.total_text));
+    }
+    card.appendChild(head);
+
+    var body = el("div", "body");
+    if (c.status === "ERROR") {
+      // No icon: the ERROR badge in the header already says this. A lone "!"
+      // on its own line reads as leftover punctuation, not a warning.
+      var head = el("div", "errhead");
+      head.appendChild(el("b", null, "This case did not run."));
+      head.appendChild(document.createTextNode(
+        " Nothing was compared, so there is no verdict for it - " +
+        "neither a pass nor a difference."));
+      body.appendChild(head);
+
+      // <pre>, so a driver's line/caret pointer survives. Collapsing it to one
+      // line throws away the part of the message that says WHERE the problem
+      // is, which is usually the only part worth reading.
+      var pre = el("pre", "err", c.error_type + ": " + c.error);
+      body.appendChild(pre);
+
+      card.appendChild(body);
+      return card;
+    }
+
+    body.appendChild(renderMetrics(c));
+    renderNotes(c).forEach(function (n) { body.appendChild(n); });
+
+    // Triage first: which branch of the union disagrees. Everything below
+    // narrows within that answer, so it goes above them.
+    if (c.breakdown && c.breakdown.groups.length) {
+      body.appendChild(renderBreakdown(c));
+    }
+
+    var dims = c.columns.filter(function (x) { return x.kind === "dimension"; });
+    var mets = c.columns.filter(function (x) { return x.kind === "metric"; });
+    if (dims.length) {
+      body.appendChild(el("h3", null, "Dimensions - " + dims.length));
+      // A key column cannot differ in value: if it did the rows would not
+      // pair, and the difference shows up as missing + added instead. So this
+      // table answers presence and type only, and carries no "Diff rows"
+      // column - 83 zeroes would read as "all verified" when it means "not
+      // applicable".
+      body.appendChild(el("p", "sub",
+        "The key. These decide which rows pair up, so a difference here is " +
+        "reported as a missing or added row, never as a changed value."));
+      body.appendChild(renderColumns(c, idx, dims, false));
+      body.appendChild(el("h3", null, "Metrics - " + mets.length));
+      body.appendChild(el("p", "sub",
+        "Everything not in the key. Sorted worst first."));
+      body.appendChild(renderColumns(c, idx + "m", mets, true));
+    } else {
+      body.appendChild(el("h3", null, "Columns"));
+      body.appendChild(renderColumns(c, idx, c.columns, true));
+    }
+    if (c.near_miss && c.near_miss.columns.length) {
+      body.appendChild(renderNearMiss(c));
+    }
+    if (c.change_signatures && c.change_signatures.length) {
+      body.appendChild(renderSignatures(c));
+    }
+    if (c.examples && c.examples.length) {
+      body.appendChild(renderExamples(c));
+    }
+    if (c.drilldown) {
+      body.appendChild(renderDrilldown(c));
+    }
+    card.appendChild(body);
+    return card;
+  }
+
+  function renderMetrics(c) {
+    var wrap = el("div", "metrics");
+    // Named after the two sides rather than "expected"/"actual". A reader
+    // looking at a migration report should not have to remember which of the
+    // two abstract words is their source of truth.
+    var A = c.expected_label || "expected";
+    var B = c.actual_label || "actual";
+    [
+      ["Rows in " + A, c.expected_rows, false],
+      ["Rows in " + B, c.actual_rows, false],
+      ["Missing in " + B, c.missing, c.missing > 0],
+      ["Added in " + B + ", not in " + A, c.added, c.added > 0],
+      ["Changed", c.changed, c.changed > 0]
+    ].forEach(function (m) {
+      var box = el("div", "metric" + (m[2] ? " warn" : ""));
+      box.appendChild(el("div", "n", num(m[1])));
+      box.appendChild(el("div", "l", m[0]));
+      wrap.appendChild(box);
+    });
+    return wrap;
+  }
+
+  function note(cls, strong, rest) {
+    var n = el("div", "note" + (cls ? " " + cls : ""));
+    var b = el("div");
+    b.appendChild(el("b", null, strong));
+    b.appendChild(document.createTextNode(" " + rest));
+    n.appendChild(b);
+    return n;
+  }
+
+  function renderNotes(c) {
+    var out = [];
+
+    // Duplicate keys mean the key is not unique, so "the same row" is
+    // ambiguous and every count below it is suspect. Loudest note on the page.
+    if (c.duplicate_keys_expected || c.duplicate_keys_actual) {
+      out.push(note("", "Duplicate keys:",
+        c.duplicate_keys_expected + " on the expected side, " +
+        c.duplicate_keys_actual + " on the actual side. The key is not unique, " +
+        "so rows were paired arbitrarily and the counts above are unreliable."));
+    }
+
+    // Without a key there is no per-row pairing, so MATCHED is a claim about
+    // presence and type only. Unlabelled beside a large diff it reads as
+    // "the columns are fine", which is not what was checked.
+    if (!c.keys && (c.missing || c.added)) {
+      out.push(note("info", "Keyless run:",
+        "MATCHED below means present on both sides with the same type - not that " +
+        "values agree. Without a key, rows cannot be paired, so differences appear " +
+        "as missing + added and never as changed. Columns marked VALUE DIFF have a " +
+        "differing multiset of values."));
+    }
+
+    // Same-shaped populations are a precondition for the per-column signal to
+    // localise anything; unequal row counts make every column differ.
+    if (!c.keys && c.expected_rows !== c.actual_rows && (c.missing || c.added)) {
+      out.push(note("", "Row counts differ:",
+        "one side has " + Math.abs(c.actual_rows - c.expected_rows) + " more row(s), so " +
+        "every column has extra values and every column will read VALUE DIFF. " +
+        "Correct, but it cannot localise anything - compare equal populations, or key the case."));
+    }
+    return out;
+  }
+
+  function renderColumns(c, idx, rows, showDiffRows) {
+    var wrap = el("div");
+    // Counts come from the rows actually being shown, not the whole case --
+    // a chip reading "MATCHED (262)" above a table of 83 is a lie.
+    var counts = {};
+    rows.forEach(function (r) { counts[r.status] = (counts[r.status] || 0) + 1; });
+    var order = ["DIFF", "MATCHED - TYPE DIFF", "MATCHED - VALUE DIFF",
+                 "MATCHED - EQUIVALENT", "MATCHED"];
+    var present = order.filter(function (k) { return counts[k]; });
+
+    // Default view hides MATCHED. At 262 columns a full dump buries the few
+    // that need attention; if EVERYTHING matched there is nothing to hide, so
+    // show it rather than render an empty table.
+    var onlyMatched = present.length === 1 && present[0] === "MATCHED";
+    var active = {};
+    present.forEach(function (k) { active[k] = onlyMatched ? true : k !== "MATCHED"; });
+
+    var bar = el("div", "filters");
+    var search = el("input");
+    search.type = "search";
+    search.placeholder = "filter columns...";
+    bar.appendChild(search);
+
+    present.forEach(function (status) {
+      var chip = el("button", "chip", status + " (" + counts[status] + ")");
+      chip.type = "button";
+      chip.setAttribute("aria-pressed", String(active[status]));
+      chip.addEventListener("click", function () {
+        active[status] = !active[status];
+        chip.setAttribute("aria-pressed", String(active[status]));
+        draw();
+      });
+      bar.appendChild(chip);
+    });
+    wrap.appendChild(bar);
+
+    var scroll = el("div", "scroll tablewrap");
+    var table = el("table");
+    var thead = el("thead");
+    var hr = el("tr");
+    var headers = ["Column", "Status", "Hoover type", "Hoover++ type"];
+    if (showDiffRows) { headers.push("Diff rows"); }
+    headers.forEach(function (h) { hr.appendChild(el("th", null, h)); });
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    var tbody = el("tbody");
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+
+    var footer = el("div", "empty");
+    wrap.appendChild(footer);
+
+    function draw() {
+      var q = search.value.trim().toLowerCase();
+      tbody.textContent = "";
+      var shown = 0;
+      var ordered = rows;
+      if (showDiffRows) {
+        // Worst first. The four columns that matter are otherwise lost among
+        // the ones that do not, in alphabetical order, for no reason.
+        ordered = rows.slice().sort(function (a, b) {
+          return (Number(b.diff_rows) || 0) - (Number(a.diff_rows) || 0);
+        });
+      }
+      ordered.forEach(function (col) {
+        if (!active[col.status]) return;
+        if (q && col.column.toLowerCase().indexOf(q) === -1) return;
+        shown++;
+        var tr = el("tr");
+        tr.appendChild(el("td", "mono", col.column));
+        var td = el("td");
+        td.appendChild(el("span", "st " + (STATUS_CLASS[col.status] || ""), col.status));
+        tr.appendChild(td);
+        tr.appendChild(el("td", "mono", col.expected_type));
+        tr.appendChild(el("td", "mono", col.actual_type));
+        if (showDiffRows) {
+          tr.appendChild(el("td", "num mono", col.diff_rows === "" ? "" : num(col.diff_rows)));
+        }
+        tbody.appendChild(tr);
+      });
+      // Only mention hidden MATCHED columns when some are actually hidden --
+      // saying "MATCHED hidden" on a case with none is a claim about data the
+      // reader cannot see and does not have.
+      var hiddenMatched = (counts["MATCHED"] && !active["MATCHED"]) ? counts["MATCHED"] : 0;
+      footer.textContent = shown + " of " + rows.length + " column(s) shown" +
+        (hiddenMatched ? " | " + hiddenMatched + " MATCHED hidden" : "");
+    }
+    search.addEventListener("input", draw);
+    draw();
+    return wrap;
+  }
+
+  function pct(x) { return (x * 100).toFixed(1) + "%"; }
+
+  function renderBreakdown(c) {
+    var b = c.breakdown;
+    var wrap = el("div");
+    wrap.appendChild(el("h3", null, "Row differences by " + b.columns.join(", ")));
+    wrap.appendChild(el("p", "sub",
+      "Counted over every row, not only the examples below. Sorted by the " +
+      "share of each group that differs - a small group that is badly wrong " +
+      "outranks a large one that is slightly off."));
+
+    var A = c.expected_label || "Hoover";
+    var B = c.actual_label || "Hoover++";
+    var scroll = el("div", "scroll tablewrap");
+    var table = el("table");
+    var hr = el("tr");
+    [b.columns.join(" / "), "Rows in " + A, "Rows in " + B,
+     "Missing in " + B, "Added in " + B, "Changed in Hoover++", "Differing"]
+      .forEach(function (h) { hr.appendChild(el("th", null, h)); });
+    var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
+
+    var tb = el("tbody");
+    var worst = b.groups.length ? b.groups[0].share : 0;
+    b.groups.forEach(function (g) {
+      var tr = el("tr");
+      tr.appendChild(el("td", "mono", g.value));
+      tr.appendChild(el("td", "num mono", num(g.expected_rows)));
+      tr.appendChild(el("td", "num mono", num(g.actual_rows)));
+      tr.appendChild(el("td", "num mono", num(g.missing)));
+      tr.appendChild(el("td", "num mono", num(g.added)));
+      tr.appendChild(el("td", "num mono", num(g.changed)));
+
+      var td = el("td", "num");
+      if (g.differences) {
+        td.appendChild(el("span", "mono", pct(g.share)));
+        // Bar scaled to the worst group, so the comparison between rows is
+        // the point rather than the absolute number.
+        var bar = el("span", "bar");
+        var fill = el("span", "barfill");
+        fill.style.width = (worst ? (g.share / worst) * 100 : 0) + "%";
+        bar.appendChild(fill);
+        td.appendChild(bar);
+      } else {
+        td.appendChild(el("span", "mono ok", "-"));
+      }
+      tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+
+    var tfoot = el("tfoot");
+    var fr = el("tr");
+    fr.appendChild(el("td", null, "TOTAL"));
+    fr.appendChild(el("td", "num mono", num(c.expected_rows)));
+    fr.appendChild(el("td", "num mono", num(c.actual_rows)));
+    fr.appendChild(el("td", "num mono", num(c.missing)));
+    fr.appendChild(el("td", "num mono", num(c.added)));
+    fr.appendChild(el("td", "num mono", num(c.changed)));
+    fr.appendChild(el("td", null, ""));
+    tfoot.appendChild(fr);
+    table.appendChild(tb);
+    table.appendChild(tfoot);
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+
+    if (b.hidden_groups) {
+      wrap.appendChild(el("div", "empty",
+        b.hidden_groups + " more group(s) not shown, holding " +
+        num(b.hidden_differences) + " difference(s)."));
+    }
+    return wrap;
+  }
+
+  function renderSignatures(c) {
+    var d = el("details");
+    d.open = true;
+    d.appendChild(el("summary", null,
+      "Change signatures - " + c.change_signatures.length + " distinct pattern(s)"));
+    var body = el("div");
+    c.change_signatures.forEach(function (sig) { body.appendChild(renderSignature(c, sig)); });
+    d.appendChild(body);
+    return d;
+  }
+
+  function renderSignature(c, sig) {
+    var box = el("div", "sig");
+
+    var head = el("div", "sighead");
+    head.appendChild(el("span", "sigcount", num(sig.count) + "x"));
+    head.appendChild(el("span", "mono", sig.columns.length ? sig.columns.join(", ") : "(none)"));
+    head.appendChild(el("div", "spacer"));
+    head.appendChild(el("span", "share", pct(sig.share) + " of changed rows"));
+    box.appendChild(head);
+
+    if (sig.breakdown && sig.breakdown.length) {
+      box.appendChild(el("div", "sigbd", "by group:  " + sig.breakdown.map(function (x) {
+        return x.value + " " + num(x.count);
+      }).join("  -  ")));
+    }
+
+    // The delta profile. A signature used to say which columns move together
+    // and how often, never in which direction or by how much - and a single
+    // example cannot tell "every row loses exactly one" from "the deltas are
+    // all over the place". Those are different bugs.
+    if (sig.deltas && sig.deltas.length) {
+      var scroll = el("div", "scroll");
+      var table = el("table", "deltas");
+      var hr = el("tr");
+      // No Delta column. It only ever rendered a range ("-3 to -1"), which read
+      // as noise rather than a finding. The one case where the number was
+      // genuinely diagnostic -- every row moving by an identical amount -- is
+      // surfaced as a sentence below instead, and only when it actually holds.
+      ["Column", "Direction", "Rows"].forEach(function (h) {
+        hr.appendChild(el("th", null, h));
+      });
+      var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
+      var tb = el("tbody");
+      var B = c.actual_label || "actual";
+      sig.deltas.forEach(function (dd) {
+        var tr = el("tr");
+        tr.appendChild(el("td", "mono", dd.column));
+
+        var dir = "";
+        if (dd.direction === "lower" || dd.direction === "higher") {
+          dir = B + " " + dd.direction;
+        } else if (dd.direction === "mixed") {
+          dir = "mixed";
+        } else if (dd.became_null || dd.was_null) {
+          dir = dd.became_null ? "became null" : "was null";
+        }
+        tr.appendChild(el("td", null, dir));
+        tr.appendChild(el("td", "num mono",
+          num(dd.moved || dd.became_null || dd.was_null) + " / " + num(dd.rows)));
+
+        tb.appendChild(tr);
+      });
+      table.appendChild(tb);
+      scroll.appendChild(table);
+      box.appendChild(scroll);
+
+      // Stated only when true. Several metrics all moving by an identical
+      // amount is a systematic loss rather than scattered drift, and that is
+      // worth a sentence; a range is not.
+      var fixed = sig.deltas.filter(function (d) { return d.constant; });
+      if (fixed.length) {
+        box.appendChild(el("div", "constantnote",
+          "Every row moved by the same amount: " + fixed.map(function (d) {
+            return d.column + " " + d.amount;
+          }).join(", ") + " - a systematic shift, not scattered drift."));
+      }
+    }
+
+    if (sig.example && sig.example.length) {
+      box.appendChild(el("div", "sigex", "most extreme row:  " + sig.example.map(function (e) {
+        return e.column + " " + e.expected + " -> " + e.actual;
+      }).join("   |   ")));
+    }
+    return box;
+  }
+
+  function renderNearMiss(c) {
+    var nm = c.near_miss;
+    var wrap = el("div");
+    wrap.appendChild(el("h3", null, "Near misses - one key column apart"));
+    wrap.appendChild(el("p", "sub",
+      "A key column that drifts destroys the pairing, so one logical row is " +
+      "reported as a missing row AND an added row. Dropping each key column " +
+      "in turn shows which one is responsible. No query was run for this."));
+
+    var top = nm.columns[0];
+    if (top && top.pairs) {
+      wrap.appendChild(note("bad", "Likely cause:",
+        "dropping " + top.column + " pairs " + num(top.pairs) + " of " +
+        num(nm.missing_rows) + " missing rows with added rows (" +
+        pct(top.share) + "). Those rows were not lost - they moved."));
+    }
+
+    var scroll = el("div", "scroll");
+    var table = el("table");
+    var hr = el("tr");
+    ["Drop from key", "Pairs formed", "Explains", "Ambiguous", "Example"]
+      .forEach(function (h) { hr.appendChild(el("th", null, h)); });
+    var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
+    var tb = el("tbody");
+    nm.columns.forEach(function (col) {
+      var tr = el("tr");
+      tr.appendChild(el("td", "mono", col.column));
+      tr.appendChild(el("td", "num mono", num(col.pairs)));
+      tr.appendChild(el("td", "num mono", col.pairs ? pct(col.share) : "-"));
+      // Ambiguous groups are reported, never counted as pairs: several added
+      // rows matching on the other columns means no single pairing is known.
+      tr.appendChild(el("td", "num mono", col.ambiguous ? num(col.ambiguous) : "-"));
+      var ex = "";
+      if (col.examples.length) {
+        ex = col.examples[0].expected + "  ->  " + col.examples[0].actual;
+      }
+      tr.appendChild(el("td", "mono", ex));
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb);
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+    if (nm.truncated) {
+      wrap.appendChild(el("div", "empty",
+        "Analysis was capped, so these counts describe a subset of the " +
+        "unpaired rows rather than all of them."));
+    }
+    return wrap;
+  }
+
+  function renderDrilldown(c) {
+    var dd = c.drilldown;
+    var wrap = el("div");
+    var A = c.expected_label || "expected";
+    var B = c.actual_label || "actual";
+    // The IN-list is built from selected kinds only, so the heading says which.
+    // "Drill-down SQL" alone reads as "all the differences", which it is not.
+    var kinds = dd.kinds || [];
+    var kindWord = {
+      missing: "missing in " + B,
+      added: "added in " + B,
+      changed: "changed"
+    };
+    var scoped = kinds.map(function (k) { return kindWord[k] || k; }).join(" + ");
+
+    wrap.appendChild(el("h3", null,
+      "Drill-down SQL - " + dd.id_column + (scoped ? " for rows " + scoped : "")));
+    wrap.appendChild(el("p", "sub",
+      "ONE query per side, not one per row: the " + dd.column + " of every row " +
+      scoped + " goes into a single IN-list, so one scan per side covers all " +
+      num(dd.rows_covered) + " of them. " +
+      (dd.complete
+        ? "Values are taken from every such row. "
+        : "Values are taken from the bounded example list, so this covers a subset. ") +
+      "Run both, then compare the two lists of " + dd.id_column +
+      " - the ids on one side only are the transactions that differ."));
+
+    // What the filter deliberately leaves out. Without this a narrowed
+    // drill-down and an exhaustive one look identical, and "no rows found"
+    // cannot be told apart from "never asked for".
+    var omitted = ["missing", "added", "changed"].filter(function (k) {
+      return kinds.indexOf(k) === -1 && (dd.kind_values || {})[k];
+    });
+    if (omitted.length) {
+      wrap.appendChild(el("p", "sub",
+        "Not in this filter: " + omitted.map(function (k) {
+          return num(dd.kind_values[k]) + " " + dd.column + " value(s) from rows " +
+                 (kindWord[k] || k);
+        }).join(", ") + ". Add them with drilldown.kinds if you want them."));
+    }
+
+    dd.sides.forEach(function (s) {
+      var box = el("div", "sig");
+      var head = el("div", "sighead");
+      head.appendChild(el("span", "sigcount", s.label));
+      head.appendChild(el("div", "spacer"));
+      head.appendChild(el("span", "share", num(dd.value_count) + " " + dd.column + " value(s)"));
+      box.appendChild(head);
+      var sql = el("details", "more");
+      sql.appendChild(el("summary", null, "SQL"));
+      sql.appendChild(el("pre", "sqlbox", s.sql));
+      box.appendChild(sql);
+      wrap.appendChild(box);
+    });
+    return wrap;
+  }
+
+  function renderExamples(c) {
+    var d = el("details");
+    d.appendChild(el("summary", null, "Row examples - " + c.examples.length + " shown"));
+    var scroll = el("div", "scroll");
+    var table = el("table");
+    var hr = el("tr");
+    ["Kind", "Detail"].forEach(function (h) { hr.appendChild(el("th", null, h)); });
+    var thead = el("thead"); thead.appendChild(hr); table.appendChild(thead);
+    var tb = el("tbody");
+    c.examples.forEach(function (ex) {
+      var tr = el("tr");
+      // Names the side rather than the direction: "missing" only reads
+      // correctly if you already know which side is the source of truth.
+      var kc = el("td");
+      kc.appendChild(el("span", "kind " + ex.kind, ex.kind_label || ex.kind));
+      tr.appendChild(kc);
+
+      var td = el("td");
+      if (ex.transaction_id) {
+        td.appendChild(el("div", "txn", "request__transaction_id  " + ex.transaction_id));
+      }
+      if (ex.summary && ex.summary.length) {
+        var dl = el("dl", "summary");
+        ex.summary.forEach(function (g) {
+          dl.appendChild(el("dt", null, g.label));
+          dl.appendChild(el("dd", null, g.text));
+        });
+        td.appendChild(dl);
+      } else if (ex.key) {
+        // No row_summary configured: the key is still the row's identity.
+        td.appendChild(el("div", "mono", ex.key));
+      }
+
+      if (ex.kind === "changed" && ex.columns) {
+        var ct = el("table", "changed");
+        var chr = el("tr");
+        ["Column", c.expected_label || "expected", c.actual_label || "actual"]
+          .forEach(function (h) { chr.appendChild(el("th", null, h)); });
+        var cth = el("thead"); cth.appendChild(chr); ct.appendChild(cth);
+        var ctb = el("tbody");
+        ex.columns.forEach(function (col) {
+          var r = el("tr");
+          r.appendChild(el("td", "mono", col.column));
+          r.appendChild(el("td", "mono old", col.expected));
+          r.appendChild(el("td", "mono new", col.actual +
+            (col.equivalent ? " (equivalent)" : "")));
+          ctb.appendChild(r);
+        });
+        ct.appendChild(ctb);
+        td.appendChild(ct);
+      }
+
+      if (ex.all_columns && ex.all_columns.length) {
+        var more = el("details", "more");
+        more.appendChild(el("summary", null,
+          "all " + ex.all_columns.length + " columns"));
+        var box = el("div", "allcols");
+        ex.all_columns.forEach(function (col) {
+          box.appendChild(el("div", null, col.column + " = " + col.value));
+        });
+        more.appendChild(box);
+        td.appendChild(more);
+      }
+      tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb);
+    scroll.appendChild(table);
+    d.appendChild(scroll);
+    return d;
+  }
+})();
+</script>

@@ -460,7 +460,6 @@ def duckdb_keyed_compare(con, expected_sql: str, actual_sql: str, cfg: CompareCo
     )
     if cfg.strict_columns and (only_exp or only_act or type_mismatches):
         result.equivalent = False
-        result.strict_column_failure = True
 
     if example_keys:
         sub = _compare_example_subset(con, expected_sql, actual_sql, compared, cfg, cfg.keys, example_keys)
@@ -484,7 +483,7 @@ def resolve_pushdown_sql(con, spec: Dict[str, Any], base_dir: str) -> str:
     raises, pointing at exporting to Parquet first rather than trying to
     dialect-translate against a live warehouse connection.
 
-    TODO (deferred, see the project notes "TODO / Deferred"): 'iceberg' could resolve
+    TODO (deferred, see CLAUDE.md "TODO / Deferred"): 'iceberg' could resolve
     to DuckDB's native iceberg_scan(...) instead of raising — that would read
     an Iceberg table's storage location directly, no export step, regardless
     of which engine wrote it. Not built: no current case needs it (the
@@ -594,7 +593,6 @@ def duckdb_keyless_compare(con, expected_sql: str, actual_sql: str, cfg: Compare
     )
     if cfg.strict_columns and (only_exp or only_act or type_mismatches):
         result.equivalent = False
-        result.strict_column_failure = True
 
     if cfg.max_examples > 0 and (missing or added):
         mismatched_sql = f"""

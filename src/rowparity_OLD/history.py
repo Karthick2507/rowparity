@@ -8,7 +8,7 @@ example diffs derived from the most recent run.
 
 DuckDB is the primary, fully local, credential-free backend. Snowflake
 follows the same query shape. Iceberg reading isn't wired up yet — see
-the project TODO notes section; IcebergResultSink is currently write-only.
+CLAUDE.md's TODO section; IcebergResultSink is currently write-only.
 """
 from __future__ import annotations
 

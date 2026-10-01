@@ -7,6 +7,7 @@ these two sources looked like just now, column by column and row by row.
 Same approach as the history report: a static template shipped with the package
 plus placeholder substitution, no templating engine.
 """
+
 from __future__ import annotations
 
 import json
@@ -145,6 +146,7 @@ def _signature_to_dict(sig, changed_count: int) -> Dict[str, Any]:
         "breakdown": [{"value": _short(k), "count": v} for k, v in sig.breakdown.items()],
     }
 
+
 MAX_BREAKDOWN_GROUPS = 20
 
 
@@ -194,6 +196,7 @@ def _near_miss_to_dict(nm) -> Dict[str, Any]:
             for c in nm.columns
         ],
     }
+
 
 MAX_SHOWN_VALUES = 50
 
@@ -266,9 +269,7 @@ def case_to_dict(name: str, result: ComparisonResult) -> Dict[str, Any]:
         "near_miss": _near_miss_to_dict(result.near_miss)
         if getattr(result, "near_miss", None) and result.near_miss.columns
         else None,
-        "examples": [
-            _example_to_dict(d, result, summary_groups) for d in result.examples
-        ],
+        "examples": [_example_to_dict(d, result, summary_groups) for d in result.examples],
         "drilldown": _drilldown_to_dict(getattr(result, "drilldown", None)),
     }
 

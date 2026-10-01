@@ -16,15 +16,6 @@ LDAP/basic depending on the cluster's configured authenticator.
 Minimum required: TRINO_HOST (or ``connection: {host: ...}`` in the
 case). Everything else has a default (port 8080, http, current OS user
 as the Trino username) that can be overridden.
-
-Behind a Presto gateway, two more settings matter, both also per-case
-under ``connection:``::
-
-    TRINO_CLIENT_TAGS=MINI                       route to a named cluster size
-    TRINO_SESSION_PROPERTIES=query_max_run_time=1d
-
-A gateway maps untagged queries to a default cluster, so tagging is how a
-ten-case smoke test stays off the machines the weekly suite needs.
 """
 from __future__ import annotations
 
@@ -56,21 +47,6 @@ def resolve_connection_args(spec: Dict[str, Any]) -> Dict[str, Any]:
 
     if "port" in conn_args:
         conn_args["port"] = int(conn_args["port"])
-
-    # Client tags pick the cluster a gateway routes the query to (MINI is one
-    # worker, the default rule is a medium cluster), so a smoke test and the
-    # weekly suite can ask for very different machines with the same config.
-    tags = conn_args.get("client_tags") or os.environ.get("TRINO_CLIENT_TAGS")
-    if tags:
-        conn_args["client_tags"] = (
-            [t.strip() for t in tags.split(",") if t.strip()] if isinstance(tags, str) else list(tags)
-        )
-    properties = conn_args.get("session_properties") or os.environ.get("TRINO_SESSION_PROPERTIES")
-    if properties:
-        if isinstance(properties, str):
-            pairs = [p.split("=", 1) for p in properties.split(",") if "=" in p]
-            properties = {k.strip(): v.strip() for k, v in pairs}
-        conn_args["session_properties"] = dict(properties)
 
     if not conn_args.get("host"):
         raise SourceError(

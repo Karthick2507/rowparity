@@ -10,7 +10,6 @@ from typing import List
 
 from .cases import Case, discover_cases
 from .compare import ComparisonResult
-from .findings import render_case, summary_dict
 from .report import render_console
 
 
@@ -19,16 +18,13 @@ def load_cases(path: str) -> List[Case]:
 
 
 def assert_case(case: Case) -> ComparisonResult:
-    """Run a case and fail loudly (findings, then the full diff) if it does not pass."""
+    """Run a case and fail loudly (with a full diff) if the tables are not equivalent."""
     result = case.run()
-    if not result.passed:
-        message = render_console(result, case.name)
-        if result.kind == "rows":
-            message = render_case(summary_dict(case.name, result)) + "\n\n" + message
+    if not result.equivalent:
         try:
             import pytest
 
-            pytest.fail(message, pytrace=False)
+            pytest.fail(render_console(result, case.name), pytrace=False)
         except ImportError:  # pragma: no cover - allow use outside pytest
-            raise AssertionError(message) from None
+            raise AssertionError(render_console(result, case.name)) from None
     return result

@@ -19,6 +19,7 @@ Minimal example::
       keys: [order_id]
       float_tolerance: 1e-9
 """
+
 from __future__ import annotations
 
 import glob
@@ -37,9 +38,7 @@ from .compare import (
     compare_tables,
 )
 from .concept_check import ConceptCheckCase, build_concept_check_case
-from .schema_check import SchemaCheckCase, build_schema_check_case
 from .sources import load_source, resolve_query
-from .suite import discover_raw_cases, group_of, is_suite_doc, sql_dir_of
 
 _COMPARE_KEYS = {
     "keys",
@@ -58,7 +57,6 @@ _COMPARE_KEYS = {
     "allow_identical_sources",
     "breakdown_by",
     "near_miss",
-    "max_diff_ratio",
     "ignore_columns_file",
     "ignore_columns_table",
 }
@@ -90,20 +88,6 @@ class Case:
     row_summary: List[Dict[str, Any]] = field(default_factory=list)
     # Optional drilldown: block -- generates per-row investigation SQL.
     drilldown: Optional[Dict[str, Any]] = None
-    # Scheduling: a disabled case is skipped unless selected by name, and a
-    # pinned group overrides the name-derived one (see suite.group_of).
-    enabled: bool = True
-    group: Optional[int] = None
-
-    def group_in(self, groups: int) -> int:
-        if self.group is None:
-            return group_of(self.name, groups)
-        if not 0 <= self.group < groups:
-            raise ValueError(
-                f"case '{self.name}': group {self.group} is outside 0..{groups - 1} "
-                f"for --group */{groups}"
-            )
-        return self.group
 
     def config(self, base_dir: Optional[str] = None) -> CompareConfig:
         unknown = set(self.compare) - _COMPARE_KEYS
@@ -115,14 +99,6 @@ class Case:
         # downstream sees a list and never has to ask which it got.
         if isinstance(options.get("breakdown_by"), str):
             options["breakdown_by"] = [options["breakdown_by"]]
-        if "max_diff_ratio" in options:
-            ratio = float(options["max_diff_ratio"])
-            if not 0.0 <= ratio < 1.0:
-                raise ValueError(
-                    f"case '{self.name}': max_diff_ratio must be a fraction in [0, 1), "
-                    f"got {options['max_diff_ratio']!r}. 0.01% is 0.0001, not 0.01."
-                )
-            options["max_diff_ratio"] = ratio
         return CompareConfig(**options)
 
     def run(self, base_dir: Optional[str] = None, sink=None, result_sink=None) -> ComparisonResult:
@@ -181,8 +157,6 @@ class Case:
                 sink.write(self.name, "expected", expected_tbl, result.compared_columns, cfg)
                 sink.write(self.name, "actual", actual_tbl, result.compared_columns, cfg)
 
-        # Push-down engines build their own result; the tolerance is case policy.
-        result.max_diff_ratio = cfg.max_diff_ratio
         result.expected_label = self.expected_label
         result.actual_label = self.actual_label
         result.row_summary = self.row_summary
@@ -201,7 +175,7 @@ class Case:
         real cluster to dominate the parity run they annotate, and a drill-down
         is an aid to reading a result rather than part of producing one.
         """
-        if not self.drilldown or result.total_differences == 0:
+        if not self.drilldown or result.equivalent:
             return
         from . import drilldown as dd
 
@@ -389,7 +363,6 @@ def _build_case(
         raise ValueError(f"{source_file}: case is missing required field 'name': {raw!r}")
 
     raw = dict(raw)
-    raw.pop("_override_file", None)
     case_vars = raw.pop("vars", None) or {}
     raw.pop("param_queries", None)  # resolved once per file, see load_cases_from_file
 
@@ -403,9 +376,6 @@ def _build_case(
 
     if "concept_check" in raw:
         return build_concept_check_case(raw, source_file)
-
-    if "schema_check" in raw:
-        return build_schema_check_case(raw, source_file)
 
     for required in ("expected", "actual"):
         if required not in raw:
@@ -429,46 +399,18 @@ def _build_case(
         actual_label=raw.get("actual_label", "actual"),
         row_summary=raw.get("row_summary", []) or [],
         drilldown=drilldown_raw,
-        enabled=bool(raw.get("enabled", True)),
-        group=_group_value(raw),
     )
-
-
-def _group_value(raw: dict) -> Optional[int]:
-    value = raw.get("group")
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"case '{raw['name']}': group must be a non-negative integer, got {value!r}")
-    return value
 
 
 def load_cases_from_file(
     path: str,
     params_: Optional[Dict[str, Any]] = None,
     resolve_queries: bool = True,
-) -> List[Union[Case, ConceptCheckCase, SchemaCheckCase]]:
+) -> List[Union[Case, ConceptCheckCase]]:
     with open(path, "r", encoding="utf-8") as fh:
         doc = yaml.safe_load(fh) or {}
     if not isinstance(doc, dict):
         raise ValueError(f"{path}: top level must be a mapping")
-    if is_suite_doc(doc):
-        file_vars = doc.get("vars") or {}
-        query_vars: Dict[str, str] = {}
-        param_queries = doc.get("param_queries") or {}
-        if param_queries and resolve_queries:
-            from .param_queries import resolve_param_queries
-
-            query_vars = resolve_param_queries(
-                param_queries,
-                params.resolve_variables(file_vars, {}, params_),
-                base_dir=os.path.dirname(path) or ".",
-            )
-        return [
-            _build_case(raw, path, file_vars=file_vars, cli_params=params_,
-                        query_vars=query_vars)
-            for raw in discover_raw_cases(path, doc)
-        ]
     defaults = doc.get("defaults", {}) or {}
     multi = "cases" in doc
     file_vars = (doc.get("vars", {}) or {}) if multi else {}
@@ -504,22 +446,11 @@ def load_cases_from_file(
     return cases
 
 
-def _suite_docs(files: List[str]):
-    for f in files:
-        try:
-            with open(f, "r", encoding="utf-8") as fh:
-                doc = yaml.safe_load(fh)
-        except (OSError, yaml.YAMLError):
-            continue  # reported properly when the file is loaded as a case
-        if is_suite_doc(doc):
-            yield f, doc
-
-
 def discover_cases(
     path: str,
     params_: Optional[Dict[str, Any]] = None,
     resolve_queries: bool = True,
-) -> List[Union[Case, ConceptCheckCase, SchemaCheckCase]]:
+) -> List[Union[Case, ConceptCheckCase]]:
     """Load cases from a single file or, if ``path`` is a directory, every *.yml/*.yaml under it.
 
     ``params_`` carries ``--param NAME=VALUE`` overrides; they take precedence
@@ -533,13 +464,8 @@ def discover_cases(
         files: List[str] = []
         for ext in ("*.yml", "*.yaml"):
             files.extend(glob.glob(os.path.join(path, "**", ext), recursive=True))
-        files = sorted(os.path.abspath(f) for f in files)
-        # A suite's per-query override files are not cases in their own right.
-        owned = [sql_dir_of(f, doc) + os.sep for f, doc in _suite_docs(files)]
-        cases: List[Union[Case, ConceptCheckCase, SchemaCheckCase]] = []
-        for f in files:
-            if any(f.startswith(prefix) for prefix in owned):
-                continue
+        cases: List[Union[Case, ConceptCheckCase]] = []
+        for f in sorted(files):
             cases.extend(load_cases_from_file(f, params_, resolve_queries))
         return cases
     return load_cases_from_file(path, params_, resolve_queries)

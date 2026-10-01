@@ -24,6 +24,7 @@ Design notes:
 * **The heartbeat is a daemon thread** that only ever writes to the stream. It
   cannot keep the process alive and it cannot fail the run.
 """
+
 from __future__ import annotations
 
 import sys
@@ -132,9 +133,7 @@ def step(label: str, heartbeat_seconds: Optional[float] = None):
     """
     handle = Step(label)
     emit(f"  -> {label} ...")
-    beat = _Heartbeat(
-        _heartbeat_seconds if heartbeat_seconds is None else heartbeat_seconds
-    )
+    beat = _Heartbeat(_heartbeat_seconds if heartbeat_seconds is None else heartbeat_seconds)
     beat.start()
     started = time.monotonic()
     try:
@@ -143,8 +142,7 @@ def step(label: str, heartbeat_seconds: Optional[float] = None):
         handle.elapsed = time.monotonic() - started
         beat.stop()
         emit(
-            f"  FAILED {label}  {format_duration(handle.elapsed)}  "
-            f"{type(exc).__name__}: {exc}"
+            f"  FAILED {label}  {format_duration(handle.elapsed)}  " f"{type(exc).__name__}: {exc}"
         )
         raise
     else:
