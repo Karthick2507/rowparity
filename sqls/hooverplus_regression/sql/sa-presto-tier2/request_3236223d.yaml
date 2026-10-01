@@ -1,0 +1,4 @@
+tags:
+- column_coverage
+description: 'request | READ | dropped for comparison: ORDER BY event_count DESC LIMIT
+  100'

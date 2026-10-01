@@ -85,7 +85,7 @@ python -m prism verify   <folder>     # diff what it would write against the rep
 ```
 
 `<folder>` is routed per subfolder: a subfolder holding a `conf.yml`/
-`conf.yaml` is a **biz_service batch** (below); a `.sql` file directly in the
+`conf.yml` is a **biz_service batch** (below); a `.sql` file directly in the
 folder, with no conf.yml beside it, is read by the pipeline described in the
 rest of this document -- one case per file. A file that fails to analyse is
 reported and skipped; every other file in the folder still runs, and the exit
@@ -275,7 +275,7 @@ one test; the rest of the suite runs normally.
 
 A second, separate pipeline for a different shape of input: instead of one
 parity SQL you write yourself, a **biz_service batch** is a folder your BI
-system already produces -- one `conf.yml`/`conf.yaml` plus the 1+ `.sql`
+system already produces -- one `conf.yml`/`conf.yml` plus the 1+ `.sql`
 files it owns:
 
 ```
@@ -312,7 +312,7 @@ anchor for the batch predicate and the sampling filter that must sit beside
 it). Skipped files are reported by name and reason, never silently dropped.
 
 Batches arrive incrementally, one `generate` run at a time, so the output is
-**additive**: one merged `scripts/cases_biz_service.yaml` covers every batch
+**additive**: one merged `../scripts/biz_service_plus/cases_biz_service.yaml` covers every batch
 generated so far, and re-running PRISM on one batch replaces only that
 batch's own cases in the file, in place -- every other batch's cases are
 left untouched.

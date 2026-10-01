@@ -1,0 +1,3 @@
+tags:
+- column_coverage
+description: 'request | WRITE | dropped for comparison: LIMIT 2000000'

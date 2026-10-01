@@ -1,0 +1,4 @@
+tags:
+- column_coverage
+description: 'auction | READ | dropped for comparison: ORDER BY dsps_per_anc_group
+  LIMIT 20'

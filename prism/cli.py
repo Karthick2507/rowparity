@@ -8,7 +8,7 @@ Three subcommands, all **folder-only**:
 
 ``<folder>`` is routed per subfolder, not by a single fixed shape:
 
-* A subfolder holding a ``conf.yml``/``conf.yaml`` is a **biz_service batch** --
+* A subfolder holding a ``conf.yml``/``conf.yml`` is a **biz_service batch** --
   every ``.sql`` file beside that conf becomes its own case, classified into
   keys/metrics from the conf's own ``dimensions:``/``metrics:`` lists. One
   merged ``cases_biz_service.yaml`` covers every batch generated this way.
@@ -85,8 +85,10 @@ def _discover_targets(folder: str) -> List[Target]:
 def _print_profile(p) -> None:
     print(f"PRISM read {p.sql_path}\n")
     print(f"  name                {p.name}")
-    print(f"  output columns      {p.output_columns}  "
-          f"({len(p.dimensions)} dimensions + {len(p.metrics)} metrics)")
+    print(
+        f"  output columns      {p.output_columns}  "
+        f"({len(p.dimensions)} dimensions + {len(p.metrics)} metrics)"
+    )
     print(f"  UNION branches      {p.branches}")
     print(f"  placeholders        {sorted(p.placeholders)}")
     print(f"  ${{facts}} references  {p.fact_refs}  -> {p.fact_tables}")
@@ -178,8 +180,10 @@ def _print_batch_result(r: "bs.FileResult") -> None:
     if r.skipped:
         print(f"  SKIP   {r.sql_path}  ({r.skip_reason})")
         return
-    print(f"  {r.name}  ({r.output_columns} columns: {len(r.keys)} keys + "
-          f"{len(r.metrics)} metrics)")
+    print(
+        f"  {r.name}  ({r.output_columns} columns: {len(r.keys)} keys + "
+        f"{len(r.metrics)} metrics)"
+    )
     if r.issues:
         for issue in r.issues:
             print(f"    - {issue}")
@@ -260,8 +264,7 @@ def _generate_one_batch(args, batch_dir: str) -> bool:
             fh.write(bs.TEST_FILE_CONTENTS)
         print(f"  WROTE  {test_file}")
     elif new_cases:
-        print(f"  WOULD MERGE {len(new_cases)} case(s) into "
-              f"{os.path.join(root, bs.CASE_FILE)}")
+        print(f"  WOULD MERGE {len(new_cases)} case(s) into " f"{os.path.join(root, bs.CASE_FILE)}")
 
     print()
     return ok
@@ -295,9 +298,12 @@ def _verify_one_batch(args, batch_dir: str) -> bool:
         print(f"  DIFFERS  {path}")
         if args.show_diff:
             diff = difflib.unified_diff(
-                on_disk.splitlines(), r.transformed_sql.splitlines(),
-                fromfile=f"{path} (on disk)", tofile="PRISM would generate",
-                lineterm="", n=1,
+                on_disk.splitlines(),
+                r.transformed_sql.splitlines(),
+                fromfile=f"{path} (on disk)",
+                tofile="PRISM would generate",
+                lineterm="",
+                n=1,
             )
             for line in list(diff)[: args.diff_lines]:
                 print(f"      {line}")
@@ -380,9 +386,12 @@ def _verify(args) -> int:
             print(f"  DIFFERS  {path}")
             if args.show_diff:
                 diff = difflib.unified_diff(
-                    on_disk.splitlines(), rendered[kind].splitlines(),
-                    fromfile=f"{path} (on disk)", tofile="PRISM would generate",
-                    lineterm="", n=1,
+                    on_disk.splitlines(),
+                    rendered[kind].splitlines(),
+                    fromfile=f"{path} (on disk)",
+                    tofile="PRISM would generate",
+                    lineterm="",
+                    n=1,
                 )
                 for line in list(diff)[: args.diff_lines]:
                     print(f"      {line}")
@@ -402,21 +411,25 @@ def main(argv=None) -> int:
         sp.add_argument(
             "folder",
             help="a folder to scan: subfolders holding a conf.yml are biz_service "
-                 "batches, .sql files directly in it are read by the single-query "
-                 "pipeline (e.g. sql/insight_plus, or prism/input for everything)",
+            "batches, .sql files directly in it are read by the single-query "
+            "pipeline (e.g. sql/insight_plus, or prism/input for everything)",
         )
         sp.add_argument(
-            "--root", default=None,
+            "--root",
+            default=None,
             help="where to write / what to diff against. generate defaults to "
-                 "prism/output; verify defaults to the repo root.",
+            "prism/output; verify defaults to the repo root.",
         )
         sp.add_argument("--expected-facts", default="mrm_log_flat.default")
         sp.add_argument("--actual-facts", default="etl.public_test1")
         sp.add_argument("--expected-label", default="Hoover")
         sp.add_argument("--actual-label", default="Hoover++")
-        sp.add_argument("--only", nargs="*",
-                        choices=["case", "drilldown"],
-                        help="restrict to these outputs (insight_plus targets only)")
+        sp.add_argument(
+            "--only",
+            nargs="*",
+            choices=["case", "drilldown"],
+            help="restrict to these outputs (insight_plus targets only)",
+        )
 
     ins = sub.add_parser("inspect", help="show what PRISM read; write nothing")
     ins.add_argument("folder")
@@ -427,9 +440,10 @@ def main(argv=None) -> int:
     gen.add_argument("--force", action="store_true", help="overwrite existing SQL copies")
     gen.add_argument("--dry-run", action="store_true", help="say what would be written")
     gen.add_argument(
-        "--no-copy-source", action="store_true",
+        "--no-copy-source",
+        action="store_true",
         help="insight_plus targets only: do not copy the parity .sql into the "
-             "output tree (the copy is what makes the preview runnable)",
+        "output tree (the copy is what makes the preview runnable)",
     )
     gen.set_defaults(func=_generate)
 

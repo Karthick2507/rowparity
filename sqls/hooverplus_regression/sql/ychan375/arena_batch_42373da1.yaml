@@ -1,0 +1,3 @@
+tags:
+- column_coverage
+description: 'ack | WRITE | dropped for comparison: ORDER BY 3 DESC LIMIT 100000'

@@ -670,11 +670,11 @@ SELECT
 FROM ${facts}.candidate
 CROSS JOIN UNNEST(
     partners__network_id,
-    partners__network_is_extra_item_owner,
+    --partners__network_is_extra_item_owner,
     partners__supply_source,
     partners__sales_channel,
     partners__entity_source,
-    partners__role,
+    --partners__role,
     partners__content_owner_network_id,
     partners__distributor_network_id,
     partners__reseller_network_id,
@@ -694,11 +694,11 @@ CROSS JOIN UNNEST(
     partners__standard_brand_visibility__report_aggregate)
 nw (
   network_id,
-  extra_item_owner,
+  --extra_item_owner,
   supply_source,
   sales_channel,
   entity_source,
-  role,
+  --role,
   co_id,
   distributor_id,
   reseller_id,
@@ -1104,11 +1104,11 @@ CROSS JOIN UNNEST(
     ads_in_slot__auction__series_id,
 
     ads_in_slot__partners__network_id,
-    ads_in_slot__partners__network_is_extra_item_owner,
+    --ads_in_slot__partners__network_is_extra_item_owner,
     ads_in_slot__partners__supply_source,
     ads_in_slot__partners__sales_channel,
     ads_in_slot__partners__entity_source,
-    ads_in_slot__partners__role,
+    --ads_in_slot__partners__role,
     ads_in_slot__partners__content_owner_network_id,
     ads_in_slot__partners__distributor_network_id,
     ads_in_slot__partners__reseller_network_id,
@@ -1161,11 +1161,11 @@ as ads (
     auction__series_id,
 
     network_id,
-    extra_item_owner,
+    --extra_item_owner,
     supply_source,
     sales_channel,
     entity_source,
-    role,
+    --role,
     co_id,
     distributor_id,
     reseller_id,
@@ -1185,11 +1185,11 @@ as ads (
     brand_visibility)
 CROSS JOIN UNNEST (
     ads.network_id,
-    ads.extra_item_owner,
+    --ads.extra_item_owner,
     ads.supply_source,
     ads.sales_channel,
     ads.entity_source,
-    ads.role,
+    --ads.role,
     ads.co_id,
     ads.distributor_id,
     ads.reseller_id,
@@ -1209,11 +1209,11 @@ CROSS JOIN UNNEST (
     ads.brand_visibility)
 as nw (
     network_id,
-    extra_item_owner,
+    --extra_item_owner,
     supply_source,
     sales_channel,
     entity_source,
-    role,
+    --role,
     co_id,
     distributor_id,
     reseller_id,
@@ -1595,11 +1595,11 @@ SELECT
 FROM ${facts}.candidate
 CROSS JOIN UNNEST(
     partners__network_id,
-    partners__network_is_extra_item_owner,
+    --partners__network_is_extra_item_owner,
     partners__supply_source,
     partners__sales_channel,
     partners__entity_source,
-    partners__role,
+    --partners__role,
     partners__content_owner_network_id,
     partners__distributor_network_id,
     partners__reseller_network_id,
@@ -1619,11 +1619,11 @@ CROSS JOIN UNNEST(
     partners__standard_brand_visibility__report_aggregate)
 nw (
   network_id,
-  extra_item_owner,
+  --extra_item_owner,
   supply_source,
   sales_channel,
   entity_source,
-  role,
+  --role,
   co_id,
   distributor_id,
   reseller_id,
@@ -2002,10 +2002,10 @@ SELECT
 FROM ${facts}.ack
 CROSS JOIN UNNEST(
     partners__network_id,
-    partners__network_is_extra_item_owner,
+    --partners__network_is_extra_item_owner,
     partners__supply_source,
     partners__sales_channel,
-    partners__role,
+    --partners__role,
     partners__content_owner_network_id,
     partners__distributor_network_id,
     partners__reseller_network_id,
@@ -2028,10 +2028,10 @@ CROSS JOIN UNNEST(
     partners__reseller_revenue)
 nw (
   network_id,
-  extra_item_owner,
+  --extra_item_owner,
   supply_source,
   sales_channel,
-  role,
+  --role,
   co_id,
   distributor_id,
   reseller_id,

@@ -1,0 +1,5 @@
+tags:
+- approx_percentile
+- daily_commitment
+description: 'auction, candidate, request | WRITE | dropped for comparison: ORDER
+  BY req.time_day ASC, req.bucket_type ASC LIMIT 10000'

@@ -1,0 +1,3 @@
+tags:
+- column_coverage
+description: 'ack | READ | dropped for comparison: ORDER BY cnt DESC LIMIT 20'

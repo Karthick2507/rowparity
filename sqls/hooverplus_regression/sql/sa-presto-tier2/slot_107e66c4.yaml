@@ -1,0 +1,4 @@
+tags:
+- approx_percentile
+- column_coverage
+description: 'slot | READ | dropped for comparison: LIMIT 10'

@@ -1,0 +1,4 @@
+tags:
+- daily_commitment
+description: 'ack | WRITE | dropped for comparison: ORDER BY no_selected_ads_with_real_acks
+  DESC LIMIT 500000'

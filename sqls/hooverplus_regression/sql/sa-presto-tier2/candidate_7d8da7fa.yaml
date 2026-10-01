@@ -1,0 +1,4 @@
+tags:
+- column_coverage
+description: 'candidate | READ | dropped for comparison: ORDER BY error_count DESC
+  LIMIT 20'

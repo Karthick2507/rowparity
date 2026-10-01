@@ -1,0 +1,4 @@
+tags:
+- column_coverage
+description: 'ack | READ | dropped for comparison: ORDER BY net_counted_impressions
+  DESC LIMIT 100'

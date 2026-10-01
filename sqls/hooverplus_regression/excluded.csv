@@ -1,0 +1,25 @@
+file,account,reason
+regression/svc-ciecgbi-arena/arena_batch_1c2968ef.sql,svc-ciecgbi-arena,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/svc-ciecgbi-arena/arena_batch_2292592f.sql,svc-ciecgbi-arena,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/svc-ciecgbi-arena/arena_batch_23a06100.sql,svc-ciecgbi-arena,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/svc-ciecgbi-arena/arena_batch_7c76c5ab.sql,svc-ciecgbi-arena,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/svc-ciecgbi-arena/arena_batch_7c7aff71.sql,svc-ciecgbi-arena,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/svc-ciecgbi-arena/arena_batch_c363f4e7.sql,svc-ciecgbi-arena,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/sa-presto-tier2/auction_308515c4.sql,sa-presto-tier2,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/sa-presto-tier2/candidate_7ae0a557.sql,sa-presto-tier2,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/sa-presto-tier2/slot_107e66c4.sql,sa-presto-tier2,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/lsu165/arena_batch.sql,lsu165,RAND()/RANDOM() draws a different row set on every execution
+regression/sa-dmo-aqs/arena_batch_758ff1db.sql,sa-dmo-aqs,approx_percentile (t-digest) depends on input order: the sides can differ on identical data
+regression/sa-presto-af-etl/arena_batch_ff4458db.sql,sa-presto-af-etl,RAND()/RANDOM() draws a different row set on every execution
+regression/sa-presto-af-etl/transaction_fdc1fb56.sql,sa-presto-af-etl,RAND()/RANDOM() draws a different row set on every execution
+regression/jou254/arena_batch_0f8ff0cd.sql,jou254,TABLESAMPLE draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_11729cd0.sql,sa-research-etl-user,TABLESAMPLE draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_27d36c64.sql,sa-research-etl-user,RAND()/RANDOM() draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_52127cb1.sql,sa-research-etl-user,RAND()/RANDOM() draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_607324f2.sql,sa-research-etl-user,TABLESAMPLE draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_81c55694.sql,sa-research-etl-user,TABLESAMPLE draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_a4fd7004.sql,sa-research-etl-user,RAND()/RANDOM() draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_b96e8806.sql,sa-research-etl-user,RAND()/RANDOM() draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_bce89d70.sql,sa-research-etl-user,RAND()/RANDOM() draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_ff48fd74.sql,sa-research-etl-user,RAND()/RANDOM() draws a different row set on every execution
+regression/sa-research-etl-user/arena_batch_fff75dcf.sql,sa-research-etl-user,TABLESAMPLE draws a different row set on every execution

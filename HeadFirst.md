@@ -3391,7 +3391,7 @@ python -m prism generate sql/insight_plus
 
 `inspect`/`generate`/`verify` are **folder-only** — a single `.sql` file is
 no longer accepted directly. Point at a folder and PRISM routes each
-subfolder: one holding a `conf.yml`/`conf.yaml` is a **biz_service batch**
+subfolder: one holding a `conf.yml`/`conf.yml` is a **biz_service batch**
 (§16.9); a `.sql` file directly in the folder, with no conf.yml beside it,
 goes through the pipeline this section describes. A file that fails to
 analyse is reported and skipped rather than aborting the whole run.
@@ -3590,7 +3590,7 @@ regardless — **nothing that decides what "equal" means (`keys`, `breakdown_by`
 §16.1–16.8 describe PRISM's original input: one parity SQL a person writes,
 already carrying `${facts}` and `${sampling_filter}`. A **biz_service
 batch** is a different shape entirely — a folder the BI system already
-produces, one `conf.yml`/`conf.yaml` shared by the 1+ `.sql` files beside
+produces, one `conf.yml`/`conf.yml` shared by the 1+ `.sql` files beside
 it:
 
 ```
@@ -3623,7 +3623,7 @@ an unrelated troubleshooting-log table through nested struct access), or no
 sampling filter). Reported by name and reason, never silently dropped.
 
 Batches arrive incrementally, so the output is additive: one merged
-`scripts/cases_biz_service.yaml` covers every batch generated so far, and
+`scripts/biz_service_plus/cases_biz_service.yaml` covers every batch generated so far, and
 re-running PRISM on one batch replaces only that batch's own cases in the
 file, in place. `tests/test_biz_service_sql_sync.py` mirrors
 `test_insight_plus_sql_sync.py`'s shape and reasons — discovers every case

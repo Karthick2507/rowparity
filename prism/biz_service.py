@@ -39,12 +39,11 @@ prevent. Skipping is conservative on purpose; it is reported, not silent.
 
 from __future__ import annotations
 
+import datetime
 import os
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set
-
-import datetime
 
 import yaml
 
@@ -66,7 +65,7 @@ DEFAULT_SAMPLING_FILTER = (
     "bitwise_left_shift(BIGINT '1', 59)) > 0"
 )
 
-CONF_FILENAMES = ("conf.yml", "conf.yaml")
+CONF_FILENAMES = ("conf.yml", "conf.yml")
 
 
 class BizServiceError(RuntimeError):
@@ -78,8 +77,8 @@ class BatchConf:
     """What one batch's conf.yml states, trimmed to what rowparity needs."""
 
     path: str
-    dimensions: List[str] = field(default_factory=list)     # type suffix stripped
-    metrics: List[str] = field(default_factory=list)        # type suffix stripped
+    dimensions: List[str] = field(default_factory=list)  # type suffix stripped
+    metrics: List[str] = field(default_factory=list)  # type suffix stripped
     metrics_set: Set[str] = field(default_factory=set)
     batch_id_filter: Dict[str, Optional[str]] = field(default_factory=dict)
 
@@ -88,7 +87,7 @@ class BatchConf:
 class FileResult:
     """One .sql file's outcome: either a generated case, or a skip with why."""
 
-    name: str                       # file basename, no extension -- the case name
+    name: str  # file basename, no extension -- the case name
     sql_path: str
     batch_name: str
     skipped: bool = False
@@ -157,8 +156,9 @@ def _depth_at(text: str, pos: int) -> int:
 
 def outer_select_items_flat(sql: str) -> List[str]:
     text = strip_comments(sql)
-    selects = [m.start() for m in re.finditer(r"\bselect\b", text, re.I)
-               if _depth_at(text, m.start()) == 0]
+    selects = [
+        m.start() for m in re.finditer(r"\bselect\b", text, re.I) if _depth_at(text, m.start()) == 0
+    ]
     if not selects:
         raise AnalysisError("no depth-0 'select' found -- not a flat query PRISM can read")
     start = selects[-1] + len("select")
@@ -235,6 +235,7 @@ def insert_batch_and_sampling_filter(sql: str, resolved_filter: str) -> str:
     CTE shapes alike, so inserting at that exact position is syntactically
     safe without knowing anything else about the query's structure.
     """
+
     def _replace(match: "re.Match[str]") -> str:
         return f"{resolved_filter}\n    and ${{sampling_filter}} {SAMPLING_MARKER}"
 
@@ -259,9 +260,7 @@ def analyse_file(sql_path: str, conf: BatchConf, batch_name: str) -> FileResult:
 
     if not has_facts_reference(sql):
         result.skipped = True
-        result.skip_reason = (
-            f"no '{FACTS_CATALOG}' reference -- nothing for ${{facts}} to point at"
-        )
+        result.skip_reason = f"no '{FACTS_CATALOG}' reference -- nothing for ${{facts}} to point at"
         return result
 
     tokens = sorted(set(DATA_FILTER_TOKEN.findall(sql)))
@@ -269,8 +268,7 @@ def analyse_file(sql_path: str, conf: BatchConf, batch_name: str) -> FileResult:
     if not tokens:
         result.skipped = True
         result.skip_reason = (
-            "no ${DATA_FILTER_*} token -- no anchor for the batch predicate "
-            "and sampling filter"
+            "no ${DATA_FILTER_*} token -- no anchor for the batch predicate " "and sampling filter"
         )
         return result
 
@@ -281,9 +279,7 @@ def analyse_file(sql_path: str, conf: BatchConf, batch_name: str) -> FileResult:
     result.transformed_sql = transform_sql(sql, conf, name)
 
     if unparsed:
-        result.issues.append(
-            f"{len(unparsed)} SELECT item(s) could not be named: {unparsed[:2]}"
-        )
+        result.issues.append(f"{len(unparsed)} SELECT item(s) could not be named: {unparsed[:2]}")
     if not keys:
         result.issues.append("no key columns found -- the generated case would be keyless")
     if not metrics:
@@ -305,7 +301,8 @@ def analyse_batch(folder: str) -> Optional[tuple]:
         return None
     conf = load_conf(conf_path)
     sql_files = sorted(
-        f for f in os.listdir(folder)
+        f
+        for f in os.listdir(folder)
         if f.endswith(".sql") and os.path.isfile(os.path.join(folder, f))
     )
     batch_name = os.path.basename(os.path.normpath(folder))
@@ -573,4 +570,3 @@ class TestTheRawTemplate:
             f"{name}: an unresolved ${{DATA_FILTER_*}} token survived generation"
         )
 '''
-

@@ -1,0 +1,3 @@
+tags:
+- column_coverage
+description: 'auction | READ | dropped for comparison: ORDER BY n DESC LIMIT 20'

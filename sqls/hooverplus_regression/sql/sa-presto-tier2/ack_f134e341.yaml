@@ -1,0 +1,4 @@
+tags:
+- column_coverage
+description: 'ack | READ | dropped for comparison: ORDER BY impression_count DESC
+  LIMIT 200'

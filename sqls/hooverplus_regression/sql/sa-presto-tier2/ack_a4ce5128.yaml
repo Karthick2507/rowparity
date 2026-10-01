@@ -1,0 +1,4 @@
+tags:
+- column_coverage
+description: 'ack | READ | dropped for comparison: ORDER BY net_imp DESC, user_id,
+  matched_segment_id LIMIT 200'
