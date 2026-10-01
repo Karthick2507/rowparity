@@ -36,6 +36,7 @@ claim below is from the code as it stands, not from an earlier document.
 14. [LiveWire — stepping through one successful run](#14-livewire--stepping-through-one-successful-run)
 15. [Does my run use DuckDB? — and what a result sink is](#15-does-my-run-use-duckdb--and-what-a-result-sink-is)
 16. [PRISM — the case generator beside the repo](#16-prism--the-case-generator-beside-the-repo)
+17. [Testing a biz_service batch end to end](#17-testing-a-biz_service-batch-end-to-end)
 
 ---
 
@@ -3643,9 +3644,250 @@ prism/output/
   tests/test_biz_service_sql_sync.py
 ```
 
-`prism/README.md`'s "biz_service batches" section is the full reference.
+`prism/README.md`'s "biz_service batches" section is the full reference. §17
+traces `tests/test_biz_service_sql_sync.py` itself the way §12 traces
+`rowparity run` — control flow, data flow, and a real failure mode.
+
+---
+
+## 17. Testing a biz_service batch end to end
+
+§16.9 generates the three files. This section is what happens **after** they
+are copied into place: how the one shared test file actually proves a batch
+is wired correctly, traced the way §12 traces `rowparity run` — real
+function calls, real data, not paraphrase.
+
+The worked example is the real `ab_test` batch from §16.9, copied into the
+repo and run for real:
+
+```bash
+cp -r prism/output/* .
+pytest tests/test_biz_service_sql_sync.py -v
+```
+
+```
+collected 17 items
+
+test_the_case_file_loads_at_all PASSED
+TestWiring::test_case_loads[ab_test_ack] PASSED
+TestWiring::test_case_loads[ab_test_request] PASSED
+TestWiring::test_keys_are_non_empty[ab_test_ack] PASSED
+TestWiring::test_keys_are_non_empty[ab_test_request] PASSED
+TestWiring::test_facts_differ_between_sides[ab_test_ack] PASSED
+TestWiring::test_facts_differ_between_sides[ab_test_request] PASSED
+TestWiring::test_both_sides_resolve_with_a_batch_id[ab_test_ack] PASSED
+TestWiring::test_both_sides_resolve_with_a_batch_id[ab_test_request] PASSED
+TestWiring::test_missing_batch_id_raises[ab_test_ack] PASSED
+TestWiring::test_missing_batch_id_raises[ab_test_request] PASSED
+TestTheRawTemplate::test_no_hardcoded_facts_catalog_remains[ab_test_ack] PASSED
+TestTheRawTemplate::test_no_hardcoded_facts_catalog_remains[ab_test_request] PASSED
+TestTheRawTemplate::test_sampling_filter_is_present[ab_test_ack] PASSED
+TestTheRawTemplate::test_sampling_filter_is_present[ab_test_request] PASSED
+TestTheRawTemplate::test_no_data_filter_token_remains[ab_test_ack] PASSED
+TestTheRawTemplate::test_no_data_filter_token_remains[ab_test_request] PASSED
+
+17 passed in 8.21s
+```
+
+17 items = 1 always-collected guard test + 2 cases × 8 parametrized tests.
+`ab_test_perf_phase` contributes **zero** of the 17 — §16.9's skip means it
+never became a case, so there is nothing here for pytest to discover for it
+either. That absence is not a gap in this file; it is §16.9's skip decision
+propagating downstream exactly as it should.
+
+### 17.1 What it covers, and what it deliberately does not
+
+Same boundary as `tests/test_insight_plus_sql_sync.py` (§16.6): this file
+proves the **case and its SQL are wired correctly** — keys are non-empty,
+the two sides read different catalogs, every placeholder this case is
+entitled to use actually resolves, an omitted batch id fails loudly instead
+of running over an unbounded window. It never opens a warehouse connection
+and never proves the two sides return the **same rows** — that is
+`rowparity run`'s job (§12), against a live cluster, and it is a strictly
+later step than anything in this section.
+
+### 17.2 Running it
+
+```bash
+# every case in scripts/cases_biz_service.yaml
+pytest tests/test_biz_service_sql_sync.py -q
+
+# one case only
+pytest tests/test_biz_service_sql_sync.py -k ab_test_ack -q
+
+# one test, across every case
+pytest tests/test_biz_service_sql_sync.py -k test_sampling_filter_is_present -q
+```
+
+No `--param`, no environment variable, no `.env` file — nothing to set up.
+`BATCH = "20260812010000"` is a constant baked into the test file itself
+(§17.3), used only to **prove substitution works**; no query is ever
+executed against it.
+
+### 17.3 Control flow: collection time vs. call time
+
+Two distinct phases, and the boundary between them matters for the same
+reason it does in §16.6 — a broken `cases_biz_service.yaml` must fail one
+named test, not abort the whole pytest session.
+
+**Collection time** (module import, before any test runs):
+
+```python
+CASES_FILE = os.path.join(REPO, "scripts", "cases_biz_service.yaml")
+
+def _discover(params):
+    if not os.path.isfile(CASES_FILE):
+        return []
+    return discover_cases(CASES_FILE, params, resolve_queries=False)
+
+try:
+    _UNPARAMETRISED_CASES = _discover({})       # ← rowparity.cases.discover_cases
+    _DISCOVERY_ERROR = None
+except Exception as exc:
+    _UNPARAMETRISED_CASES = []
+    _DISCOVERY_ERROR = exc
+
+CASE_NAMES = [c.name for c in _UNPARAMETRISED_CASES]   # -> ["ab_test_ack", "ab_test_request"]
+
+@pytest.mark.parametrize("name", CASE_NAMES)
+class TestWiring: ...
+```
+
+`discover_cases(CASES_FILE, {}, resolve_queries=False)` loads the YAML **with
+no `--param`**, proving `pytest` (and `rowparity list`) need none. The result
+becomes `CASE_NAMES`, and `@pytest.mark.parametrize("name", CASE_NAMES)` is
+what turns two cases in one YAML file into 16 test items: 8 test methods
+total (`TestWiring`'s 5 plus `TestTheRawTemplate`'s 3), each parametrized
+over both case names. Add the one always-collected guard test and that is
+**17 total**, exactly what the run above shows.
+
+**Call time** (inside each test method, per case name):
+
+```python
+def test_case_loads(self, name):
+    case = _find(name, {"arena.presto.var.process_batch_id": BATCH})   # ← re-discovers, THIS time WITH a batch id
+    ...
+```
+
+`_find` calls `discover_cases` again — deliberately, not a missed
+optimisation. Collection-time discovery (`{}`, no batch) proves *listing*
+needs no parameter; call-time discovery (`{"arena.presto.var...": BATCH}`)
+is what lets a test actually **resolve** the SQL, since substitution needs a
+value for every placeholder the case declares.
+
+### 17.4 Data flow, traced through one case
+
+`_find("ab_test_ack", {"arena.presto.var.process_batch_id": BATCH})` returns
+a `Case` object whose relevant fields, taken from the real generated
+`scripts/cases_biz_service.yaml`, are:
+
+```python
+case.variables = {
+    "sampling_filter": "bitwise_and(coalesce(request__bit_flags, BIGINT '0'),"
+                        "bitwise_left_shift(BIGINT '1', 59)) > 0",
+    "arena.presto.var.process_batch_id": "20260812010000",
+}
+case.expected["vars"] = {"facts": "mrm_log_flat.default"}
+case.expected["query_file"] = "../sql/biz_service/ab_test/ab_test_ack.sql"
+```
+
+`case.variables` is the **case-level** `vars:` block (`sampling_filter`)
+merged with whatever `--param`/discovery call supplied (the batch id);
+`case.expected["vars"]` is the **side-level** block (`facts`), still
+separate at this point. `_sql(case, "expected")` is what merges the two and
+substitutes:
+
+```python
+def _sql(case, side):
+    spec = case.expected if side == "expected" else case.actual
+    variables = merge_side_vars(spec.get("vars"), case.variables)   # ← rowparity.params.merge_side_vars
+    return resolve_query(spec, os.path.dirname(case.source_file), variables)  # ← rowparity.sources.resolve_query
+```
+
+```python
+merge_side_vars(spec.get("vars"), case.variables)
+# -> {"sampling_filter": "bitwise_and(...) > 0",
+#     "arena.presto.var.process_batch_id": "20260812010000",
+#     "facts": "mrm_log_flat.default"}          # side vars OVERLAY case vars
+```
+
+`resolve_query` reads `ab_test_ack.sql` off disk and calls
+`params.substitute(sql, variables)`, which walks every `${name}` and
+replaces it or raises. On the real file, the three relevant lines go from:
+
+```sql
+from mrm_log_flat.default.ack
+    ...
+    AND ${DATA_FILTER_ACK}
+    and ${sampling_filter} --sampling filter
+```
+
+to, after substitution:
+
+```sql
+from mrm_log_flat.default.ack
+    ...
+    AND process_batch_id = '20260812010000'
+    and bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0 --sampling filter
+```
+
+(`${DATA_FILTER_ACK}` is not a placeholder by the time this test runs at
+all — §16.9's `generate` step already replaced it with the literal
+`process_batch_id = '${arena.presto.var.process_batch_id}'` text when it
+wrote the file. What `substitute()` resolves here is that one remaining
+`${arena.presto.var.process_batch_id}` placeholder, plus `${facts}` and
+`${sampling_filter}`.) The `actual` side runs the identical call with
+`case.actual["vars"] = {"facts": "etl.public_test1"}`, producing the same
+SQL text with `etl.public_test1.ack` in the `from` and nothing else
+different — the two sides differing only in the `facts` var is exactly what
+`test_facts_differ_between_sides` (§17.5) checks, by comparing the two
+`vars:` blocks rather than re-reading either resolved SQL.
+
+### 17.5 The two test classes
+
+| Class | Checks | Fails when |
+|---|---|---|
+| `TestWiring` | the `Case` object: query files set, `compare.keys` non-empty, `expected`/`actual` read different `facts`, both sides resolve with no `${...}` left over, omitting the batch id raises `ParamError` | a case's YAML shape is broken, or a placeholder has no source |
+| `TestTheRawTemplate` | the raw `.sql` TEXT, not the `Case` object: no hardcoded `mrm_log_flat.default.` left in the file, `${sampling_filter}`/`--sampling filter` both present, no `${DATA_FILTER_*}` token survived | the SQL that was actually written to `sql/biz_service/<batch>/` is not the transformed one — see §17.6 |
+
+The split matters for the same reason it does in §16.6: a case-shape check
+can be green while the SQL text underneath it is still wrong, because
+`Case` loading never re-reads the raw file for shape violations that
+`substitute()` itself doesn't catch.
+
+### 17.6 A real failure mode: the wrong file got copied
+
+This happened, not a hypothetical. `rowparity run scripts/cases_biz_service.yaml
+--param arena.presto.var.process_batch_id=20260812010000 ...` failed both
+cases with:
+
+```
+FAILED expected (trino) 0.0s  ParamError: unresolved parameter(s) ['DATA_FILTER_ACK']
+in scripts/../sql/biz_service/ab_test/ab_test_ack.sql. Define them in the case's
+vars: block, set ROWPARITY_VAR_DATA_FILTER_ACK, or pass --param DATA_FILTER_ACK=<value>.
+Known: ['arena.presto.var.process_batch_id', 'facts', 'sampling_filter']
+```
+
+The cause: `prism/input/ab_test/ab_test_ack.sql` (§16.9's **untransformed
+input** — still carries the literal `${DATA_FILTER_ACK}` token) had been
+copied into `sql/biz_service/ab_test/ab_test_ack.sql` by hand, instead of
+`prism/output/sql/biz_service/ab_test/ab_test_ack.sql` (PRISM's
+**generated, transformed** copy — §17.4's substituted version). Both files
+share the same basename, which is precisely how the mix-up happens.
+
+`test_no_data_filter_token_remains` (§17.5) exists to catch exactly this,
+offline, before `rowparity run` ever reaches a cluster:
+
+```
+FAILED TestTheRawTemplate::test_no_data_filter_token_remains[ab_test_ack]
+  AssertionError: ab_test_ack: an unresolved ${DATA_FILTER_*} token survived generation
+```
+
+The fix is `cp -r prism/output/* .` — the whole tree, from `prism/output/`,
+never a file plucked out of `prism/input/` by hand.
 
 ---
 
 *§15's tables, row counts and query results are output from three real runs, not
-illustrations.*
+illustrations. §17's pytest run, substituted SQL and the `ParamError` message in
+§17.6 are output from real commands too.*
