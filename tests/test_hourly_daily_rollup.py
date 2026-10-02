@@ -155,8 +155,10 @@ def test_daily_rollup_catches_a_double_counted_hour(con):
 
 
 def test_daily_rollup_keyless_multiset_also_catches_drift(con):
-    """Same check, keyless — useful when the daily table has no clean composite
-    key you're willing to declare (the tool's own recommendation for that case)."""
+    """Same corruption, no declared key — useful when the daily table has no
+    clean composite key you're willing to declare (the tool's own
+    recommendation for that case). The engine infers one from the data instead
+    of falling back to an undifferentiated multiset diff."""
     _hourly_table(con)
     expected = _rollup_arrow(con)
 
@@ -165,5 +167,12 @@ def test_daily_rollup_keyless_multiset_also_catches_drift(con):
 
     r = compare_tables(expected, actual, CompareConfig(float_tolerance=0.01))
     assert not r.equivalent
-    assert r.missing_count == 1  # the correct (day, region, revenue, orders) row is gone
-    assert r.added_count == 1    # replaced by a row with the wrong revenue/orders
+    # Keyless no longer means "no pairing": the engine infers (region, day) as a
+    # usable key from the data itself, re-pairs the corrupted row with its
+    # original counterpart, and reports one CHANGED row with the exact columns
+    # that drifted -- rather than the undifferentiated missing+added pile a pure
+    # multiset diff would produce for the same corruption.
+    assert r.keys_inferred
+    assert r.missing_count == 0
+    assert r.added_count == 0
+    assert r.changed_count == 1  # the (US, 2026-07-01) row, orders/revenue drifted
