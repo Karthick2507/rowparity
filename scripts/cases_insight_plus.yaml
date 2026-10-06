@@ -407,3 +407,75 @@ cases:
       - {label: "Placement", columns: [supply_source, time_position_class]}
 
     tags: [insight_plus, prism]
+
+  - name: f_demand_programmatic_deal_hourly
+    # 247 output columns (17 dimensions + 230 metrics), 6 UNION branch(es):
+    # Auction, Auction Imp. Obj., Candidate, Selected Ads (Removed User Drop
+    # Off), Candidate Per Slot, ACK. ${facts} and ${sampling_filter} applied
+    # per branch, matching the other cases in this file.
+    #
+    # No breakdown_by: process_stage (4, 4, 8, 16, 8, 32) repeats across
+    # branches rather than being a distinct literal per branch, so it does
+    # not partition the output cleanly.
+    expected_label: Hoover
+    actual_label: Hoover++
+    description: >-
+      The f_demand_programmatic_deal_hourly aggregate must produce identical rows whether built
+      from the Hoover layout or the Hoover++ layout. Both
+      sides are queries; neither is materialised.
+
+    # Shared by BOTH sides, and case-level on purpose: it is the one thing
+    # that must never differ. Comparing a sampled side against an unsampled
+    # one measures the sampling ratio and nothing else. Defined once and
+    # used by both, that bug is not expressible.
+    vars:
+      sampling_filter: "bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0"
+
+    # The only difference between the two runs. These outrank --param
+    # deliberately: a --param reaching both sides would point them at the
+    # same catalog, and a comparison of a table with itself always passes.
+    expected:
+      type: trino
+      query_file: ../sql/insight_plus/f_demand_programmatic_deal_hourly.sql
+      vars:
+        facts: mrm_log_flat.default
+
+    actual:
+      type: trino
+      query_file: ../sql/insight_plus/f_demand_programmatic_deal_hourly.sql
+      vars:
+        facts: etl.public_test1
+
+    compare:
+      # The 17 GROUP BY dimensions. Not a business key, but unique by
+      # construction after the outer aggregation, which is all a key has to be.
+      # Keyed, a difference separates into missing/added (a dimension combination
+      # is absent) and changed (same dimensions, drifting metrics). Keyless, every
+      # difference is missing + added and every column reads as differing.
+      keys:
+        - ack_traffic_type
+        - bidding_buyer_id
+        - deal_id
+        - demand_channel
+        - demand_type
+        - dsp_id
+        - error_stage
+        - event_date
+        - network_id
+        - partition_key
+        - primary_ad_indicator
+        - process_batch_id
+        - process_stage
+        - request_traffic_type
+        - sales_channel
+        - slot_user_drop_off
+        - user_matched_indicator
+
+      max_examples: 50
+
+      # Find the single key column whose drift turned one logical row into a
+      # missing + added pair. Costs no warehouse time: it re-pairs key tuples
+      # already in memory.
+      near_miss: true
+
+    tags: [insight_plus, prism]
