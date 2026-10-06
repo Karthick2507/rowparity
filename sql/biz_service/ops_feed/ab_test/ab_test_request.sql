@@ -37,4 +37,5 @@ where
     and cardinality(coalesce(request__context__ab_test_item__bucket_id, array[])) > 0
     -- and request__is_first_request
     and process_batch_id = '${arena.presto.var.process_batch_id}'
+    and ${sampling_filter} --sampling filter
 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15

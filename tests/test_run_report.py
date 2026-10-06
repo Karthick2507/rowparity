@@ -237,7 +237,10 @@ class TestCliIntegration:
         )
         out = tmp_path / "r.html"
         rc = cli_main(["run", str(case), "--quiet", "--html", str(out)])
-        assert rc == 1
+        # 3, not 1: a case that errored produced no verdict at all, which a
+        # scheduler should retry -- distinct from 1, a real difference that
+        # retrying would not change.
+        assert rc == 3
         payload = _payload_from_html(out.read_text(encoding="utf-8"))
         assert payload["summary"]["errored"] == 1
         assert payload["cases"][0]["status"] == "ERROR"
