@@ -1,13 +1,13 @@
-"""Every check scripts/cases_insight_plus/*.yaml and its SQL need, in one file.
+"""Every check scripts/cases_insight_plus.yaml and its SQL need, in one file.
 
-This is the ONLY test file for the insight_plus case directory. It replaces two
+This is the ONLY test file for the insight_plus cases. It replaces two
 things that used to be separate: a hand-written (or PRISM-generated) wiring
 test per case, and a hand-written (or PRISM-generated) sql-sync test per case.
 Both were the same shape for every case, differing only in constants a human
 had retyped from the Case object or counted out of that case's own SQL text.
-Neither kind of file exists anymore -- PRISM writes a case YAML and a
+Neither kind of file exists anymore -- PRISM writes/merges a case entry and a
 drilldown SQL skeleton, nothing else, and this file discovers every case
-under CASES_DIR and parametrizes over the result, deriving everything it
+in CASES_FILE and parametrizes over the result, deriving everything it
 checks from the Case object and its own SQL, never from a constant written
 for one case.
 
@@ -33,12 +33,13 @@ the placeholder set a case may use comes from its own vars: block plus facts
 and its own batch parameter, not a list someone transcribed; the "no branch
 was skipped" checks come from splitting the SQL on UNION ALL, not a count
 written once at generation time. That is what makes one file correct for
-every case in the directory, present and future, with nothing to edit when a
+every case in CASES_FILE, present and future, with nothing to edit when a
 case is added.
 
-Drop a new case's .sql/.yaml pair in beside f_demand_portfolio_hourly's (by
-hand, or via `python -m prism generate` -- see prism/README.md) and it is
-covered the moment pytest collects this file.
+Drop a new case's .sql file in sql/insight_plus/ and its entry into
+CASES_FILE (by hand, or via `python -m prism generate` -- see
+prism/README.md, which merges it into the file in place) and it is covered
+the moment pytest collects this file.
 
 Offline only -- no connection is made, ever.
 """
@@ -56,7 +57,7 @@ from rowparity.params import _PLACEHOLDER, ParamError, merge_side_vars
 from rowparity.sources import resolve_query
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CASES_DIR = os.path.join(REPO, "scripts", "cases_insight_plus")
+CASES_FILE = os.path.join(REPO, "scripts", "cases_insight_plus.yaml")
 
 # A syntactically valid batch id, used only to prove substitution WORKS. Its
 # value is arbitrary -- no query is ever executed against it -- so one value
@@ -66,9 +67,9 @@ BATCH = "20260812010000"
 
 
 def _discover(params):
-    if not os.path.isdir(CASES_DIR):
+    if not os.path.isfile(CASES_FILE):
         return []
-    return discover_cases(CASES_DIR, params, resolve_queries=False)
+    return discover_cases(CASES_FILE, params, resolve_queries=False)
 
 
 # Collected once, at import time, so pytest can parametrize on it. This is
@@ -91,23 +92,23 @@ except Exception as exc:  # noqa: BLE001 -- reported as a test failure, not swal
 CASE_NAMES = [c.name for c in _UNPARAMETRISED_CASES]
 
 
-def test_the_case_directory_loads_at_all():
+def test_the_case_file_loads_at_all():
     """If this fails, every other test in this file was SKIPPED, not run.
 
     pytest cannot parametrize over cases it could not discover, so a broken
-    case YAML anywhere in CASES_DIR empties CASE_NAMES for the whole module.
-    Fix the error named below, then this file's usual test count comes back
-    on the next collection -- there is nothing to fix in this test itself.
+    CASES_FILE empties CASE_NAMES for the whole module. Fix the error named
+    below, then this file's usual test count comes back on the next
+    collection -- there is nothing to fix in this test itself.
     """
     if _DISCOVERY_ERROR is not None:
         pytest.fail(str(_DISCOVERY_ERROR), pytrace=False)
 
 
 def _find(name: str, params: dict) -> Case:
-    for case in discover_cases(CASES_DIR, params, resolve_queries=False):
+    for case in discover_cases(CASES_FILE, params, resolve_queries=False):
         if case.name == name:
             return case
-    raise AssertionError(f"case {name!r} not found in {CASES_DIR}")
+    raise AssertionError(f"case {name!r} not found in {CASES_FILE}")
 
 
 def _sql_path(case: Case, side: str) -> str:
@@ -154,13 +155,9 @@ def _sql(case: Case, side: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# The SELECT-list parser, INLINED on purpose -- a repo test suite must never
-# import prism at run time (prism is a generator, not a dependency of what it
-# generates). It is exercised here against every case's real SQL, which makes
-# it a better drift guard than testing it in isolation:
-# prism/tests/test_roundtrip.py checks this exact copy against prism.analyse's
-# own, on the real Hoover query, so the two cannot silently diverge without a
-# red test naming exactly that.
+# The SELECT-list parser, kept here rather than imported from elsewhere -- a
+# repo test suite should not depend on a code generator at run time. It is
+# exercised here against every case's real SQL.
 # --------------------------------------------------------------------------- #
 def _strip_sql_comments(sql: str) -> str:
     # Before splitting, never after: a comment like "-- no use, could be
@@ -330,12 +327,12 @@ def known_placeholder_names(raw, batch_param):
 
 pytestmark = pytest.mark.skipif(
     not CASE_NAMES and _DISCOVERY_ERROR is None,
-    reason=f"no cases found under {CASES_DIR}",
+    reason=f"no cases found in {CASES_FILE}",
 )
 # NOT "not CASE_NAMES" alone -- that would also skip
-# test_the_case_directory_loads_at_all above whenever discovery failed,
+# test_the_case_file_loads_at_all above whenever discovery failed,
 # which is exactly the one test that must run then. A genuinely empty
-# CASES_DIR (no error, just nothing to discover) still skips everything,
+# CASES_FILE (no error, just nothing to discover) still skips everything,
 # since there is nothing for the parametrized tests to check either way.
 
 
