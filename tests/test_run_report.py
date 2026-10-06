@@ -348,13 +348,15 @@ class TestSideLabels:
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "scripts",
-            "cases_insight_plus",
-            "f_demand_portfolio_hourly.yaml",
+            "cases_insight_plus.yaml",
         )
         if not os.path.isfile(path):
-            pytest.skip("insight_plus case not present")
+            pytest.skip("insight_plus cases not present")
         with open(path, encoding="utf-8") as fh:
-            case = _yaml.safe_load(fh)["cases"][0]
+            cases = _yaml.safe_load(fh)["cases"]
+        case = next((c for c in cases if c["name"] == "f_demand_portfolio_hourly"), None)
+        if case is None:
+            pytest.skip("f_demand_portfolio_hourly case not present")
         assert case["expected_label"] == "Hoover"
         assert case["actual_label"] == "Hoover++"
 
