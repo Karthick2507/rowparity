@@ -312,8 +312,7 @@ select
     , sum(tx_err_ad_rejected_by_distributor) as tx_err_ad_rejected_by_distributor
     , sum(tx_err_yield_optimization_rule_met) as tx_err_yield_optimization_rule_met
     , process_batch_id as partition_key
-from
-(
+from (
 /** Auction **/
 
 SELECT
@@ -1119,7 +1118,7 @@ SELECT
 , cast(0 as bigint) as ack_err_vast_604
 , cast(0 as bigint) as ack_err_vast_900
 , cast(0 as bigint) as ack_err_vast_901
-FROM mrm_log_flat.default.auction
+FROM ${facts}.auction
 CROSS JOIN UNNEST(
     partners__network_id,
     partners__supply_source,
@@ -1173,6 +1172,7 @@ WHERE process_batch_id = '${arena.presto.var.process_batch_id}'
   AND auction__integration_type IN ('NORMAL', 'PG_TD')
   AND nw.entity_source = 'auction'
   AND nw.sales_channel = 4
+  AND ${sampling_filter} --sampling filter
 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56
 
 UNION ALL
@@ -1543,7 +1543,7 @@ SELECT
 , cast(0 as bigint) as ack_err_vast_604
 , cast(0 as bigint) as ack_err_vast_900
 , cast(0 as bigint) as ack_err_vast_901
-FROM mrm_log_flat.default.auction
+FROM ${facts}.auction
 CROSS JOIN UNNEST(
     auction__impression__index,
     auction__impression__equivalent_opportunity_number
@@ -1605,6 +1605,7 @@ WHERE process_batch_id = '${arena.presto.var.process_batch_id}'
   AND auction__integration_type IN ('NORMAL', 'PG_TD')
   AND nw.entity_source = 'auction'
   AND nw.sales_channel = 4
+  AND ${sampling_filter} --sampling filter
 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56
 
 UNION ALL
@@ -1955,7 +1956,7 @@ SELECT
 , cast(0 as bigint) as ack_err_vast_604
 , cast(0 as bigint) as ack_err_vast_900
 , cast(0 as bigint) as ack_err_vast_901
-FROM mrm_log_flat.default.candidate
+FROM ${facts}.candidate
 CROSS JOIN UNNEST(
     partners__network_id,
     partners__network_is_extra_item_owner,
@@ -2007,6 +2008,7 @@ WHERE process_batch_id = '${arena.presto.var.process_batch_id}'
   AND nw.entity_source = 'auction'
   AND (BITWISE_AND(candidate__flags, 131072)>0 OR BITWISE_AND(candidate__bid_status, 1)>0)
   AND nw.sales_channel = 4
+  AND ${sampling_filter} --sampling filter
 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56
 
 UNION ALL
@@ -2351,7 +2353,7 @@ SELECT
 , cast(0 as bigint) as ack_err_vast_900
 , cast(0 as bigint) as ack_err_vast_901
 
-FROM mrm_log_flat.default.ack
+FROM ${facts}.ack
 CROSS JOIN UNNEST(
     ads_in_slot__advertisement__flags,
     ads_in_slot__advertisement__is_fallback,
@@ -2509,6 +2511,7 @@ WHERE process_batch_id = '${arena.presto.var.process_batch_id}'
   AND COALESCE(advertisement__is_bumper, false) = false                          -- Remove Bumper Ad
   AND COALESCE(ack__ack_entity_type, '') = 'slot'
   AND COALESCE(ack__metrics__slot_impression, 0) > 0                             -- Has Slot Callback
+  AND ${sampling_filter} --sampling filter
 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56
 
 UNION ALL
@@ -2861,7 +2864,7 @@ SELECT
 , cast(0 as bigint) as ack_err_vast_604
 , cast(0 as bigint) as ack_err_vast_900
 , cast(0 as bigint) as ack_err_vast_901
-FROM mrm_log_flat.default.candidate
+FROM ${facts}.candidate
 CROSS JOIN UNNEST(
     partners__network_id,
     partners__supply_source,
@@ -2918,6 +2921,7 @@ WHERE process_batch_id = '${arena.presto.var.process_batch_id}'
   AND nw.entity_source = 'auction'
   AND sub_err.error_category = candidate__error
   AND nw.sales_channel = 4
+  AND ${sampling_filter} --sampling filter
 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56
 
 UNION ALL
@@ -3270,7 +3274,7 @@ SELECT
     , sum(if(ack__event_name='900', ack__metrics__ad_error, 0)) as ack_err_vast_900
     , sum(if(ack__event_name='901', ack__metrics__ad_error, 0)) as ack_err_vast_901
 
-FROM mrm_log_flat.default.ack
+FROM ${facts}.ack
 CROSS JOIN UNNEST(
     partners__network_id,
     partners__network_is_extra_item_owner,
@@ -3340,6 +3344,7 @@ WHERE process_batch_id = '${arena.presto.var.process_batch_id}'
     OR COALESCE(ack__metrics__fire_event_revenue_ratio, 0) != 0
     OR COALESCE(ack__metrics__ad_error, 0) != 0
     )
+  AND ${sampling_filter} --sampling filter
 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56
 )
 GROUP BY 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 288, 289, 297, 301
