@@ -249,8 +249,7 @@ select
      , sum(tx_err_ad_rejected_by_distributor) as tx_err_ad_rejected_by_distributor
      , sum(tx_err_yield_optimization_rule_met) as tx_err_yield_optimization_rule_met
      , process_batch_id as partition_key
-from
-    (
+from (
 /** Auction **/
 
     SELECT
