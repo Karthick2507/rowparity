@@ -479,3 +479,145 @@ cases:
       near_miss: true
 
     tags: [insight_plus, prism]
+
+  - name: f_demand_programmatic_hourly
+    # 301 output columns (71 dimensions + 230 metrics), 6 UNION branch(es):
+    # Auction, Auction Imp. Obj., Candidate, Selected Ads (Removed User Drop
+    # Off), Candidate Per Slot, ACK. ${facts} and ${sampling_filter} applied
+    # per branch, matching the other cases in this file.
+    #
+    # No breakdown_by: process_stage (4, 4, 8, 16, 8, 32) repeats across
+    # branches rather than being a distinct literal per branch, so it does
+    # not partition the output cleanly.
+    expected_label: Hoover
+    actual_label: Hoover++
+    description: >-
+      The f_demand_programmatic_hourly aggregate must produce identical rows whether built
+      from the Hoover layout or the Hoover++ layout. Both
+      sides are queries; neither is materialised.
+
+    # Shared by BOTH sides, and case-level on purpose: it is the one thing
+    # that must never differ. Comparing a sampled side against an unsampled
+    # one measures the sampling ratio and nothing else. Defined once and
+    # used by both, that bug is not expressible.
+    vars:
+      sampling_filter: "bitwise_and(coalesce(request__bit_flags, BIGINT '0'),bitwise_left_shift(BIGINT '1', 59)) > 0"
+
+    # The only difference between the two runs. These outrank --param
+    # deliberately: a --param reaching both sides would point them at the
+    # same catalog, and a comparison of a table with itself always passes.
+    expected:
+      type: trino
+      query_file: ../sql/insight_plus/f_demand_programmatic_hourly.sql
+      vars:
+        facts: mrm_log_flat.default
+
+    actual:
+      type: trino
+      query_file: ../sql/insight_plus/f_demand_programmatic_hourly.sql
+      vars:
+        facts: etl.public_test1
+
+    compare:
+      # The 71 GROUP BY dimensions. Not a business key, but unique by
+      # construction after the outer aggregation, which is all a key has to be.
+      # Keyed, a difference separates into missing/added (a dimension combination
+      # is absent) and changed (same dimensions, drifting metrics). Keyless, every
+      # difference is missing + added and every column reads as differing.
+      keys:
+        - ack_traffic_type
+        - app_bundle
+        - app_bundle_auditing
+        - app_storeurl
+        - app_storeurl_auditing
+        - application_type
+        - auction_type
+        - bidding_buyer_id
+        - bidding_external_seat_id
+        - buyer_group_id
+        - buyer_platform_id
+        - content_form_id
+        - content_form_visibility
+        - content_owner_id
+        - content_owner_visibility
+        - deal_ids
+        - demand_channel
+        - demand_type
+        - device_type
+        - distributor_id
+        - dsp_id
+        - error_stage
+        - event_date
+        - geo_country_visibility
+        - global_advertiser_ids
+        - global_brand_ids
+        - global_industry_ids
+        - ifa_auditing
+        - ifa_type
+        - inbound_order_id
+        - inbound_order_ids
+        - network_id
+        - outbound_exchange_listing_ids
+        - outbound_order_id
+        - partition_key
+        - primary_ad_indicator
+        - process_batch_id
+        - process_stage
+        - profile_id
+        - profile_type
+        - request_traffic_type
+        - reseller_id
+        - reseller_visibility
+        - sales_channel
+        - series_id
+        - site_domain
+        - site_domain_auditing
+        - site_id
+        - site_section_id
+        - slot_user_drop_off
+        - standard_app_id
+        - standard_brand_id
+        - standard_brand_visibility
+        - standard_device_type_id
+        - standard_endpoint_id
+        - standard_endpoint_owner_id
+        - standard_endpoint_owner_visibility
+        - standard_endpoint_visibility
+        - standard_environment_id
+        - standard_os_id
+        - standard_programmer_id
+        - standard_programmer_visibility
+        - standard_publisher_id
+        - stream_mode_id
+        - supply_source
+        - time_position_class
+        - upstream_listing_ids
+        - user_agent_visibility
+        - user_country_id
+        - user_matched_indicator
+        - video_cro_network_id
+
+      # Arrays that reach the output from a source column, whose element
+      # order the engine does not guarantee. rowparity treats list as
+      # ORDERED by default, so without this a pure ordering difference
+      # reads as a data difference. outbound_exchange_listing_ids is always
+      # an empty literal here (CAST(array[] as array<bigint>), not a bare
+      # array[...] construction) -- harmless to list as unordered too, since
+      # an empty array has nothing to reorder.
+      unordered_list_columns:
+        - deal_ids
+        - global_advertiser_ids
+        - global_brand_ids
+        - global_industry_ids
+        - inbound_order_ids
+        - outbound_exchange_listing_ids
+        - upstream_listing_ids
+
+      max_examples: 50
+
+      # Find the single key column whose drift turned one logical row into a
+      # missing + added pair. Costs no warehouse time: it re-pairs key tuples
+      # already in memory.
+      near_miss: true
+
+    tags: [insight_plus, prism]
