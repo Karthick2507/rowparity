@@ -961,7 +961,7 @@ from
         * coalesce(request__magnifier, 1)
         * coalesce(auction__auction_sampling__magnifier, 1)
         * coalesce(request__log_sampling__magnifier, 1))                                                     as tx_err_yield_optimization_rule_met
-    FROM mrm_log_flat.default.auction
+    FROM ${facts}.auction
     CROSS JOIN UNNEST(
         partners__network_id,
         partners__supply_source,
@@ -986,6 +986,7 @@ from
       AND auction__integration_type IN ('NORMAL', 'PG_TD')
       AND nw.entity_source IN ('auction')
       AND nw.sales_channel = 4
+      AND ${sampling_filter} --sampling filter
     GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
 
     UNION ALL
@@ -1263,7 +1264,7 @@ from
          , 0 as tx_err_ad_pending_distributor_approval
          , 0 as tx_err_ad_rejected_by_distributor
          , 0 as tx_err_yield_optimization_rule_met
-    FROM mrm_log_flat.default.auction
+    FROM ${facts}.auction
     CROSS JOIN UNNEST(
         auction__impression__index,
         auction__impression__equivalent_opportunity_number
@@ -1296,6 +1297,7 @@ from
       AND auction__integration_type IN ('NORMAL', 'PG_TD')
       AND nw.entity_source IN ('auction')
       AND nw.sales_channel = 4
+      AND ${sampling_filter} --sampling filter
     GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
 
     UNION ALL
@@ -1582,7 +1584,7 @@ from
          , SUM(IF(candidate__error = 'PENDING_APPROVAL_BY_DISTRIBUTOR',1, 0))                                            as tx_err_ad_pending_distributor_approval
          , SUM(IF(candidate__error = 'NOT_APPROVED_BY_DISTRIBUTOR',1, 0))                                                as tx_err_ad_rejected_by_distributor
          , SUM(IF(candidate__error = 'YIELD_OPT_MET',1, 0))                                                as tx_err_yield_optimization_rule_met
-    FROM mrm_log_flat.default.candidate
+    FROM ${facts}.candidate
     CROSS JOIN UNNEST(
         partners__network_id,
         partners__network_is_extra_item_owner,
@@ -1602,6 +1604,7 @@ from
       AND nw.entity_source IN ('auction')
       AND (BITWISE_AND(candidate__flags, 131072)>0 OR BITWISE_AND(candidate__bid_status, 1)>0)
       AND nw.sales_channel = 4
+      AND ${sampling_filter} --sampling filter
     GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
 
     UNION ALL
@@ -1879,7 +1882,7 @@ from
          , 0 as tx_err_ad_rejected_by_distributor
          , 0 as tx_err_yield_optimization_rule_met
 
-    FROM mrm_log_flat.default.ack
+    FROM ${facts}.ack
     CROSS JOIN UNNEST(
         ads_in_slot__advertisement__is_fallback,
         ads_in_slot__candidate__bid_status,
@@ -1928,6 +1931,7 @@ from
     AND COALESCE(ack__ack_entity_type, '') = 'slot'
     AND COALESCE(ack__metrics__slot_impression, 0) > 0                             -- Has Slot Callback
     AND nw.sales_channel = 4
+    AND ${sampling_filter} --sampling filter
     GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
 
     UNION ALL
@@ -2209,7 +2213,7 @@ SELECT
         , 0 as tx_err_ad_pending_distributor_approval
         , 0 as tx_err_ad_rejected_by_distributor
         , 0 as tx_err_yield_optimization_rule_met
-    FROM mrm_log_flat.default.candidate
+    FROM ${facts}.candidate
     CROSS JOIN UNNEST(
         partners__network_id,
         partners__supply_source,
@@ -2234,6 +2238,7 @@ SELECT
       AND nw.entity_source IN ('auction')
       AND sub_err.error_category = candidate__error
       AND nw.sales_channel = 4
+      AND ${sampling_filter} --sampling filter
     GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
 
     UNION ALL
@@ -2517,7 +2522,7 @@ SELECT
         , 0 as tx_err_ad_rejected_by_distributor
         , 0 as tx_err_yield_optimization_rule_met
 
-    FROM mrm_log_flat.default.ack
+    FROM ${facts}.ack
     CROSS JOIN UNNEST(
         partners__network_id,
         partners__supply_source,
@@ -2553,6 +2558,7 @@ SELECT
        OR COALESCE(ack__metrics__ad_error, 0) != 0
         )
       AND nw.sales_channel = 4
+      AND ${sampling_filter} --sampling filter
     GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
     )
 WHERE deal_id > 0
