@@ -198,6 +198,18 @@
                   background: var(--attention-subtle); border-radius: 4px;
                   padding: 6px 10px; }
 
+  /* ---- drilldown results ---- */
+  .results { margin-top: 10px; margin-bottom: 10px; }
+  .results h4 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
+  table.drilldown-results { width: 100%; font-size: 12px; border-collapse: collapse;
+                            background: var(--canvas); border: 1px solid var(--border-muted);
+                            border-radius: var(--radius); overflow: hidden; }
+  table.drilldown-results th { background: var(--canvas-inset); font-weight: 600;
+                               padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border-muted); }
+  table.drilldown-results td { padding: 6px 10px; border-bottom: 1px solid var(--border-muted); }
+  table.drilldown-results tbody tr:last-child td { border-bottom: none; }
+  table.drilldown-results tbody tr:hover { background: var(--canvas-inset); }
+
   /* --- row examples --- */
   .txn { font-family: var(--font-mono); font-size: 12px; font-weight: 600;
          color: var(--accent-fg); background: var(--accent-subtle);
@@ -789,6 +801,34 @@
       head.appendChild(el("div", "spacer"));
       head.appendChild(el("span", "share", num(dd.value_count) + " " + dd.column + " value(s)"));
       box.appendChild(head);
+
+      // Show results if available
+      if (s.results && s.results.length > 0) {
+        var resultsDiv = el("div", "results");
+        resultsDiv.appendChild(el("h4", null, "Results (" + num(s.results.length) + " rows)"));
+        var resultTable = el("table", "drilldown-results");
+        var thead = el("thead");
+        var headerRow = el("tr");
+        if (s.results.length > 0) {
+          Object.keys(s.results[0]).forEach(function(col) {
+            headerRow.appendChild(el("th", null, col));
+          });
+        }
+        thead.appendChild(headerRow);
+        resultTable.appendChild(thead);
+        var tbody = el("tbody");
+        s.results.forEach(function(row) {
+          var tr = el("tr");
+          Object.values(row).forEach(function(val) {
+            tr.appendChild(el("td", null, String(val === null ? "NULL" : val)));
+          });
+          tbody.appendChild(tr);
+        });
+        resultTable.appendChild(tbody);
+        resultsDiv.appendChild(resultTable);
+        box.appendChild(resultsDiv);
+      }
+
       var sql = el("details", "more");
       sql.appendChild(el("summary", null, "SQL"));
       sql.appendChild(el("pre", "sqlbox", s.sql));
