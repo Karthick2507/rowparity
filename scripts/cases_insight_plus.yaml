@@ -209,7 +209,9 @@ cases:
       bind: ad_id
       id_column: ad_id
       kinds:
-        time: event_date
+        - missing
+        - added
+        - changed
       time:
         param: arena.presto.var.process_batch_id
       vars:
