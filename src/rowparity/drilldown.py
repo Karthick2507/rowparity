@@ -33,6 +33,7 @@ class SideDrilldown:
     """One side's ready-to-run query."""
     label: str
     sql: str
+    results: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass

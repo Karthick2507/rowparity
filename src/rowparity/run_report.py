@@ -211,7 +211,17 @@ def _drilldown_to_dict(dd) -> Optional[Dict[str, Any]]:
         "kinds": list(getattr(dd, "kinds", []) or []),
         "kind_values": dict(getattr(dd, "kind_values", {}) or {}),
         "kind_rows": dict(getattr(dd, "kind_rows", {}) or {}),
-        "sides": [{"label": s.label, "sql": s.sql} for s in dd.sides],
+        "sides": [
+            {
+                "label": s.label,
+                "sql": s.sql,
+                "results": [
+                    {k: _short(v) for k, v in row.items()}
+                    for row in (getattr(s, "results", []) or [])
+                ]
+            }
+            for s in dd.sides
+        ],
     }
 
 
