@@ -248,6 +248,19 @@ cases:
       - {label: Placement,     columns: [time_position_classes, supply_source_detail,
                                          sales_strategy, priority_tier]}
 
+    # Per-row investigation SQL for deeper analysis of differing rows.
+    drilldown:
+      query_file: ../sql/insight_plus/f_demand_portfolio_hourly_drilldown.sql
+      bind: ad_id
+      id_column: ad_id
+      kinds:
+        time: event_date
+      time:
+        param: arena.presto.var.process_batch_id
+      vars:
+        facts: ${facts}
+        sampling_filter: ${sampling_filter}
+
     tags: [insight_plus, hoover]
 
   - name: f_demand_programmatic_creative_hourly
