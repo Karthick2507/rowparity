@@ -1,6 +1,3 @@
-/* Drilldown query for f_demand_portfolio_hourly case */
-/* Investigates a specific ad_id across batch and detailed ad data */
-
 select
     ad_id,
     event_date,
