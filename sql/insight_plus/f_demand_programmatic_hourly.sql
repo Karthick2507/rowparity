@@ -1049,75 +1049,75 @@ SELECT
 , 0 as slot_err_creative_file_size_incompatible
 
 -- ADM Endpoint Errors (29)
-, cast(0 as bigint) as ack_err_adm_total
-, cast(0 as bigint) as ack_err_adm_e_io
-, cast(0 as bigint) as ack_err_adm_e_security
-, cast(0 as bigint) as ack_err_adm_e_no_ad
-, cast(0 as bigint) as ack_err_adm_e_timeout
-, cast(0 as bigint) as ack_err_adm_e_overflow_skipped
-, cast(0 as bigint) as ack_err_adm_e_missing_param
-, cast(0 as bigint) as ack_err_adm_e_invalid_value
-, cast(0 as bigint) as ack_err_adm_e_adinst_unavail
-, cast(0 as bigint) as ack_err_adm_e_no_renderer
-, cast(0 as bigint) as ack_err_adm_e_renderer_init
-, cast(0 as bigint) as ack_err_adm_e_parse
-, cast(0 as bigint) as ack_err_adm_e_null_asset
-, cast(0 as bigint) as ack_err_adm_e_external_interface
-, cast(0 as bigint) as ack_err_adm_e_3p_comp
-, cast(0 as bigint) as ack_err_adm_e_device_limit
-, cast(0 as bigint) as ack_err_adm_e_in_app_view
-, cast(0 as bigint) as ack_err_adm_e_unknown
-, cast(0 as bigint) as ack_err_adm_e_invalid_slot
-, cast(0 as bigint) as ack_err_adm_e_network
-, cast(0 as bigint) as ack_err_adm_e_no_preload_in_translator
-, cast(0 as bigint) as ack_err_adm_e_renderer_load
-, cast(0 as bigint) as ack_err_adm_e_slot_size_unmatch
-, cast(0 as bigint) as ack_err_adm_e_slot_unavail
-, cast(0 as bigint) as ack_err_adm_e_unsupp_3p_feature
-, cast(0 as bigint) as ack_err_adm_e_really_no_ad
-, cast(0 as bigint) as ack_err_adm_e_dashjs
-, cast(0 as bigint) as ack_err_adm_e_custom_player
-, cast(0 as bigint) as ack_err_adm_e_hlsjs
+, 0 as ack_err_adm_total
+, 0 as ack_err_adm_e_io
+, 0 as ack_err_adm_e_security
+, 0 as ack_err_adm_e_no_ad
+, 0 as ack_err_adm_e_timeout
+, 0 as ack_err_adm_e_overflow_skipped
+, 0 as ack_err_adm_e_missing_param
+, 0 as ack_err_adm_e_invalid_value
+, 0 as ack_err_adm_e_adinst_unavail
+, 0 as ack_err_adm_e_no_renderer
+, 0 as ack_err_adm_e_renderer_init
+, 0 as ack_err_adm_e_parse
+, 0 as ack_err_adm_e_null_asset
+, 0 as ack_err_adm_e_external_interface
+, 0 as ack_err_adm_e_3p_comp
+, 0 as ack_err_adm_e_device_limit
+, 0 as ack_err_adm_e_in_app_view
+, 0 as ack_err_adm_e_unknown
+, 0 as ack_err_adm_e_invalid_slot
+, 0 as ack_err_adm_e_network
+, 0 as ack_err_adm_e_no_preload_in_translator
+, 0 as ack_err_adm_e_renderer_load
+, 0 as ack_err_adm_e_slot_size_unmatch
+, 0 as ack_err_adm_e_slot_unavail
+, 0 as ack_err_adm_e_unsupp_3p_feature
+, 0 as ack_err_adm_e_really_no_ad
+, 0 as ack_err_adm_e_dashjs
+, 0 as ack_err_adm_e_custom_player
+, 0 as ack_err_adm_e_hlsjs
 
 -- VAST Endpoint Errors (38)
-, cast(0 as bigint) as ack_err_vast_total
-, cast(0 as bigint) as ack_err_vast_51
-, cast(0 as bigint) as ack_err_vast_52
-, cast(0 as bigint) as ack_err_vast_100
-, cast(0 as bigint) as ack_err_vast_101
-, cast(0 as bigint) as ack_err_vast_102
-, cast(0 as bigint) as ack_err_vast_200
-, cast(0 as bigint) as ack_err_vast_201
-, cast(0 as bigint) as ack_err_vast_202
-, cast(0 as bigint) as ack_err_vast_203
-, cast(0 as bigint) as ack_err_vast_204
-, cast(0 as bigint) as ack_err_vast_300
-, cast(0 as bigint) as ack_err_vast_301
-, cast(0 as bigint) as ack_err_vast_302
-, cast(0 as bigint) as ack_err_vast_303
-, cast(0 as bigint) as ack_err_vast_304
-, cast(0 as bigint) as ack_err_vast_400
-, cast(0 as bigint) as ack_err_vast_401
-, cast(0 as bigint) as ack_err_vast_402
-, cast(0 as bigint) as ack_err_vast_403
-, cast(0 as bigint) as ack_err_vast_405
-, cast(0 as bigint) as ack_err_vast_406
-, cast(0 as bigint) as ack_err_vast_407
-, cast(0 as bigint) as ack_err_vast_408
-, cast(0 as bigint) as ack_err_vast_409
-, cast(0 as bigint) as ack_err_vast_410
-, cast(0 as bigint) as ack_err_vast_411
-, cast(0 as bigint) as ack_err_vast_500
-, cast(0 as bigint) as ack_err_vast_501
-, cast(0 as bigint) as ack_err_vast_502
-, cast(0 as bigint) as ack_err_vast_503
-, cast(0 as bigint) as ack_err_vast_600
-, cast(0 as bigint) as ack_err_vast_601
-, cast(0 as bigint) as ack_err_vast_602
-, cast(0 as bigint) as ack_err_vast_603
-, cast(0 as bigint) as ack_err_vast_604
-, cast(0 as bigint) as ack_err_vast_900
-, cast(0 as bigint) as ack_err_vast_901
+, 0 as ack_err_vast_total
+, 0 as ack_err_vast_51
+, 0 as ack_err_vast_52
+, 0 as ack_err_vast_100
+, 0 as ack_err_vast_101
+, 0 as ack_err_vast_102
+, 0 as ack_err_vast_200
+, 0 as ack_err_vast_201
+, 0 as ack_err_vast_202
+, 0 as ack_err_vast_203
+, 0 as ack_err_vast_204
+, 0 as ack_err_vast_300
+, 0 as ack_err_vast_301
+, 0 as ack_err_vast_302
+, 0 as ack_err_vast_303
+, 0 as ack_err_vast_304
+, 0 as ack_err_vast_400
+, 0 as ack_err_vast_401
+, 0 as ack_err_vast_402
+, 0 as ack_err_vast_403
+, 0 as ack_err_vast_405
+, 0 as ack_err_vast_406
+, 0 as ack_err_vast_407
+, 0 as ack_err_vast_408
+, 0 as ack_err_vast_409
+, 0 as ack_err_vast_410
+, 0 as ack_err_vast_411
+, 0 as ack_err_vast_500
+, 0 as ack_err_vast_501
+, 0 as ack_err_vast_502
+, 0 as ack_err_vast_503
+, 0 as ack_err_vast_600
+, 0 as ack_err_vast_601
+, 0 as ack_err_vast_602
+, 0 as ack_err_vast_603
+, 0 as ack_err_vast_604
+, 0 as ack_err_vast_900
+, 0 as ack_err_vast_901
 FROM ${facts}.auction
 CROSS JOIN UNNEST(
     partners__network_id,
@@ -1474,75 +1474,75 @@ SELECT
 , 0 as slot_err_creative_file_size_incompatible
 
 -- ADM Endpoint Errors (29)
-, cast(0 as bigint) as ack_err_adm_total
-, cast(0 as bigint) as ack_err_adm_e_io
-, cast(0 as bigint) as ack_err_adm_e_security
-, cast(0 as bigint) as ack_err_adm_e_no_ad
-, cast(0 as bigint) as ack_err_adm_e_timeout
-, cast(0 as bigint) as ack_err_adm_e_overflow_skipped
-, cast(0 as bigint) as ack_err_adm_e_missing_param
-, cast(0 as bigint) as ack_err_adm_e_invalid_value
-, cast(0 as bigint) as ack_err_adm_e_adinst_unavail
-, cast(0 as bigint) as ack_err_adm_e_no_renderer
-, cast(0 as bigint) as ack_err_adm_e_renderer_init
-, cast(0 as bigint) as ack_err_adm_e_parse
-, cast(0 as bigint) as ack_err_adm_e_null_asset
-, cast(0 as bigint) as ack_err_adm_e_external_interface
-, cast(0 as bigint) as ack_err_adm_e_3p_comp
-, cast(0 as bigint) as ack_err_adm_e_device_limit
-, cast(0 as bigint) as ack_err_adm_e_in_app_view
-, cast(0 as bigint) as ack_err_adm_e_unknown
-, cast(0 as bigint) as ack_err_adm_e_invalid_slot
-, cast(0 as bigint) as ack_err_adm_e_network
-, cast(0 as bigint) as ack_err_adm_e_no_preload_in_translator
-, cast(0 as bigint) as ack_err_adm_e_renderer_load
-, cast(0 as bigint) as ack_err_adm_e_slot_size_unmatch
-, cast(0 as bigint) as ack_err_adm_e_slot_unavail
-, cast(0 as bigint) as ack_err_adm_e_unsupp_3p_feature
-, cast(0 as bigint) as ack_err_adm_e_really_no_ad
-, cast(0 as bigint) as ack_err_adm_e_dashjs
-, cast(0 as bigint) as ack_err_adm_e_custom_player
-, cast(0 as bigint) as ack_err_adm_e_hlsjs
+, 0 as ack_err_adm_total
+, 0 as ack_err_adm_e_io
+, 0 as ack_err_adm_e_security
+, 0 as ack_err_adm_e_no_ad
+, 0 as ack_err_adm_e_timeout
+, 0 as ack_err_adm_e_overflow_skipped
+, 0 as ack_err_adm_e_missing_param
+, 0 as ack_err_adm_e_invalid_value
+, 0 as ack_err_adm_e_adinst_unavail
+, 0 as ack_err_adm_e_no_renderer
+, 0 as ack_err_adm_e_renderer_init
+, 0 as ack_err_adm_e_parse
+, 0 as ack_err_adm_e_null_asset
+, 0 as ack_err_adm_e_external_interface
+, 0 as ack_err_adm_e_3p_comp
+, 0 as ack_err_adm_e_device_limit
+, 0 as ack_err_adm_e_in_app_view
+, 0 as ack_err_adm_e_unknown
+, 0 as ack_err_adm_e_invalid_slot
+, 0 as ack_err_adm_e_network
+, 0 as ack_err_adm_e_no_preload_in_translator
+, 0 as ack_err_adm_e_renderer_load
+, 0 as ack_err_adm_e_slot_size_unmatch
+, 0 as ack_err_adm_e_slot_unavail
+, 0 as ack_err_adm_e_unsupp_3p_feature
+, 0 as ack_err_adm_e_really_no_ad
+, 0 as ack_err_adm_e_dashjs
+, 0 as ack_err_adm_e_custom_player
+, 0 as ack_err_adm_e_hlsjs
 
 -- VAST Endpoint Errors (38)
-, cast(0 as bigint) as ack_err_vast_total
-, cast(0 as bigint) as ack_err_vast_51
-, cast(0 as bigint) as ack_err_vast_52
-, cast(0 as bigint) as ack_err_vast_100
-, cast(0 as bigint) as ack_err_vast_101
-, cast(0 as bigint) as ack_err_vast_102
-, cast(0 as bigint) as ack_err_vast_200
-, cast(0 as bigint) as ack_err_vast_201
-, cast(0 as bigint) as ack_err_vast_202
-, cast(0 as bigint) as ack_err_vast_203
-, cast(0 as bigint) as ack_err_vast_204
-, cast(0 as bigint) as ack_err_vast_300
-, cast(0 as bigint) as ack_err_vast_301
-, cast(0 as bigint) as ack_err_vast_302
-, cast(0 as bigint) as ack_err_vast_303
-, cast(0 as bigint) as ack_err_vast_304
-, cast(0 as bigint) as ack_err_vast_400
-, cast(0 as bigint) as ack_err_vast_401
-, cast(0 as bigint) as ack_err_vast_402
-, cast(0 as bigint) as ack_err_vast_403
-, cast(0 as bigint) as ack_err_vast_405
-, cast(0 as bigint) as ack_err_vast_406
-, cast(0 as bigint) as ack_err_vast_407
-, cast(0 as bigint) as ack_err_vast_408
-, cast(0 as bigint) as ack_err_vast_409
-, cast(0 as bigint) as ack_err_vast_410
-, cast(0 as bigint) as ack_err_vast_411
-, cast(0 as bigint) as ack_err_vast_500
-, cast(0 as bigint) as ack_err_vast_501
-, cast(0 as bigint) as ack_err_vast_502
-, cast(0 as bigint) as ack_err_vast_503
-, cast(0 as bigint) as ack_err_vast_600
-, cast(0 as bigint) as ack_err_vast_601
-, cast(0 as bigint) as ack_err_vast_602
-, cast(0 as bigint) as ack_err_vast_603
-, cast(0 as bigint) as ack_err_vast_604
-, cast(0 as bigint) as ack_err_vast_900
-, cast(0 as bigint) as ack_err_vast_901
+, 0 as ack_err_vast_total
+, 0 as ack_err_vast_51
+, 0 as ack_err_vast_52
+, 0 as ack_err_vast_100
+, 0 as ack_err_vast_101
+, 0 as ack_err_vast_102
+, 0 as ack_err_vast_200
+, 0 as ack_err_vast_201
+, 0 as ack_err_vast_202
+, 0 as ack_err_vast_203
+, 0 as ack_err_vast_204
+, 0 as ack_err_vast_300
+, 0 as ack_err_vast_301
+, 0 as ack_err_vast_302
+, 0 as ack_err_vast_303
+, 0 as ack_err_vast_304
+, 0 as ack_err_vast_400
+, 0 as ack_err_vast_401
+, 0 as ack_err_vast_402
+, 0 as ack_err_vast_403
+, 0 as ack_err_vast_405
+, 0 as ack_err_vast_406
+, 0 as ack_err_vast_407
+, 0 as ack_err_vast_408
+, 0 as ack_err_vast_409
+, 0 as ack_err_vast_410
+, 0 as ack_err_vast_411
+, 0 as ack_err_vast_500
+, 0 as ack_err_vast_501
+, 0 as ack_err_vast_502
+, 0 as ack_err_vast_503
+, 0 as ack_err_vast_600
+, 0 as ack_err_vast_601
+, 0 as ack_err_vast_602
+, 0 as ack_err_vast_603
+, 0 as ack_err_vast_604
+, 0 as ack_err_vast_900
+, 0 as ack_err_vast_901
 FROM ${facts}.auction
 CROSS JOIN UNNEST(
     auction__impression__index,
@@ -1887,75 +1887,75 @@ SELECT
 , 0 as slot_err_creative_file_size_incompatible
 
 -- ADM Endpoint Errors (29)
-, cast(0 as bigint) as ack_err_adm_total
-, cast(0 as bigint) as ack_err_adm_e_io
-, cast(0 as bigint) as ack_err_adm_e_security
-, cast(0 as bigint) as ack_err_adm_e_no_ad
-, cast(0 as bigint) as ack_err_adm_e_timeout
-, cast(0 as bigint) as ack_err_adm_e_overflow_skipped
-, cast(0 as bigint) as ack_err_adm_e_missing_param
-, cast(0 as bigint) as ack_err_adm_e_invalid_value
-, cast(0 as bigint) as ack_err_adm_e_adinst_unavail
-, cast(0 as bigint) as ack_err_adm_e_no_renderer
-, cast(0 as bigint) as ack_err_adm_e_renderer_init
-, cast(0 as bigint) as ack_err_adm_e_parse
-, cast(0 as bigint) as ack_err_adm_e_null_asset
-, cast(0 as bigint) as ack_err_adm_e_external_interface
-, cast(0 as bigint) as ack_err_adm_e_3p_comp
-, cast(0 as bigint) as ack_err_adm_e_device_limit
-, cast(0 as bigint) as ack_err_adm_e_in_app_view
-, cast(0 as bigint) as ack_err_adm_e_unknown
-, cast(0 as bigint) as ack_err_adm_e_invalid_slot
-, cast(0 as bigint) as ack_err_adm_e_network
-, cast(0 as bigint) as ack_err_adm_e_no_preload_in_translator
-, cast(0 as bigint) as ack_err_adm_e_renderer_load
-, cast(0 as bigint) as ack_err_adm_e_slot_size_unmatch
-, cast(0 as bigint) as ack_err_adm_e_slot_unavail
-, cast(0 as bigint) as ack_err_adm_e_unsupp_3p_feature
-, cast(0 as bigint) as ack_err_adm_e_really_no_ad
-, cast(0 as bigint) as ack_err_adm_e_dashjs
-, cast(0 as bigint) as ack_err_adm_e_custom_player
-, cast(0 as bigint) as ack_err_adm_e_hlsjs
+, 0 as ack_err_adm_total
+, 0 as ack_err_adm_e_io
+, 0 as ack_err_adm_e_security
+, 0 as ack_err_adm_e_no_ad
+, 0 as ack_err_adm_e_timeout
+, 0 as ack_err_adm_e_overflow_skipped
+, 0 as ack_err_adm_e_missing_param
+, 0 as ack_err_adm_e_invalid_value
+, 0 as ack_err_adm_e_adinst_unavail
+, 0 as ack_err_adm_e_no_renderer
+, 0 as ack_err_adm_e_renderer_init
+, 0 as ack_err_adm_e_parse
+, 0 as ack_err_adm_e_null_asset
+, 0 as ack_err_adm_e_external_interface
+, 0 as ack_err_adm_e_3p_comp
+, 0 as ack_err_adm_e_device_limit
+, 0 as ack_err_adm_e_in_app_view
+, 0 as ack_err_adm_e_unknown
+, 0 as ack_err_adm_e_invalid_slot
+, 0 as ack_err_adm_e_network
+, 0 as ack_err_adm_e_no_preload_in_translator
+, 0 as ack_err_adm_e_renderer_load
+, 0 as ack_err_adm_e_slot_size_unmatch
+, 0 as ack_err_adm_e_slot_unavail
+, 0 as ack_err_adm_e_unsupp_3p_feature
+, 0 as ack_err_adm_e_really_no_ad
+, 0 as ack_err_adm_e_dashjs
+, 0 as ack_err_adm_e_custom_player
+, 0 as ack_err_adm_e_hlsjs
 
 -- VAST Endpoint Errors (38)
-, cast(0 as bigint) as ack_err_vast_total
-, cast(0 as bigint) as ack_err_vast_51
-, cast(0 as bigint) as ack_err_vast_52
-, cast(0 as bigint) as ack_err_vast_100
-, cast(0 as bigint) as ack_err_vast_101
-, cast(0 as bigint) as ack_err_vast_102
-, cast(0 as bigint) as ack_err_vast_200
-, cast(0 as bigint) as ack_err_vast_201
-, cast(0 as bigint) as ack_err_vast_202
-, cast(0 as bigint) as ack_err_vast_203
-, cast(0 as bigint) as ack_err_vast_204
-, cast(0 as bigint) as ack_err_vast_300
-, cast(0 as bigint) as ack_err_vast_301
-, cast(0 as bigint) as ack_err_vast_302
-, cast(0 as bigint) as ack_err_vast_303
-, cast(0 as bigint) as ack_err_vast_304
-, cast(0 as bigint) as ack_err_vast_400
-, cast(0 as bigint) as ack_err_vast_401
-, cast(0 as bigint) as ack_err_vast_402
-, cast(0 as bigint) as ack_err_vast_403
-, cast(0 as bigint) as ack_err_vast_405
-, cast(0 as bigint) as ack_err_vast_406
-, cast(0 as bigint) as ack_err_vast_407
-, cast(0 as bigint) as ack_err_vast_408
-, cast(0 as bigint) as ack_err_vast_409
-, cast(0 as bigint) as ack_err_vast_410
-, cast(0 as bigint) as ack_err_vast_411
-, cast(0 as bigint) as ack_err_vast_500
-, cast(0 as bigint) as ack_err_vast_501
-, cast(0 as bigint) as ack_err_vast_502
-, cast(0 as bigint) as ack_err_vast_503
-, cast(0 as bigint) as ack_err_vast_600
-, cast(0 as bigint) as ack_err_vast_601
-, cast(0 as bigint) as ack_err_vast_602
-, cast(0 as bigint) as ack_err_vast_603
-, cast(0 as bigint) as ack_err_vast_604
-, cast(0 as bigint) as ack_err_vast_900
-, cast(0 as bigint) as ack_err_vast_901
+, 0 as ack_err_vast_total
+, 0 as ack_err_vast_51
+, 0 as ack_err_vast_52
+, 0 as ack_err_vast_100
+, 0 as ack_err_vast_101
+, 0 as ack_err_vast_102
+, 0 as ack_err_vast_200
+, 0 as ack_err_vast_201
+, 0 as ack_err_vast_202
+, 0 as ack_err_vast_203
+, 0 as ack_err_vast_204
+, 0 as ack_err_vast_300
+, 0 as ack_err_vast_301
+, 0 as ack_err_vast_302
+, 0 as ack_err_vast_303
+, 0 as ack_err_vast_304
+, 0 as ack_err_vast_400
+, 0 as ack_err_vast_401
+, 0 as ack_err_vast_402
+, 0 as ack_err_vast_403
+, 0 as ack_err_vast_405
+, 0 as ack_err_vast_406
+, 0 as ack_err_vast_407
+, 0 as ack_err_vast_408
+, 0 as ack_err_vast_409
+, 0 as ack_err_vast_410
+, 0 as ack_err_vast_411
+, 0 as ack_err_vast_500
+, 0 as ack_err_vast_501
+, 0 as ack_err_vast_502
+, 0 as ack_err_vast_503
+, 0 as ack_err_vast_600
+, 0 as ack_err_vast_601
+, 0 as ack_err_vast_602
+, 0 as ack_err_vast_603
+, 0 as ack_err_vast_604
+, 0 as ack_err_vast_900
+, 0 as ack_err_vast_901
 FROM ${facts}.candidate
 CROSS JOIN UNNEST(
     partners__network_id,
@@ -2283,75 +2283,75 @@ SELECT
 , 0 as slot_err_creative_file_size_incompatible
 
 -- ADM Endpoint Errors (29)
-, cast(0 as bigint) as ack_err_adm_total
-, cast(0 as bigint) as ack_err_adm_e_io
-, cast(0 as bigint) as ack_err_adm_e_security
-, cast(0 as bigint) as ack_err_adm_e_no_ad
-, cast(0 as bigint) as ack_err_adm_e_timeout
-, cast(0 as bigint) as ack_err_adm_e_overflow_skipped
-, cast(0 as bigint) as ack_err_adm_e_missing_param
-, cast(0 as bigint) as ack_err_adm_e_invalid_value
-, cast(0 as bigint) as ack_err_adm_e_adinst_unavail
-, cast(0 as bigint) as ack_err_adm_e_no_renderer
-, cast(0 as bigint) as ack_err_adm_e_renderer_init
-, cast(0 as bigint) as ack_err_adm_e_parse
-, cast(0 as bigint) as ack_err_adm_e_null_asset
-, cast(0 as bigint) as ack_err_adm_e_external_interface
-, cast(0 as bigint) as ack_err_adm_e_3p_comp
-, cast(0 as bigint) as ack_err_adm_e_device_limit
-, cast(0 as bigint) as ack_err_adm_e_in_app_view
-, cast(0 as bigint) as ack_err_adm_e_unknown
-, cast(0 as bigint) as ack_err_adm_e_invalid_slot
-, cast(0 as bigint) as ack_err_adm_e_network
-, cast(0 as bigint) as ack_err_adm_e_no_preload_in_translator
-, cast(0 as bigint) as ack_err_adm_e_renderer_load
-, cast(0 as bigint) as ack_err_adm_e_slot_size_unmatch
-, cast(0 as bigint) as ack_err_adm_e_slot_unavail
-, cast(0 as bigint) as ack_err_adm_e_unsupp_3p_feature
-, cast(0 as bigint) as ack_err_adm_e_really_no_ad
-, cast(0 as bigint) as ack_err_adm_e_dashjs
-, cast(0 as bigint) as ack_err_adm_e_custom_player
-, cast(0 as bigint) as ack_err_adm_e_hlsjs
+, 0 as ack_err_adm_total
+, 0 as ack_err_adm_e_io
+, 0 as ack_err_adm_e_security
+, 0 as ack_err_adm_e_no_ad
+, 0 as ack_err_adm_e_timeout
+, 0 as ack_err_adm_e_overflow_skipped
+, 0 as ack_err_adm_e_missing_param
+, 0 as ack_err_adm_e_invalid_value
+, 0 as ack_err_adm_e_adinst_unavail
+, 0 as ack_err_adm_e_no_renderer
+, 0 as ack_err_adm_e_renderer_init
+, 0 as ack_err_adm_e_parse
+, 0 as ack_err_adm_e_null_asset
+, 0 as ack_err_adm_e_external_interface
+, 0 as ack_err_adm_e_3p_comp
+, 0 as ack_err_adm_e_device_limit
+, 0 as ack_err_adm_e_in_app_view
+, 0 as ack_err_adm_e_unknown
+, 0 as ack_err_adm_e_invalid_slot
+, 0 as ack_err_adm_e_network
+, 0 as ack_err_adm_e_no_preload_in_translator
+, 0 as ack_err_adm_e_renderer_load
+, 0 as ack_err_adm_e_slot_size_unmatch
+, 0 as ack_err_adm_e_slot_unavail
+, 0 as ack_err_adm_e_unsupp_3p_feature
+, 0 as ack_err_adm_e_really_no_ad
+, 0 as ack_err_adm_e_dashjs
+, 0 as ack_err_adm_e_custom_player
+, 0 as ack_err_adm_e_hlsjs
 
 -- VAST Endpoint Errors (38)
-, cast(0 as bigint) as ack_err_vast_total
-, cast(0 as bigint) as ack_err_vast_51
-, cast(0 as bigint) as ack_err_vast_52
-, cast(0 as bigint) as ack_err_vast_100
-, cast(0 as bigint) as ack_err_vast_101
-, cast(0 as bigint) as ack_err_vast_102
-, cast(0 as bigint) as ack_err_vast_200
-, cast(0 as bigint) as ack_err_vast_201
-, cast(0 as bigint) as ack_err_vast_202
-, cast(0 as bigint) as ack_err_vast_203
-, cast(0 as bigint) as ack_err_vast_204
-, cast(0 as bigint) as ack_err_vast_300
-, cast(0 as bigint) as ack_err_vast_301
-, cast(0 as bigint) as ack_err_vast_302
-, cast(0 as bigint) as ack_err_vast_303
-, cast(0 as bigint) as ack_err_vast_304
-, cast(0 as bigint) as ack_err_vast_400
-, cast(0 as bigint) as ack_err_vast_401
-, cast(0 as bigint) as ack_err_vast_402
-, cast(0 as bigint) as ack_err_vast_403
-, cast(0 as bigint) as ack_err_vast_405
-, cast(0 as bigint) as ack_err_vast_406
-, cast(0 as bigint) as ack_err_vast_407
-, cast(0 as bigint) as ack_err_vast_408
-, cast(0 as bigint) as ack_err_vast_409
-, cast(0 as bigint) as ack_err_vast_410
-, cast(0 as bigint) as ack_err_vast_411
-, cast(0 as bigint) as ack_err_vast_500
-, cast(0 as bigint) as ack_err_vast_501
-, cast(0 as bigint) as ack_err_vast_502
-, cast(0 as bigint) as ack_err_vast_503
-, cast(0 as bigint) as ack_err_vast_600
-, cast(0 as bigint) as ack_err_vast_601
-, cast(0 as bigint) as ack_err_vast_602
-, cast(0 as bigint) as ack_err_vast_603
-, cast(0 as bigint) as ack_err_vast_604
-, cast(0 as bigint) as ack_err_vast_900
-, cast(0 as bigint) as ack_err_vast_901
+, 0 as ack_err_vast_total
+, 0 as ack_err_vast_51
+, 0 as ack_err_vast_52
+, 0 as ack_err_vast_100
+, 0 as ack_err_vast_101
+, 0 as ack_err_vast_102
+, 0 as ack_err_vast_200
+, 0 as ack_err_vast_201
+, 0 as ack_err_vast_202
+, 0 as ack_err_vast_203
+, 0 as ack_err_vast_204
+, 0 as ack_err_vast_300
+, 0 as ack_err_vast_301
+, 0 as ack_err_vast_302
+, 0 as ack_err_vast_303
+, 0 as ack_err_vast_304
+, 0 as ack_err_vast_400
+, 0 as ack_err_vast_401
+, 0 as ack_err_vast_402
+, 0 as ack_err_vast_403
+, 0 as ack_err_vast_405
+, 0 as ack_err_vast_406
+, 0 as ack_err_vast_407
+, 0 as ack_err_vast_408
+, 0 as ack_err_vast_409
+, 0 as ack_err_vast_410
+, 0 as ack_err_vast_411
+, 0 as ack_err_vast_500
+, 0 as ack_err_vast_501
+, 0 as ack_err_vast_502
+, 0 as ack_err_vast_503
+, 0 as ack_err_vast_600
+, 0 as ack_err_vast_601
+, 0 as ack_err_vast_602
+, 0 as ack_err_vast_603
+, 0 as ack_err_vast_604
+, 0 as ack_err_vast_900
+, 0 as ack_err_vast_901
 
 FROM ${facts}.ack
 CROSS JOIN UNNEST(
@@ -2795,75 +2795,75 @@ SELECT
 , SUM(IF(sub_err.error_category IN ('PROFILE_CHECK_FAILED', 'EXTERNAL_CREATIVE_PROFILE_CHECK_FAILED') AND sub_err.error_code = 'INCOMPATIBLE_RENDITION_FILE_SIZE', 1, 0))                                      as slot_err_creative_file_size_incompatible
 
 -- ADM Endpoint Errors (29)
-, cast(0 as bigint) as ack_err_adm_total
-, cast(0 as bigint) as ack_err_adm_e_io
-, cast(0 as bigint) as ack_err_adm_e_security
-, cast(0 as bigint) as ack_err_adm_e_no_ad
-, cast(0 as bigint) as ack_err_adm_e_timeout
-, cast(0 as bigint) as ack_err_adm_e_overflow_skipped
-, cast(0 as bigint) as ack_err_adm_e_missing_param
-, cast(0 as bigint) as ack_err_adm_e_invalid_value
-, cast(0 as bigint) as ack_err_adm_e_adinst_unavail
-, cast(0 as bigint) as ack_err_adm_e_no_renderer
-, cast(0 as bigint) as ack_err_adm_e_renderer_init
-, cast(0 as bigint) as ack_err_adm_e_parse
-, cast(0 as bigint) as ack_err_adm_e_null_asset
-, cast(0 as bigint) as ack_err_adm_e_external_interface
-, cast(0 as bigint) as ack_err_adm_e_3p_comp
-, cast(0 as bigint) as ack_err_adm_e_device_limit
-, cast(0 as bigint) as ack_err_adm_e_in_app_view
-, cast(0 as bigint) as ack_err_adm_e_unknown
-, cast(0 as bigint) as ack_err_adm_e_invalid_slot
-, cast(0 as bigint) as ack_err_adm_e_network
-, cast(0 as bigint) as ack_err_adm_e_no_preload_in_translator
-, cast(0 as bigint) as ack_err_adm_e_renderer_load
-, cast(0 as bigint) as ack_err_adm_e_slot_size_unmatch
-, cast(0 as bigint) as ack_err_adm_e_slot_unavail
-, cast(0 as bigint) as ack_err_adm_e_unsupp_3p_feature
-, cast(0 as bigint) as ack_err_adm_e_really_no_ad
-, cast(0 as bigint) as ack_err_adm_e_dashjs
-, cast(0 as bigint) as ack_err_adm_e_custom_player
-, cast(0 as bigint) as ack_err_adm_e_hlsjs
+, 0 as ack_err_adm_total
+, 0 as ack_err_adm_e_io
+, 0 as ack_err_adm_e_security
+, 0 as ack_err_adm_e_no_ad
+, 0 as ack_err_adm_e_timeout
+, 0 as ack_err_adm_e_overflow_skipped
+, 0 as ack_err_adm_e_missing_param
+, 0 as ack_err_adm_e_invalid_value
+, 0 as ack_err_adm_e_adinst_unavail
+, 0 as ack_err_adm_e_no_renderer
+, 0 as ack_err_adm_e_renderer_init
+, 0 as ack_err_adm_e_parse
+, 0 as ack_err_adm_e_null_asset
+, 0 as ack_err_adm_e_external_interface
+, 0 as ack_err_adm_e_3p_comp
+, 0 as ack_err_adm_e_device_limit
+, 0 as ack_err_adm_e_in_app_view
+, 0 as ack_err_adm_e_unknown
+, 0 as ack_err_adm_e_invalid_slot
+, 0 as ack_err_adm_e_network
+, 0 as ack_err_adm_e_no_preload_in_translator
+, 0 as ack_err_adm_e_renderer_load
+, 0 as ack_err_adm_e_slot_size_unmatch
+, 0 as ack_err_adm_e_slot_unavail
+, 0 as ack_err_adm_e_unsupp_3p_feature
+, 0 as ack_err_adm_e_really_no_ad
+, 0 as ack_err_adm_e_dashjs
+, 0 as ack_err_adm_e_custom_player
+, 0 as ack_err_adm_e_hlsjs
 
 -- VAST Endpoint Errors (38)
-, cast(0 as bigint) as ack_err_vast_total
-, cast(0 as bigint) as ack_err_vast_51
-, cast(0 as bigint) as ack_err_vast_52
-, cast(0 as bigint) as ack_err_vast_100
-, cast(0 as bigint) as ack_err_vast_101
-, cast(0 as bigint) as ack_err_vast_102
-, cast(0 as bigint) as ack_err_vast_200
-, cast(0 as bigint) as ack_err_vast_201
-, cast(0 as bigint) as ack_err_vast_202
-, cast(0 as bigint) as ack_err_vast_203
-, cast(0 as bigint) as ack_err_vast_204
-, cast(0 as bigint) as ack_err_vast_300
-, cast(0 as bigint) as ack_err_vast_301
-, cast(0 as bigint) as ack_err_vast_302
-, cast(0 as bigint) as ack_err_vast_303
-, cast(0 as bigint) as ack_err_vast_304
-, cast(0 as bigint) as ack_err_vast_400
-, cast(0 as bigint) as ack_err_vast_401
-, cast(0 as bigint) as ack_err_vast_402
-, cast(0 as bigint) as ack_err_vast_403
-, cast(0 as bigint) as ack_err_vast_405
-, cast(0 as bigint) as ack_err_vast_406
-, cast(0 as bigint) as ack_err_vast_407
-, cast(0 as bigint) as ack_err_vast_408
-, cast(0 as bigint) as ack_err_vast_409
-, cast(0 as bigint) as ack_err_vast_410
-, cast(0 as bigint) as ack_err_vast_411
-, cast(0 as bigint) as ack_err_vast_500
-, cast(0 as bigint) as ack_err_vast_501
-, cast(0 as bigint) as ack_err_vast_502
-, cast(0 as bigint) as ack_err_vast_503
-, cast(0 as bigint) as ack_err_vast_600
-, cast(0 as bigint) as ack_err_vast_601
-, cast(0 as bigint) as ack_err_vast_602
-, cast(0 as bigint) as ack_err_vast_603
-, cast(0 as bigint) as ack_err_vast_604
-, cast(0 as bigint) as ack_err_vast_900
-, cast(0 as bigint) as ack_err_vast_901
+, 0 as ack_err_vast_total
+, 0 as ack_err_vast_51
+, 0 as ack_err_vast_52
+, 0 as ack_err_vast_100
+, 0 as ack_err_vast_101
+, 0 as ack_err_vast_102
+, 0 as ack_err_vast_200
+, 0 as ack_err_vast_201
+, 0 as ack_err_vast_202
+, 0 as ack_err_vast_203
+, 0 as ack_err_vast_204
+, 0 as ack_err_vast_300
+, 0 as ack_err_vast_301
+, 0 as ack_err_vast_302
+, 0 as ack_err_vast_303
+, 0 as ack_err_vast_304
+, 0 as ack_err_vast_400
+, 0 as ack_err_vast_401
+, 0 as ack_err_vast_402
+, 0 as ack_err_vast_403
+, 0 as ack_err_vast_405
+, 0 as ack_err_vast_406
+, 0 as ack_err_vast_407
+, 0 as ack_err_vast_408
+, 0 as ack_err_vast_409
+, 0 as ack_err_vast_410
+, 0 as ack_err_vast_411
+, 0 as ack_err_vast_500
+, 0 as ack_err_vast_501
+, 0 as ack_err_vast_502
+, 0 as ack_err_vast_503
+, 0 as ack_err_vast_600
+, 0 as ack_err_vast_601
+, 0 as ack_err_vast_602
+, 0 as ack_err_vast_603
+, 0 as ack_err_vast_604
+, 0 as ack_err_vast_900
+, 0 as ack_err_vast_901
 FROM ${facts}.candidate
 CROSS JOIN UNNEST(
     partners__network_id,
@@ -3347,4 +3347,4 @@ WHERE process_batch_id = '${arena.presto.var.process_batch_id}'
   AND ${sampling_filter} --sampling filter
 GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56
 )
-GROUP BY 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 288, 289, 297, 301
+GROUP BY 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69
